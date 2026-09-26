@@ -6,24 +6,30 @@
     <title>@yield('title', 'Ticketech') | Ticketech</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body>
-    <header class="site-header">
-        <div class="container site-header-inner">
-            <a class="brand" href="{{ route('home') }}"><span class="brand-mark">T</span><span>TICKETTECH</span></a>
-            <nav class="top-nav" aria-label="Main navigation">
-                <a href="{{ route('home') }}" @if(request()->routeIs('home')) aria-current="page" @endif>Home</a>
-                <a href="{{ route('ticket.create') }}">Create a Ticket</a>
-                <a href="{{ route('ticket.check') }}">Check a Ticket</a>
-                <a href="{{ route('knowledge-base') }}">Knowledge Base</a>
-                <a class="nav-cta" href="{{ route('staff.login') }}">Staff Portal</a>
+<body class="public-shell @if(request()->routeIs('ticket.create')) ticket-create-shell @endif" style="--pyramid-background: url('{{ asset('images/Background_Pyramids.png') }}');">
+    <header class="public-topbar">
+        <div class="container public-topbar-inner">
+            <div class="public-brand">PCU HELP CENTER</div>
+            <nav class="public-nav" aria-label="Main navigation">
+                <a href="{{ route('login') }}">Login</a>
+                <span class="public-divider">|</span>
+                <a href="{{ route('register') }}">Register</a>
             </nav>
         </div>
     </header>
+
+    <div class="crumb-wrap">
+        <div class="container breadcrumb">Website <span>›</span> Help Center</div>
+    </div>
+
     @yield('content')
-    <footer class="site-footer">
-        <div class="container" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
-            <span><strong style="color:var(--navy)">TICKETTECH</strong> · School IT Help Desk and Ticketing System</span>
-            <span>Need help? Submit a ticket and our IT team will follow up.</span>
+
+    <footer class="public-footer">
+        <div class="public-footer-inner">
+            <div class="public-footer-brand">PCU Internal Help Desk</div>
+            <div>Powered by Help Desk Software <span>HESK</span></div>
+            <div>More IT firepower? Try <span>SysAid</span></div>
+            <div class="public-copyright-bar">© Philippine Christian University 2026</div>
         </div>
     </footer>
 </body>

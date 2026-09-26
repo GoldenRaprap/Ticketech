@@ -3,6 +3,9 @@
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'pages.home')->name('home');
+Route::view('/login', 'pages.login')->name('login');
+Route::view('/forgot-password', 'pages.forgot-password')->name('password.request');
+Route::view('/register', 'pages.register')->name('register');
 Route::view('/create-ticket', 'pages.create-ticket')->name('ticket.create');
 Route::view('/ticket-submitted', 'pages.ticket-submitted')->name('ticket.submitted');
 Route::view('/check-ticket', 'pages.check-ticket')->name('ticket.check');

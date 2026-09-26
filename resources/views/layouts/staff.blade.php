@@ -12,11 +12,12 @@
         <header class="staff-header">
             <div class="staff-header-left">
                 <button class="menu-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false" data-menu-toggle>☰</button>
-                <strong>TICKETTECH <span style="color:#8ba0b5;font-weight:400">/</span> Staff Portal</strong>
+                <div class="staff-header-title">Administrator Dashboard</div>
             </div>
-            <a class="staff-user" href="{{ route('staff.profile') }}">
-                <span class="avatar">JD</span><span>Jordan Davis · Employee / IT Staff</span>
-            </a>
+            <div class="staff-badge-row">
+                <button class="chip-button" type="button">Archived in 30 Days</button>
+                <button class="primary-button" type="button">+ Create a Ticket</button>
+            </div>
         </header>
         <main class="staff-content">@yield('content')</main>
     </div>

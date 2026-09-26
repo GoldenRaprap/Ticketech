@@ -1,21 +1,133 @@
 @extends('layouts.staff')
 @section('title', 'Dashboard')
 @section('content')
-<div class="staff-heading"><div><h1>Dashboard</h1><p>Overview of your Help Desk activity.</p></div><a class="btn btn-secondary" href="{{ route('staff.tickets') }}">View all tickets</a></div>
-<section class="stat-grid">
-    @foreach ([['New Tickets', '12'], ['Assigned to Me', '5'], ['In Progress', '8'], ['Waiting for User', '3'], ['Resolved', '14'], ['Closed', '28']] as [$label, $value])
-        <article class="stat-card"><span>{{ $label }}</span><strong>{{ $value }}</strong><small>Sample data</small></article>
-    @endforeach
-</section>
-<section class="panel">
-    <div class="panel-heading"><h2>Recent Tickets</h2><a href="{{ route('staff.tickets') }}">View all</a></div>
-    <div class="table-wrap"><table>
-        <thead><tr><th>Ticket #</th><th>Subject</th><th>Requester</th><th>Category</th><th>Priority</th><th>Assigned To</th><th>Status</th><th>Last Updated</th></tr></thead>
-        <tbody>
-            @foreach ([['ED-2026-00125','Cannot access Bluebook','Mia Chen','Bluebook','High','IT Staff B','In Progress','Today, 10:42 AM'],['ED-2026-00124','Wi-Fi disconnects in library','Noah Williams','Network','Normal','Jordan Davis','Assigned','Today, 9:18 AM'],['ED-2026-00123','Student portal shows an error','Ava Thompson','PRIISM','Normal','Unassigned','New','Yesterday, 3:50 PM'],['ED-2026-00122','Laptop will not connect to projector','Ethan Brown','Hardware','Low','Jordan Davis','Waiting for User','Sep 24, 2026']] as $ticket)
-                <tr><td><a href="{{ route('staff.ticket-detail') }}">{{ $ticket[0] }}</a></td><td>{{ $ticket[1] }}</td><td>{{ $ticket[2] }}</td><td>{{ $ticket[3] }}</td><td>{{ $ticket[4] }}</td><td>{{ $ticket[5] }}</td><td><span class="badge">{{ $ticket[6] }}</span></td><td>{{ $ticket[7] }}</td></tr>
-            @endforeach
-        </tbody>
-    </table></div>
-</section>
+<div class="dashboard-shell">
+    <section class="stat-grid stat-grid--dashboard">
+        <article class="stat-card stat-card--dashboard">
+            <div class="stat-head"><span>Ongoing Tickets</span><span class="mini-indicator">↗</span></div>
+            <strong>21</strong>
+        </article>
+        <article class="stat-card stat-card--dashboard">
+            <div class="stat-head"><span>Assigned to Me</span><span class="mini-indicator">↗</span></div>
+            <strong>3</strong>
+        </article>
+        <article class="stat-card stat-card--dashboard">
+            <div class="stat-head"><span>Assigned to Others</span><span class="mini-indicator">↗</span></div>
+            <strong>15</strong>
+        </article>
+        <article class="stat-card stat-card--dashboard">
+            <div class="stat-head"><span>Unassigned</span><span class="mini-indicator">↗</span></div>
+            <strong>2</strong>
+        </article>
+        <article class="stat-card stat-card--dashboard">
+            <div class="stat-head"><span>Bookmarks</span><span class="mini-indicator">↗</span></div>
+            <strong>0</strong>
+        </article>
+        <article class="stat-card stat-card--dashboard">
+            <div class="stat-head"><span>Due Soon</span><span class="mini-indicator">◌</span></div>
+            <strong>3</strong>
+        </article>
+    </section>
+
+    <section class="dashboard-columns">
+        <div class="panel panel--wide">
+            <div class="panel-header-row">
+                <h3>Ongoing Tickets</h3>
+                <a href="{{ route('staff.tickets') }}">View All Requests →</a>
+            </div>
+
+            <div class="ticket-list" role="list">
+                @php
+                    $tickets = [
+                        ['Precincie Montero', 'precicje.montero@pcu.edu.ph', 'L1J-URL-9WXT', 'Inaccessible Site', 'Priority', 'Sep 1, 2026'],
+                        ['Bay Genesis Husyo', 'bay.genesis.husyo@pcu.edu.ph', 'A72-OPCM-MIUP', 'Grades Request', 'Concern', 'Sep 1, 2026'],
+                        ['Augustus Marteja', 'augustus.marteja@pcu.edu.ph', 'R10-MCHA-G1PP', 'Card Request', 'Low', 'Sep 1, 2026'],
+                        ['Felix Cardenas', 'felix.cardenas@pcu.edu.ph', 'T87-JCAK-L6PA', 'Broken Payment', 'Priority', 'Sep 1, 2026'],
+                    ];
+                @endphp
+
+                @foreach ($tickets as $ticket)
+                    <div class="ticket-row" role="listitem">
+                        <div class="ticket-person">
+                            <span class="ticket-avatar">{{ strtoupper(substr($ticket[0], 0, 1)) }}</span>
+                            <div>
+                                <strong>{{ $ticket[0] }}</strong>
+                                <small>{{ $ticket[1] }}</small>
+                            </div>
+                        </div>
+                        <div class="ticket-id">{{ $ticket[2] }}</div>
+                        <div class="ticket-subject">{{ $ticket[3] }}</div>
+                        <div class="ticket-tag {{ strtolower($ticket[4]) === 'priority' ? 'tag-priority' : (strtolower($ticket[4]) === 'concern' ? 'tag-concern' : 'tag-low') }}">{{ $ticket[4] }}</div>
+                        <div class="ticket-date">{{ $ticket[5] }}</div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+
+        <aside class="panel panel--side">
+            <div class="panel-header-row">
+                <h3>Report Summary</h3>
+            </div>
+
+            <div class="donut-wrap">
+                <div class="donut-chart">
+                    <div class="donut-inner">87%</div>
+                </div>
+            </div>
+
+            <div class="legend">
+                <div><span class="dot dot-blue"></span> Reserved <strong>86.7%</strong></div>
+                <div><span class="dot dot-red"></span> Unresolved <strong>12.3%</strong></div>
+            </div>
+        </aside>
+    </section>
+
+    <section class="bottom-panels">
+        <div class="panel panel--mock">
+            <div class="panel-header-row">
+                <h3>Show Tickets</h3>
+                <a href="{{ route('staff.tickets') }}">Show Tickets →</a>
+            </div>
+
+            <div class="checkbox-row">
+                <label><input type="checkbox" /> Select All</label>
+                <label><input type="checkbox" /> New</label>
+                <label><input type="checkbox" /> In Progress</label>
+                <label><input type="checkbox" /> Resolved</label>
+                <label><input type="checkbox" /> Waiting Reply</label>
+                <label><input type="checkbox" /> On Hold</label>
+            </div>
+
+            <button class="dark-button" type="button">Show Tickets</button>
+        </div>
+
+        <div class="panel panel--list">
+            <div class="panel-header-row">
+                <h3>Find a Ticket</h3>
+                <a href="{{ route('staff.tickets') }}">View All Requests →</a>
+            </div>
+
+            <div class="ticket-cards">
+                <div class="mini-ticket-row">
+                    <div class="mini-ticket-name">Sarah Martinez</div>
+                    <div class="mini-ticket-email">sarah.martinez@pcu.edu.ph</div>
+                    <div class="mini-ticket-status tag-low">Low</div>
+                    <div class="mini-ticket-date">Sep 1, 2026</div>
+                </div>
+                <div class="mini-ticket-row">
+                    <div class="mini-ticket-name">Roberto Paniban</div>
+                    <div class="mini-ticket-email">roberto.paniban@pcu.edu.ph</div>
+                    <div class="mini-ticket-status tag-priority">Priority</div>
+                    <div class="mini-ticket-date">Sep 1, 2026</div>
+                </div>
+                <div class="mini-ticket-row">
+                    <div class="mini-ticket-name">Johnny Gilbert</div>
+                    <div class="mini-ticket-email">johnny.gilbert@pcu.edu.ph</div>
+                    <div class="mini-ticket-status tag-priority">Priority</div>
+                    <div class="mini-ticket-date">Sep 1, 2026</div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
 @endsection

@@ -1,29 +1,42 @@
 @extends('layouts.public')
-@section('title', 'School IT Help Desk')
+@section('title', 'Help Center')
 @section('content')
-<section class="hero">
-    <div class="container hero-inner">
-        <span class="eyebrow">School IT Help Desk and Ticketing System</span>
-        <h1>How can we help you?</h1>
-        <p class="lead">Submit a school IT or technology concern and track your request through Ticketech.</p>
-        <div class="action-grid">
-            <a class="action-card" href="{{ route('ticket.create') }}">
-                <span class="action-icon">+</span><span><strong>CREATE A TICKET</strong><span>Submit a new support request</span></span>
-            </a>
-            <a class="action-card" href="{{ route('ticket.check') }}">
-                <span class="action-icon">⌕</span><span><strong>CHECK A TICKET</strong><span>Track an existing ticket</span></span>
-            </a>
-        </div>
+<section class="help-scene">
+    <div class="scene-shapes" aria-hidden="true">
+        <span class="shape shape-one"></span>
+        <span class="shape shape-two"></span>
+        <span class="shape shape-three"></span>
+        <span class="shape shape-four"></span>
+        <span class="shape shape-five"></span>
+        <span class="shape shape-six"></span>
     </div>
-</section>
-<section class="section">
-    <div class="container">
-        <div class="section-heading"><div><span class="eyebrow">Support directory</span><h2>Areas We Support</h2><p>Choose the service that best matches your concern.</p></div></div>
-        <div class="support-grid">
-            @foreach ([['R','Registrar / Student Records'],['B','Bluebook / Online Learning Platform'],['P','PRIISM / Student Information Portal'],['N','Network / Internet'],['H','Hardware / Equipment'],['S','Software / Applications'],['+','Other IT Concerns']] as [$icon, $label])
-                <div class="support-item"><span class="action-icon">{{ $icon }}</span><span>{{ $label }}</span></div>
-            @endforeach
+
+    <div class="help-panel">
+        <h2>Need Any Help?</h2>
+
+        <div class="help-grid">
+            <a class="option-card" href="{{ route('ticket.create') }}">
+                <span class="option-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 3.5h9a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2zm2 5h5m-5 4h5m-6 4h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+                <span class="option-copy">
+                    <strong>Submit a Ticket</strong>
+                    <small>Submit a new issue to a department</small>
+                </span>
+            </a>
+
+            <a class="option-card" href="{{ route('ticket.check') }}">
+                <span class="option-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.5h9a2 2 0 0 1 2 2v11.5a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2zm1.5 7h5m-5 4h5M9 3v3m6-3v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+                <span class="option-copy">
+                    <strong>View Your Tickets</strong>
+                    <small>View the tickets you have submitted</small>
+                </span>
+            </a>
         </div>
+
+        <a class="admin-link" href="{{ route('staff.dashboard') }}">Go to Administration Panel</a>
     </div>
 </section>
 @endsection
