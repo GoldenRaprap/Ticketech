@@ -15,57 +15,74 @@
         <h2>Create Ticket</h2>
         <p class="required-note">Required fields are marked with <span>*</span></p>
 
-        <form class="lookup-form ticket-form" action="{{ route('ticket.submitted') }}" method="get">
+        <form class="lookup-form ticket-form" action="{{ route('ticket.store') }}" method="post" enctype="multipart/form-data">
+            @csrf
+            @if ($errors->any())
+                <ul class="form-validation-errors" role="alert">
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
+            @endif
+
             <label class="field-label" for="ticket-name">
                 <span class="field-text">Name:<span class="required-mark">*</span></span>
-                <input id="ticket-name" name="name" type="text" placeholder="">
+                <input id="ticket-name" name="name" type="text" value="{{ old('name') }}" autocomplete="name" required>
             </label>
 
             <label class="field-label" for="ticket-student-id">
                 <span class="field-text">Student ID:<span class="required-mark">*</span></span>
-                <input id="ticket-student-id" name="student_id" type="text" placeholder="">
+                <input id="ticket-student-id" name="student_id" type="text" value="{{ old('student_id') }}" required>
             </label>
 
             <label class="field-label" for="ticket-email">
                 <span class="field-text">Email:<span class="required-mark">*</span></span>
-                <input id="ticket-email" name="email" type="email" placeholder="">
+                <input id="ticket-email" name="email" type="email" value="{{ old('email') }}" autocomplete="email" required>
             </label>
 
             <label class="field-label" for="ticket-phone">
                 <span class="field-text">Phone Number:</span>
-                <input id="ticket-phone" name="phone" type="tel" placeholder="">
+                <input id="ticket-phone" name="phone" type="tel" value="{{ old('phone') }}" autocomplete="tel">
             </label>
 
             <label class="field-label" for="ticket-department">
                 <span class="field-text">Department:<span class="required-mark">*</span></span>
-                <select id="ticket-department" name="department">
-                    <option value="" selected disabled></option>
-                    <option>College of Engineering</option>
-                    <option>College of Education</option>
-                    <option>College of Business</option>
-                    <option>IT Services</option>
-                    <option>Student Affairs</option>
+                <select id="ticket-department" name="department_id" required>
+                    <option value="">Select a department</option>
+                    @foreach ($departments as $department)
+                        <option value="{{ $department->id }}" @selected(old('department_id') == $department->id)>{{ $department->name }}</option>
+                    @endforeach
+                </select>
+            </label>
+
+            <label class="field-label" for="ticket-category">
+                <span class="field-text">Category:</span>
+                <select id="ticket-category" name="category_id">
+                    <option value="">Select a category</option>
+                    @foreach ($categories as $category)
+                        <option value="{{ $category->id }}" @selected(old('category_id') == $category->id)>{{ $category->name }}</option>
+                    @endforeach
                 </select>
             </label>
 
             <label class="field-label" for="ticket-priority">
                 <span class="field-text">Priority:<span class="required-mark">*</span></span>
-                <select id="ticket-priority" name="priority">
-                    <option value="" selected disabled></option>
-                    <option>High</option>
-                    <option>Medium</option>
-                    <option>Low</option>
+                <select id="ticket-priority" name="priority" required>
+                    <option value="">Select a priority</option>
+                    <option value="High" @selected(old('priority') === 'High')>High</option>
+                    <option value="Medium" @selected(old('priority', 'Medium') === 'Medium')>Medium</option>
+                    <option value="Low" @selected(old('priority') === 'Low')>Low</option>
                 </select>
             </label>
 
             <label class="field-label" for="ticket-subject">
                 <span class="field-text">Subject:<span class="required-mark">*</span></span>
-                <input id="ticket-subject" name="subject" type="text" placeholder="">
+                <input id="ticket-subject" name="subject" type="text" value="{{ old('subject') }}" maxlength="150" required>
             </label>
 
             <label class="field-label textarea-label" for="ticket-message">
                 <span class="field-text">Message:<span class="required-mark">*</span></span>
-                <textarea id="ticket-message" name="message" rows="6" maxlength="500"></textarea>
+                <textarea id="ticket-message" name="message" rows="6" maxlength="500" required>{{ old('message') }}</textarea>
             </label>
 
             <div class="field-label attachment-label">

@@ -15,32 +15,40 @@
         <h2 id="register-heading">Create an account</h2>
         <p class="register-intro">Enter your details to request a PCU Help Center account.</p>
 
-        <div class="register-form" role="group" aria-labelledby="register-heading">
+        <form class="register-form" action="{{ route('register.store') }}" method="post" aria-labelledby="register-heading">
+            @csrf
+            @if ($errors->any())
+                <ul class="form-validation-errors" role="alert">
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
+            @endif
+
             <div class="register-field">
                 <label for="reg-name">Full name <span aria-hidden="true">*</span></label>
-                <input id="reg-name" type="text" autocomplete="name" required>
+                <input id="reg-name" name="name" type="text" value="{{ old('name') }}" autocomplete="name" required>
             </div>
 
             <div class="register-field">
                 <label for="reg-email">Email address <span aria-hidden="true">*</span></label>
-                <input id="reg-email" type="email" autocomplete="email" required>
+                <input id="reg-email" name="email" type="email" value="{{ old('email') }}" autocomplete="email" required>
             </div>
 
             <div class="register-field">
                 <label for="reg-password">Password <span aria-hidden="true">*</span></label>
-                <input id="reg-password" type="password" autocomplete="new-password" aria-describedby="register-password-hint" required>
+                <input id="reg-password" name="password" type="password" autocomplete="new-password" aria-describedby="register-password-hint" required>
                 <p id="register-password-hint" class="register-field-hint">Use at least 8 characters.</p>
             </div>
 
             <div class="register-field">
                 <label for="reg-confirm">Confirm password <span aria-hidden="true">*</span></label>
-                <input id="reg-confirm" type="password" autocomplete="new-password" required>
+                <input id="reg-confirm" name="password_confirmation" type="password" autocomplete="new-password" required>
             </div>
 
-            <button type="button" class="register-submit" disabled>Create account</button>
-            <p class="register-status" role="status">Account registration is not available yet.</p>
+            <button type="submit" class="register-submit">Create account</button>
             <p class="register-login">Already have an account? <a href="{{ route('login') }}">Log in</a></p>
-        </div>
+        </form>
     </div>
 </section>
 @endsection

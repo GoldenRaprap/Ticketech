@@ -14,18 +14,27 @@
     <div class="lookup-panel">
         <h2>View Existing Tickets</h2>
 
-        <form class="lookup-form" action="{{ route('ticket.check') }}" method="get">
+        <form class="lookup-form" action="{{ route('ticket.lookup') }}" method="post">
+            @csrf
+            @if ($errors->any())
+                <ul class="form-validation-errors" role="alert">
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
+            @endif
+
             <label class="field-label" for="ticket-number">
                 <span>Ticket ID:<b>*</b></span>
-                <input id="ticket-number" name="ticket" type="text">
+                <input id="ticket-number" name="ticket" type="text" value="{{ old('ticket', $lookupTicketNumber) }}" required>
             </label>
             <label class="field-label" for="lookup-email">
                 <span>Email:<b>*</b></span>
-                <input id="lookup-email" type="email" name="email">
+                <input id="lookup-email" type="email" name="email" value="{{ old('email', $lookupEmail ?: $rememberedEmail) }}" autocomplete="email" required>
             </label>
 
             <label class="remember-box" for="remember-email">
-                <input id="remember-email" type="checkbox" />
+                <input id="remember-email" name="remember_email" value="1" type="checkbox" @checked(old('remember_email', $rememberedEmail !== ''))>
                 <span>Remember my e-mail address</span>
             </label>
 
@@ -33,6 +42,46 @@
         </form>
 
         <p class="lookup-help">Forgot your Ticket ID? Check your past e-mails with our domain name.</p>
+
+        @if ($lookupAttempted && ! $ticket)
+            <p class="ticket-lookup-message" role="status">No ticket matched those details. Check the ticket ID and email, then try again.</p>
+        @elseif ($ticket)
+            <section class="ticket-lookup-result" aria-label="Ticket details">
+                <h3>{{ $ticket->ticket_number }}</h3>
+                <dl>
+                    <div><dt>Subject</dt><dd>{{ $ticket->subject }}</dd></div>
+                    <div><dt>Status</dt><dd>{{ $ticket->status }}</dd></div>
+                    <div><dt>Priority</dt><dd>{{ $ticket->priority }}</dd></div>
+                    <div><dt>Department</dt><dd>{{ $ticket->department->name }}</dd></div>
+                    <div><dt>Category</dt><dd>{{ $ticket->category?->name ?? 'Other' }}</dd></div>
+                    <div><dt>Submitted</dt><dd>{{ $ticket->created_at->format('F j, Y g:i A') }}</dd></div>
+                </dl>
+                <div class="ticket-lookup-description">{{ $ticket->description }}</div>
+
+                @if ($ticket->attachments->isNotEmpty())
+                    <h4>Attachments</h4>
+                    @foreach ($ticket->attachments as $attachment)
+                        <form class="ticket-attachment-download" action="{{ route('ticket.attachments.download', $attachment) }}" method="post">
+                            @csrf
+                            <input type="hidden" name="ticket" value="{{ $lookupTicketNumber }}">
+                            <input type="hidden" name="email" value="{{ $lookupEmail }}">
+                            <button type="submit">Download {{ $attachment->original_name }}</button>
+                        </form>
+                    @endforeach
+                @endif
+
+                @if ($ticket->comments->isNotEmpty())
+                    <h4>Updates</h4>
+                    @foreach ($ticket->comments as $comment)
+                        <article class="ticket-public-comment">
+                            <strong>{{ $comment->author_name }}</strong>
+                            <p>{{ $comment->body }}</p>
+                            <small>{{ $comment->created_at->format('F j, Y g:i A') }}</small>
+                        </article>
+                    @endforeach
+                @endif
+            </section>
+        @endif
     </div>
 </section>
 @endsection

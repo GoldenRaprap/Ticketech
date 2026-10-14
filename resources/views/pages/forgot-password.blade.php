@@ -31,20 +31,24 @@
             <div class="password-form-panel">
                 <div class="password-form-inner">
                     <h1>Forgot your password?</h1>
-                    <p>Enter your e-mail address below. So we can send you an inbox in your e-mail where you can go to reset your password.</p>
+                    <p>Enter the email address associated with your account. If it exists, we’ll send a password reset link.</p>
 
-                    <form class="password-form" action="#" method="get">
+                    @if (session('status'))
+                        <p class="password-form-status" role="status">{{ session('status') }}</p>
+                    @endif
+
+                    <form class="password-form" action="{{ route('password.email') }}" method="post">
+                        @csrf
+                        @if ($errors->any())
+                            <ul class="form-validation-errors" role="alert">
+                                @foreach ($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                        @endif
+
                         <label for="reset-email">E-mail</label>
-                        <input id="reset-email" name="email" type="email">
-
-                        <label for="captcha-input">Captcha</label>
-                        <div class="password-captcha" aria-label="Captcha verification">
-                            <span>WB3CX</span>
-                            <strong aria-hidden="true">⟳</strong>
-                        </div>
-
-                        <input id="captcha-input" name="captcha" type="text" aria-label="Enter the characters you see above">
-                        <p class="password-captcha-help">Enter the characters you see above.</p>
+                        <input id="reset-email" name="email" type="email" value="{{ old('email') }}" autocomplete="email" required>
 
                         <button type="submit">Send Request</button>
                     </form>

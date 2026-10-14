@@ -13,6 +13,9 @@
 
     <div class="help-panel">
         <h2>Need Any Help?</h2>
+        @auth
+            <p class="home-welcome">Welcome back, {{ auth()->user()->name }}.</p>
+        @endauth
 
         <div class="help-grid">
             <a class="option-card" href="{{ route('ticket.create') }}">
@@ -37,6 +40,19 @@
         </div>
 
         <a class="admin-link" href="{{ route('staff.dashboard') }}">Go to Administration Panel</a>
+
+        @if ($recentTickets->isNotEmpty())
+            <section class="home-recent-tickets" aria-label="Recent requests">
+                <h3>Recent requests</h3>
+                @foreach ($recentTickets as $ticket)
+                    <div class="home-recent-ticket">
+                        <strong>{{ $ticket->ticket_number }}</strong>
+                        <span>{{ $ticket->subject }}</span>
+                        <span>{{ $ticket->status }}</span>
+                    </div>
+                @endforeach
+            </section>
+        @endif
     </div>
 </section>
 @endsection

@@ -33,13 +33,25 @@
                 <div class="password-form-inner login-form-inner">
                     <h1>Welcome!</h1>
                     <p>Please log in.</p>
+                    @if (session('status'))
+                        <p class="password-form-status" role="status">{{ session('status') }}</p>
+                    @endif
 
-                    <form class="password-form" action="{{ route('staff.dashboard') }}" method="get">
+                    <form class="password-form" action="{{ route('login.store') }}" method="post">
+                        @csrf
+                        @if ($errors->any())
+                            <ul class="form-validation-errors" role="alert">
+                                @foreach ($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                        @endif
+
                         <label for="login-email">E-mail</label>
-                        <input id="login-email" name="email" type="email">
+                        <input id="login-email" name="email" type="email" value="{{ old('email') }}" autocomplete="username" required>
 
                         <label for="login-password">Password</label>
-                        <input id="login-password" name="password" type="password">
+                        <input id="login-password" name="password" type="password" autocomplete="current-password" required>
 
                         <a class="login-forgot-link" href="{{ route('password.request') }}">Forgot your password? Click here.</a>
                         <button type="submit">Click to Log-in</button>

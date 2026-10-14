@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'helpdesk_staff' => [
+        'name' => env('HELPDESK_STAFF_NAME', 'PCU Helpdesk Admin'),
+        'email' => env('HELPDESK_STAFF_EMAIL'),
+        'password' => env('HELPDESK_STAFF_PASSWORD'),
+    ],
+
 ];

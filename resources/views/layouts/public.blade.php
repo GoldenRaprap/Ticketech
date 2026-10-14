@@ -11,9 +11,20 @@
         <div class="container public-topbar-inner">
             <div class="public-brand">PCU HELP CENTER</div>
             <nav class="public-nav" aria-label="Main navigation">
-                <a href="{{ route('login') }}">Login</a>
-                <span class="public-divider">|</span>
-                <a href="{{ route('register') }}">Register</a>
+                @auth
+                    <span>{{ auth()->user()->name }}</span>
+                    @if (auth()->user()->isStaff())
+                        <a href="{{ route('staff.dashboard') }}">Staff portal</a>
+                    @endif
+                    <form class="public-logout" action="{{ route('logout') }}" method="post">
+                        @csrf
+                        <button type="submit">Log out</button>
+                    </form>
+                @else
+                    <a href="{{ route('login') }}">Login</a>
+                    <span class="public-divider">|</span>
+                    <a href="{{ route('register') }}">Register</a>
+                @endauth
             </nav>
         </div>
     </header>
