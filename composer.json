@@ -1,8 +1,8 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "pcu/ticketech",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "Web-based EdTech helpdesk support and ticketing system for Philippine Christian University.",
     "keywords": ["laravel", "framework"],
     "license": "MIT",
     "require": {
