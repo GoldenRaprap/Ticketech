@@ -1,7 +1,7 @@
 @extends('layouts.public')
 @section('title', 'Register')
 @section('content')
-<section class="help-scene help-scene--compact">
+<section class="help-scene help-scene--register">
     <div class="scene-shapes" aria-hidden="true">
         <span class="shape shape-one"></span>
         <span class="shape shape-two"></span>
@@ -11,49 +11,36 @@
         <span class="shape shape-six"></span>
     </div>
 
-    <div class="lookup-panel register-panel">
-        <h2>Create an Account</h2>
-        <p class="required-note">Required fields are marked with <span>*</span></p>
+    <div class="register-panel">
+        <h2 id="register-heading">Create an account</h2>
+        <p class="register-intro">Enter your details to request a PCU Help Center account.</p>
 
-        <form class="lookup-form ticket-form" action="{{ route('login') }}" method="get">
-            <label class="field-label" for="reg-name">
-                <span class="field-text">Name:<span class="required-mark">*</span></span>
-                <input id="reg-name" name="name" type="text">
-            </label>
-
-            <label class="field-label" for="reg-email">
-                <span class="field-text">Email:<span class="required-mark">*</span></span>
-                <input id="reg-email" name="email" type="email">
-            </label>
-
-            <label class="field-label" for="reg-password">
-                <span class="field-text">Password:<span class="required-mark">*</span></span>
-                <input id="reg-password" name="password" type="password">
-            </label>
-
-            <label class="field-label" for="reg-password-strength">
-                <span class="field-text">Password Strength: <span class="muted-text">???</span></span>
-                <input id="reg-password-strength" type="text" value="" aria-label="Password strength">
-            </label>
-
-            <label class="field-label" for="reg-confirm">
-                <span class="field-text">Confirm Password:<span class="required-mark">*</span></span>
-                <input id="reg-confirm" name="confirm_password" type="password">
-            </label>
-
-            <div class="captcha-box captcha-box--register" aria-label="Captcha verification">
-                <div class="captcha-check">
-                    <span class="captcha-toggle"></span>
-                    <span>I'm not a robot</span>
-                </div>
-                <div class="captcha-brand">
-                    <span class="captcha-logo">reCAPTCHA</span>
-                    <small>Privacy - Terms</small>
-                </div>
+        <div class="register-form" role="group" aria-labelledby="register-heading">
+            <div class="register-field">
+                <label for="reg-name">Full name <span aria-hidden="true">*</span></label>
+                <input id="reg-name" type="text" autocomplete="name" required>
             </div>
 
-            <button type="submit" class="submit-ticket-button register-button">Create Account</button>
-        </form>
+            <div class="register-field">
+                <label for="reg-email">Email address <span aria-hidden="true">*</span></label>
+                <input id="reg-email" type="email" autocomplete="email" required>
+            </div>
+
+            <div class="register-field">
+                <label for="reg-password">Password <span aria-hidden="true">*</span></label>
+                <input id="reg-password" type="password" autocomplete="new-password" aria-describedby="register-password-hint" required>
+                <p id="register-password-hint" class="register-field-hint">Use at least 8 characters.</p>
+            </div>
+
+            <div class="register-field">
+                <label for="reg-confirm">Confirm password <span aria-hidden="true">*</span></label>
+                <input id="reg-confirm" type="password" autocomplete="new-password" required>
+            </div>
+
+            <button type="button" class="register-submit" disabled>Create account</button>
+            <p class="register-status" role="status">Account registration is not available yet.</p>
+            <p class="register-login">Already have an account? <a href="{{ route('login') }}">Log in</a></p>
+        </div>
     </div>
 </section>
 @endsection
