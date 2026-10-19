@@ -14,6 +14,19 @@ class TicketWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_guests_can_open_ticket_submission_and_lookup_without_signing_in(): void
+    {
+        $this->get(route('ticket.create'))
+            ->assertOk()
+            ->assertSee('No account is needed.');
+
+        $this->get(route('ticket.check'))
+            ->assertOk()
+            ->assertSee('No account is needed.');
+
+        $this->assertGuest();
+    }
+
     public function test_guest_submission_creates_a_ticket_and_private_attachment(): void
     {
         Storage::fake('private');

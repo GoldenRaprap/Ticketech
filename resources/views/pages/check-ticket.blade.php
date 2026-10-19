@@ -12,7 +12,8 @@
     </div>
 
     <div class="lookup-panel">
-        <h2>View Existing Tickets</h2>
+        <h2>Check your request</h2>
+        <p class="form-intro">Enter the ticket number from your confirmation email and the email address used to submit it. No account is needed.</p>
 
         <form class="lookup-form" action="{{ route('ticket.lookup') }}" method="post">
             @csrf
@@ -25,8 +26,8 @@
             @endif
 
             <label class="field-label" for="ticket-number">
-                <span>Ticket ID:<b>*</b></span>
-                <input id="ticket-number" name="ticket" type="text" value="{{ old('ticket', $lookupTicketNumber) }}" required>
+                <span>Ticket number:<b>*</b></span>
+                <input id="ticket-number" name="ticket" type="text" value="{{ old('ticket', $lookupTicketNumber) }}" placeholder="e.g. ED-2026-000123" autocapitalize="characters" autocomplete="off" required>
             </label>
             <label class="field-label" for="lookup-email">
                 <span>Email:<b>*</b></span>
@@ -41,7 +42,7 @@
             <button type="submit" class="view-ticket-button">View Ticket</button>
         </form>
 
-        <p class="lookup-help">Forgot your Ticket ID? Check your past e-mails with our domain name.</p>
+        <p class="lookup-help">Your ticket number is included in the confirmation email sent after submission.</p>
 
         @if ($lookupAttempted && ! $ticket)
             <p class="ticket-lookup-message" role="status">No ticket matched those details. Check the ticket ID and email, then try again.</p>

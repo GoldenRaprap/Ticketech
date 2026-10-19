@@ -24,7 +24,13 @@ class PasswordResetController extends Controller
             'email' => ['required', 'email', 'max:255'],
         ]);
 
-        Password::sendResetLink($validated);
+        $user = User::query()
+            ->whereRaw('LOWER(email) = ?', [Str::lower($validated['email'])])
+            ->first();
+
+        if ($user?->isStaff()) {
+            Password::sendResetLink(['email' => $user->email]);
+        }
 
         return back()->with('status', 'If an account exists for that email, a reset link has been sent.');
     }
@@ -39,14 +45,24 @@ class PasswordResetController extends Controller
 
     public function update(Request $request): RedirectResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'token' => ['required', 'string'],
             'email' => ['required', 'email', 'max:255'],
             'password' => ['required', 'confirmed', PasswordRule::min(8)],
         ]);
 
+        $user = User::query()
+            ->whereRaw('LOWER(email) = ?', [Str::lower($validated['email'])])
+            ->first();
+
+        if (! $user?->isStaff()) {
+            return back()->withErrors([
+                'email' => 'This password reset link is invalid or has expired.',
+            ])->onlyInput('email');
+        }
+
         $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
+            [...$validated, 'email' => $user->email],
             function (User $user, string $password): void {
                 $user->forceFill([
                     'password' => $password,

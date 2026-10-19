@@ -34,7 +34,7 @@ class StaffDashboardTest extends TestCase
 
     public function test_guest_is_redirected_away_from_staff_dashboard(): void
     {
-        $this->get(route('staff.dashboard'))->assertRedirect(route('staff.login'));
+        $this->get(route('staff.dashboard'))->assertRedirect(route('login'));
     }
 
     private function createTicket(Department $department, string $ticketNumber, string $status, ?int $assignedToUserId): Ticket

@@ -1,5 +1,6 @@
 @extends('layouts.staff')
 @section('title', 'Dashboard')
+@section('heading', 'Staff Workspace')
 @section('content')
 <div class="dashboard-shell">
     <section class="stat-grid stat-grid--dashboard">

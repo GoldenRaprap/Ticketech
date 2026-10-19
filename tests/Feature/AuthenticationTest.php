@@ -10,7 +10,7 @@ class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_requester_can_log_in_and_log_out(): void
+    public function test_requester_cannot_sign_in_to_staff_admin_portal(): void
     {
         $user = User::factory()->create([
             'email' => 'jamie@example.edu',
@@ -18,13 +18,11 @@ class AuthenticationTest extends TestCase
             'role' => 'requester',
         ]);
 
-        $this->post(route('login.store'), [
+        $this->from(route('login'))->post(route('login.store'), [
             'email' => 'jamie@example.edu',
             'password' => 'correct-password',
-        ])->assertRedirect(route('home'));
-        $this->assertAuthenticatedAs($user);
-
-        $this->post(route('logout'))->assertRedirect(route('home'));
+        ])->assertRedirect(route('login'))
+            ->assertSessionHasErrors(['email']);
         $this->assertGuest();
     }
 
@@ -43,10 +41,28 @@ class AuthenticationTest extends TestCase
 
     public function test_staff_routes_reject_guests_and_requesters(): void
     {
-        $this->get(route('staff.dashboard'))->assertRedirect(route('staff.login'));
+        $this->get(route('staff.dashboard'))->assertRedirect(route('login'));
 
         $requester = User::factory()->create(['role' => 'requester']);
         $this->actingAs($requester)->get(route('staff.dashboard'))->assertForbidden();
+    }
+
+    public function test_staff_cannot_access_admin_controls(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+
+        $this->actingAs($staff)->get(route('staff.dashboard'))->assertOk();
+        $this->actingAs($staff)->get(route('admin.dashboard'))->assertForbidden();
+        $this->actingAs($staff)->get(route('admin.users'))->assertForbidden();
+    }
+
+    public function test_admin_can_access_admin_controls(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->get(route('admin.dashboard'))->assertOk();
+        $this->actingAs($admin)->get(route('admin.users'))->assertOk();
+        $this->actingAs($admin)->get(route('staff.dashboard'))->assertOk();
     }
 
     public function test_staff_can_sign_in_to_staff_portal(): void
@@ -54,14 +70,78 @@ class AuthenticationTest extends TestCase
         $staff = User::factory()->create([
             'email' => 'staff@example.edu',
             'password' => 'correct-password',
-            'role' => 'admin',
+            'role' => 'staff',
         ]);
 
-        $this->post(route('staff.login.store'), [
+        $this->post(route('login.store'), [
             'email' => 'staff@example.edu',
             'password' => 'correct-password',
         ])->assertRedirect(route('staff.dashboard'));
 
         $this->assertAuthenticatedAs($staff);
+    }
+
+    public function test_local_preview_sign_in_opens_the_staff_workspace(): void
+    {
+        config()->set('app.env', 'local');
+
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertSee('name="email"', false)
+            ->assertSee('name="password"', false)
+            ->assertSee('Staff (temporary)')
+            ->assertSee('Admin (temporary)');
+
+        $this->post(route('login.preview', ['role' => 'staff']))
+            ->assertRedirect(route('staff.dashboard'));
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'local-preview-staff@pcu.test',
+            'role' => 'staff',
+        ]);
+        $this->assertAuthenticated();
+        $this->get(route('staff.dashboard'))->assertOk();
+    }
+
+    public function test_local_preview_sign_in_is_unavailable_outside_local_environment(): void
+    {
+        $this->post(route('login.preview', ['role' => 'staff']))->assertNotFound();
+        $this->assertGuest();
+    }
+
+    public function test_local_admin_preview_opens_the_admin_dashboard(): void
+    {
+        config()->set('app.env', 'local');
+
+        $this->post(route('login.preview', ['role' => 'admin']))
+            ->assertRedirect(route('admin.dashboard'));
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'local-preview-admin@pcu.test',
+            'role' => 'admin',
+        ]);
+        $this->assertAuthenticated();
+        $this->get(route('admin.dashboard'))->assertOk();
+    }
+
+    public function test_admin_sign_in_opens_admin_console(): void
+    {
+        $admin = User::factory()->create([
+            'email' => 'admin@example.edu',
+            'password' => 'correct-password',
+            'role' => 'admin',
+        ]);
+
+        $this->post(route('login.store'), [
+            'email' => 'admin@example.edu',
+            'password' => 'correct-password',
+        ])->assertRedirect(route('admin.dashboard'));
+
+        $this->assertAuthenticatedAs($admin);
+    }
+
+    public function test_duplicate_staff_login_route_is_removed(): void
+    {
+        $this->get('/staff/login')->assertNotFound();
     }
 }

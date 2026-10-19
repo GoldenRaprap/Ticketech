@@ -6,7 +6,7 @@
         <span class="success-mark" aria-hidden="true">✓</span>
         <span class="eyebrow">Request received</span>
         <h1>Ticket Submitted Successfully</h1>
-        <p>Your concern has been submitted to the Ticketech Help Desk.</p>
+        <p>Your request is in the PCU support queue. Keep this ticket number to check its status later.</p>
         <div class="detail-strip">
             <div><small>Ticket Number</small><strong>{{ $submittedTicket['ticket_number'] }}</strong></div>
             <div><small>Date Submitted</small><strong>{{ $submittedTicket['submitted_at'] }}</strong></div>

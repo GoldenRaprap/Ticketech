@@ -12,7 +12,8 @@
     </div>
 
     <div class="lookup-panel ticket-panel">
-        <h2>Create Ticket</h2>
+        <h2>Submit a support request</h2>
+        <p class="form-intro">No account is needed. Share a few details and the right PCU support team will follow up by email.</p>
         <p class="required-note">Required fields are marked with <span>*</span></p>
 
         <form class="lookup-form ticket-form" action="{{ route('ticket.store') }}" method="post" enctype="multipart/form-data">
@@ -31,7 +32,7 @@
             </label>
 
             <label class="field-label" for="ticket-student-id">
-                <span class="field-text">Student ID:<span class="required-mark">*</span></span>
+                <span class="field-text">Student or employee ID:<span class="required-mark">*</span></span>
                 <input id="ticket-student-id" name="student_id" type="text" value="{{ old('student_id') }}" required>
             </label>
 
@@ -82,7 +83,7 @@
 
             <label class="field-label textarea-label" for="ticket-message">
                 <span class="field-text">Message:<span class="required-mark">*</span></span>
-                <textarea id="ticket-message" name="message" rows="6" maxlength="500" required>{{ old('message') }}</textarea>
+                <textarea id="ticket-message" name="message" rows="6" maxlength="500" data-message-counter required>{{ old('message') }}</textarea>
             </label>
 
             <div class="field-label attachment-label">
@@ -91,12 +92,13 @@
                     <input id="ticket-attachment" name="attachment" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
                     <span class="attachment-inner">
                         <span class="attachment-icon">+</span>
-                        <span>Drop an attachment</span>
+                        <span>Choose a file or drop it here</span>
                     </span>
                 </label>
+                <small class="attachment-help">PDF, JPG, PNG, DOC, or DOCX. Maximum file size: 5 MB.</small>
             </div>
 
-            <div class="message-counter">Note: Maximum 500 characters</div>
+            <div class="message-counter" aria-live="polite"><span data-message-count>0</span> / 500 characters</div>
 
             <button type="submit" class="submit-ticket-button">Submit Ticket</button>
         </form>

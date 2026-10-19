@@ -12,11 +12,15 @@
         <header class="staff-header">
             <div class="staff-header-left">
                 <button class="menu-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false" data-menu-toggle>☰</button>
-                <div class="staff-header-title">Administrator Dashboard</div>
+                <div class="staff-header-title">@yield('heading', auth()->user()->isAdmin() ? 'Admin Console' : 'Staff Workspace')</div>
             </div>
             <div class="staff-badge-row">
-                <button class="chip-button" type="button">Archived in 30 Days</button>
-                <button class="primary-button" type="button">+ Create a Ticket</button>
+                <span class="workspace-role">{{ auth()->user()->isAdmin() ? 'Administrator' : 'Helpdesk Staff' }}</span>
+                <a class="primary-button" href="{{ route('staff.tickets') }}">View Tickets</a>
+                <form class="header-logout" action="{{ route('logout') }}" method="post">
+                    @csrf
+                    <button type="submit">Sign Out</button>
+                </form>
             </div>
         </header>
         <main class="staff-content">@yield('content')</main>

@@ -3,21 +3,19 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Login | Ticketech</title>
+    <title>Staff Sign In | PCU Help Center</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="password-page-body">
     <header class="password-header">
-        <div class="password-header-brand">PCU HELP CENTER</div>
+        <a class="password-header-brand" href="{{ route('home') }}">PCU Help Center</a>
         <nav aria-label="Main navigation">
-            <a href="{{ route('login') }}">Login</a>
-            <span>|</span>
-            <a href="{{ route('register') }}">Register</a>
+            <a href="{{ route('home') }}">Help Center</a>
         </nav>
     </header>
 
     <main class="password-page">
-        <section class="password-main" aria-label="Login">
+        <section class="password-main" aria-label="Staff and administrator sign in">
             <div class="password-art-panel">
                 <div class="password-art-shape password-art-shape--one"></div>
                 <div class="password-art-shape password-art-shape--two"></div>
@@ -31,8 +29,9 @@
 
             <div class="password-form-panel">
                 <div class="password-form-inner login-form-inner">
-                    <h1>Welcome!</h1>
-                    <p>Please log in.</p>
+                    <p class="password-eyebrow">PCU STAFF PORTAL</p>
+                    <h1>Staff sign in</h1>
+                    <p>Use your assigned university account to access the staff or administrator workspace.</p>
                     @if (session('status'))
                         <p class="password-form-status" role="status">{{ session('status') }}</p>
                     @endif
@@ -47,24 +46,45 @@
                             </ul>
                         @endif
 
-                        <label for="login-email">E-mail</label>
-                        <input id="login-email" name="email" type="email" value="{{ old('email') }}" autocomplete="username" required>
+                        <label for="login-email">University email</label>
+                        <input id="login-email" name="email" type="email" value="{{ old('email') }}" autocomplete="username" @if ($errors->has('email')) aria-invalid="true" @endif required>
 
                         <label for="login-password">Password</label>
-                        <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+                        <div class="password-input-row">
+                            <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+                            <button class="password-input-toggle" type="button" data-password-toggle aria-controls="login-password" aria-label="Show password" aria-pressed="false">Show</button>
+                        </div>
 
-                        <a class="login-forgot-link" href="{{ route('password.request') }}">Forgot your password? Click here.</a>
-                        <button type="submit">Click to Log-in</button>
+                        <div class="login-form-options">
+                            <label class="login-remember" for="remember-login">
+                                <input id="remember-login" name="remember" type="checkbox" value="1" @checked(old('remember'))>
+                                <span>Remember me</span>
+                            </label>
+                            <a class="login-forgot-link" href="{{ route('password.request') }}">Forgot password?</a>
+                        </div>
+                        <button type="submit">Sign in</button>
                     </form>
+
+                    @if (config('app.env') === 'local')
+                        <div class="login-preview-actions">
+                            <form action="{{ route('login.preview', ['role' => 'staff']) }}" method="post">
+                                @csrf
+                                <button type="submit">Staff (temporary)</button>
+                            </form>
+                            <form action="{{ route('login.preview', ['role' => 'admin']) }}" method="post">
+                                @csrf
+                                <button type="submit">Admin (temporary)</button>
+                            </form>
+                        </div>
+                    @endif
                 </div>
             </div>
         </section>
 
         <footer class="password-footer">
-            <div class="password-footer-brand">PCU Internal Help Desk</div>
-            <div>Powered by Help Desk Software <span>HESK</span></div>
-            <div>More IT firepower? Try <span>SysAid</span></div>
-            <div class="password-copyright-bar">© Philippine Christian University 2026</div>
+            <div class="password-footer-brand">PCU Student &amp; Faculty Support</div>
+            <div>Technology help for the Philippine Christian University community</div>
+            <div class="password-copyright-bar">© Philippine Christian University {{ now()->year }}</div>
         </footer>
     </main>
 </body>

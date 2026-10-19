@@ -17,7 +17,7 @@ class PasswordResetTest extends TestCase
     public function test_reset_link_response_does_not_reveal_if_email_exists(): void
     {
         Notification::fake();
-        $user = User::factory()->create(['email' => 'jamie@example.edu']);
+        $user = User::factory()->create(['email' => 'jamie@example.edu', 'role' => 'staff']);
 
         $this->from(route('password.request'))
             ->post(route('password.email'), ['email' => $user->email])
@@ -39,9 +39,22 @@ class PasswordResetTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_requester_cannot_receive_a_staff_password_reset_link(): void
+    {
+        Notification::fake();
+        $requester = User::factory()->create(['email' => 'jamie@example.edu', 'role' => 'requester']);
+
+        $this->from(route('password.request'))
+            ->post(route('password.email'), ['email' => $requester->email])
+            ->assertRedirect(route('password.request'))
+            ->assertSessionHas('status', 'If an account exists for that email, a reset link has been sent.');
+
+        Notification::assertNothingSent();
+    }
+
     public function test_valid_reset_token_updates_password_and_cannot_be_reused(): void
     {
-        $user = User::factory()->create(['password' => 'old-password-123']);
+        $user = User::factory()->create(['password' => 'old-password-123', 'role' => 'staff']);
         $token = Password::createToken($user);
 
         $this->get(route('password.reset', ['token' => $token, 'email' => $user->email]))

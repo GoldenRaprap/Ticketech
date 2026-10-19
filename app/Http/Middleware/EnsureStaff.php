@@ -16,7 +16,7 @@ class EnsureStaff
     public function handle(Request $request, Closure $next): Response
     {
         if (! $request->user()) {
-            return redirect()->guest(route('staff.login'));
+            return redirect()->guest(route('login'));
         }
 
         abort_unless($request->user()->isStaff(), Response::HTTP_FORBIDDEN);

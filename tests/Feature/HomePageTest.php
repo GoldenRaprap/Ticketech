@@ -15,8 +15,15 @@ class HomePageTest extends TestCase
     {
         $this->get(route('home'))
             ->assertOk()
+            ->assertSee('<a class="public-brand" href="'.route('home').'">PCU Help Center</a>', false)
+            ->assertSee('How can we help you today?')
+            ->assertSee('No account needed.')
             ->assertSee('Submit a Ticket')
-            ->assertSee('View Your Tickets');
+            ->assertSee('View Your Tickets')
+            ->assertSee('<span class="public-divider" aria-hidden="true">|</span>', false)
+            ->assertSee('Staff sign in')
+            ->assertDontSee('Register')
+            ->assertDontSee('Login');
     }
 
     public function test_requester_only_sees_their_own_recent_tickets(): void

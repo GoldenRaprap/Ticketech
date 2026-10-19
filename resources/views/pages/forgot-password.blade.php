@@ -3,16 +3,15 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Forgot Password | Ticketech</title>
+    <title>Staff Password Help | PCU Help Center</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="password-page-body">
     <header class="password-header">
-        <div class="password-header-brand">PCU HELP CENTER</div>
+        <a class="password-header-brand" href="{{ route('home') }}">PCU Help Center</a>
         <nav aria-label="Main navigation">
-            <a href="{{ route('login') }}">Login</a>
-            <span>|</span>
-            <a href="{{ route('register') }}">Register</a>
+            <a href="{{ route('login') }}">Staff sign in</a>
+            <a href="{{ route('home') }}">Help Center</a>
         </nav>
     </header>
     <main class="password-page">
@@ -30,8 +29,9 @@
 
             <div class="password-form-panel">
                 <div class="password-form-inner">
-                    <h1>Forgot your password?</h1>
-                    <p>Enter the email address associated with your account. If it exists, we’ll send a password reset link.</p>
+                    <p class="password-eyebrow">PCU STAFF PORTAL</p>
+                    <h1>Reset your password</h1>
+                    <p>Enter your university staff email. If the account is eligible, we’ll send a secure reset link.</p>
 
                     @if (session('status'))
                         <p class="password-form-status" role="status">{{ session('status') }}</p>
@@ -47,20 +47,20 @@
                             </ul>
                         @endif
 
-                        <label for="reset-email">E-mail</label>
-                        <input id="reset-email" name="email" type="email" value="{{ old('email') }}" autocomplete="email" required>
+                        <label for="reset-email">University email</label>
+                        <input id="reset-email" name="email" type="email" value="{{ old('email') }}" autocomplete="email" @if ($errors->has('email')) aria-invalid="true" @endif required>
 
-                        <button type="submit">Send Request</button>
+                        <button type="submit">Send reset link</button>
+                        <a class="auth-back-link" href="{{ route('login') }}">Back to staff sign in</a>
                     </form>
                 </div>
             </div>
         </section>
 
         <footer class="password-footer">
-            <div class="password-footer-brand">PCU Internal Help Desk</div>
-            <div>Powered by Help Desk Software <span>HESK</span></div>
-            <div>More IT firepower? Try <span>SysAid</span></div>
-            <div class="password-copyright-bar">© Philippine Christian University 2026</div>
+            <div class="password-footer-brand">PCU Student &amp; Faculty Support</div>
+            <div>Technology help for the Philippine Christian University community</div>
+            <div class="password-copyright-bar">© Philippine Christian University {{ now()->year }}</div>
         </footer>
     </main>
 </body>

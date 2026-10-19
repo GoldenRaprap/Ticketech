@@ -1,5 +1,5 @@
 @extends('layouts.public')
-@section('title', 'Help Center')
+@section('title', 'Home')
 @section('content')
 <section class="help-scene">
     <div class="scene-shapes" aria-hidden="true">
@@ -12,7 +12,9 @@
     </div>
 
     <div class="help-panel">
-        <h2>Need Any Help?</h2>
+        <p class="home-eyebrow">PHILIPPINE CHRISTIAN UNIVERSITY</p>
+        <h1>How can we help you today?</h1>
+        <p class="home-intro">Get support for your classes, campus services, and university technology.</p>
         @auth
             <p class="home-welcome">Welcome back, {{ auth()->user()->name }}.</p>
         @endauth
@@ -24,7 +26,7 @@
                 </span>
                 <span class="option-copy">
                     <strong>Submit a Ticket</strong>
-                    <small>Submit a new issue to a department</small>
+                    <small>Tell us what you need and we’ll route it to the right team.</small>
                 </span>
             </a>
 
@@ -34,12 +36,22 @@
                 </span>
                 <span class="option-copy">
                     <strong>View Your Tickets</strong>
-                    <small>View the tickets you have submitted</small>
+                    <small>Check request status and read the latest support updates.</small>
                 </span>
             </a>
         </div>
 
-        <a class="admin-link" href="{{ route('staff.dashboard') }}">Go to Administration Panel</a>
+        <p class="home-note">No account needed. Submit a request or check its status using your ticket number and email.</p>
+
+        @guest
+            <a class="admin-link" href="{{ route('login') }}">Staff and administrator sign in</a>
+        @else
+            @if (auth()->user()->isAdmin())
+                <a class="admin-link" href="{{ route('admin.dashboard') }}">Open Admin Console</a>
+            @elseif (auth()->user()->isStaff())
+                <a class="admin-link" href="{{ route('staff.dashboard') }}">Open Staff Workspace</a>
+            @endif
+        @endguest
 
         @if ($recentTickets->isNotEmpty())
             <section class="home-recent-tickets" aria-label="Recent requests">
