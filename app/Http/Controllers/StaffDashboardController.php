@@ -18,7 +18,6 @@ class StaffDashboardController extends Controller
             ->pluck('total', 'status');
 
         $recentTickets = Ticket::query()
-            ->with(['department:id,name', 'category:id,name'])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->limit(6)

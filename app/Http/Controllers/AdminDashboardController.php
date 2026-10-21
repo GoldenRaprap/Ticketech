@@ -16,7 +16,7 @@ class AdminDashboardController extends Controller
         return view('admin.dashboard', [
             'ticketCount' => Ticket::query()->count(),
             'openTicketCount' => Ticket::query()->whereIn('status', $openStatuses)->count(),
-            'staffCount' => User::query()->where('role', 'staff')->count(),
+            'staffCount' => User::query()->where('role', 'staff')->where('employment_status', 'active')->count(),
             'requesterCount' => User::query()->where('role', 'requester')->count(),
             'activeDepartmentCount' => Department::query()->where('is_active', true)->count(),
         ]);

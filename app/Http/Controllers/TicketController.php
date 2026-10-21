@@ -3,16 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\LookupTicketRequest;
+use App\Http\Requests\StoreRequesterTicketReplyRequest;
 use App\Http\Requests\StoreTicketRequest;
-use App\Models\Category;
-use App\Models\Department;
+use App\Models\ClientModeration;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
+use App\Models\User;
+use App\Models\WorkspaceNotification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -21,10 +24,7 @@ class TicketController extends Controller
 {
     public function create(): View
     {
-        return view('pages.create-ticket', [
-            'departments' => Department::query()->where('is_active', true)->orderBy('name')->get(),
-            'categories' => Category::query()->where('is_active', true)->orderBy('name')->get(),
-        ]);
+        return view('helpdesk.create-ticket');
     }
 
     public function store(StoreTicketRequest $request): RedirectResponse
@@ -32,25 +32,52 @@ class TicketController extends Controller
         $validated = $request->validated();
         $upload = $request->file('attachment');
         $attachmentPath = $upload?->store('ticket-attachments', 'private');
+        $moderation = null;
 
         try {
-            $ticket = DB::transaction(function () use ($request, $validated, $upload, $attachmentPath): Ticket {
+            $ticket = DB::transaction(function () use ($request, $validated, $upload, $attachmentPath, &$moderation): Ticket {
+                $moderation = ClientModeration::query()
+                    ->where('email', Str::lower(trim($validated['email'])))
+                    ->whereNull('cleared_at')
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($moderation?->status === 'blocked') {
+                    throw ValidationException::withMessages([
+                        'email' => 'Ticket submissions from this email address are blocked. Contact PCU Helpdesk administration if you believe this is a mistake.',
+                    ]);
+                }
+
                 $ticket = Ticket::create([
                     'requester_user_id' => $request->user()?->id,
-                    'department_id' => $validated['department_id'],
-                    'category_id' => $validated['category_id'] ?? null,
                     'requester_name' => $validated['name'],
                     'student_id' => $validated['student_id'],
                     'requester_email' => $validated['email'],
                     'requester_phone' => $validated['phone'] ?? null,
                     'subject' => $validated['subject'],
                     'description' => $validated['message'],
-                    'priority' => $validated['priority'],
+                    'priority' => $validated['priority'] ?? 'Low',
                     'status' => 'New',
                 ]);
 
                 $ticket->ticket_number = sprintf('ED-%s-%06d', now()->format('Y'), $ticket->getKey());
                 $ticket->save();
+                $ticket->events()->create([
+                    'actor_id' => $request->user()?->id,
+                    'event' => 'ticket_created',
+                    'description' => 'Ticket submitted by '.$ticket->requester_name.'.',
+                ]);
+
+                User::query()->whereIn('role', ['staff', 'admin'])->where('employment_status', 'active')->get(['id'])->each(
+                    fn (User $user) => WorkspaceNotification::create([
+                        'user_id' => $user->id,
+                        'ticket_id' => $ticket->id,
+                        'actor_id' => $request->user()?->id,
+                        'type' => 'new_ticket',
+                        'title' => 'New support ticket',
+                        'message' => "{$ticket->ticket_number} · {$ticket->subject}",
+                    ]),
+                );
 
                 if ($upload && $attachmentPath) {
                     $ticket->attachments()->create([
@@ -77,6 +104,7 @@ class TicketController extends Controller
             'ticket_number' => $ticket->ticket_number,
             'submitted_at' => $ticket->created_at->format('F j, Y g:i A'),
             'status' => $ticket->status,
+            'moderation_warning' => $moderation?->status === 'warning',
         ]);
 
         return to_route('ticket.submitted');
@@ -90,18 +118,46 @@ class TicketController extends Controller
             return to_route('ticket.create');
         }
 
-        return view('pages.ticket-submitted', ['submittedTicket' => $submittedTicket]);
+        return view('helpdesk.ticket-submitted', ['submittedTicket' => $submittedTicket]);
     }
 
     public function lookup(Request $request): View
     {
-        return view('pages.check-ticket', [
-            'ticket' => null,
-            'lookupAttempted' => false,
+        $lookupContext = $request->session()->get('ticket_lookup_context');
+        $ticket = null;
+
+        if (
+            is_array($lookupContext)
+            && is_string($lookupContext['ticket'] ?? null)
+            && is_string($lookupContext['email'] ?? null)
+        ) {
+            $ticket = $this->findRequesterTicket($lookupContext['ticket'], $lookupContext['email']);
+
+            if (! $ticket) {
+                $request->session()->forget('ticket_lookup_context');
+            }
+        }
+
+        return view('helpdesk.check-ticket', [
+            'ticket' => $ticket,
+            'lookupAttempted' => $request->session()->get('ticket_lookup_failed', false),
             'rememberedEmail' => $request->session()->get('ticket_lookup_email', ''),
-            'lookupTicketNumber' => '',
-            'lookupEmail' => '',
+            'lookupTicketNumber' => $ticket ? $lookupContext['ticket'] : '',
+            'lookupEmail' => $ticket ? $lookupContext['email'] : '',
+            'moderationWarning' => $ticket && $this->hasActiveClientWarning($lookupContext['email']),
         ]);
+    }
+
+    public function closeView(Request $request): RedirectResponse
+    {
+        $request->session()->forget([
+            'ticket_lookup_context',
+            'ticket_lookup_failed',
+            'ticket_reply_status',
+        ]);
+
+        return to_route('ticket.check')
+            ->with('ticket_view_closed', 'Ticket view closed. Your ticket details are hidden from this browser.');
     }
 
     public function show(LookupTicketRequest $request): View
@@ -116,24 +172,103 @@ class TicketController extends Controller
             $request->session()->forget('ticket_lookup_email');
         }
 
-        $ticket = Ticket::query()
-            ->with([
-                'department',
-                'category',
-                'comments' => fn ($query) => $query->where('is_internal', false)->oldest(),
-                'attachments',
-            ])
-            ->where('ticket_number', $validated['ticket'])
-            ->whereRaw('LOWER(requester_email) = ?', [Str::lower($lookupEmail)])
-            ->first();
+        $ticket = $this->findRequesterTicket($validated['ticket'], $lookupEmail);
 
-        return view('pages.check-ticket', [
+        if ($ticket) {
+            $request->session()->put('ticket_lookup_context', [
+                'ticket' => $ticket->ticket_number,
+                'email' => $lookupEmail,
+            ]);
+            $request->session()->forget('ticket_lookup_failed');
+        } else {
+            $request->session()->forget('ticket_lookup_context');
+        }
+
+        return view('helpdesk.check-ticket', [
             'ticket' => $ticket,
             'lookupAttempted' => true,
             'rememberedEmail' => $rememberedEmail,
             'lookupTicketNumber' => $validated['ticket'],
             'lookupEmail' => $lookupEmail,
+            'moderationWarning' => $ticket && $this->hasActiveClientWarning($lookupEmail),
         ]);
+    }
+
+    private function hasActiveClientWarning(string $email): bool
+    {
+        return ClientModeration::query()
+            ->where('email', Str::lower(trim($email)))
+            ->where('status', 'warning')
+            ->whereNull('cleared_at')
+            ->exists();
+    }
+
+    public function reply(StoreRequesterTicketReplyRequest $request): RedirectResponse
+    {
+        $validated = $request->validated();
+        $ticket = $this->findRequesterTicket($validated['ticket'], $validated['email']);
+
+        if (! $ticket) {
+            $request->session()->forget('ticket_lookup_context');
+
+            return to_route('ticket.check')->with('ticket_lookup_failed', true);
+        }
+
+        $ticketWasReopened = DB::transaction(function () use ($ticket, $validated): bool {
+            $previousStatus = $ticket->status;
+            $ticketWasReopened = in_array($previousStatus, ['Resolved', 'Closed'], true);
+
+            if ($ticketWasReopened) {
+                $ticket->status = 'In Progress';
+                $ticket->resolved_at = null;
+                $ticket->last_reopened_at = now();
+                $ticket->save();
+
+                $ticket->events()->create([
+                    'event' => 'status_changed',
+                    'description' => "Ticket reopened after a requester reply ({$previousStatus} → In Progress).",
+                ]);
+            }
+
+            $ticket->comments()->create([
+                'author_name' => $ticket->requester_name,
+                'body' => $validated['body'],
+                'is_internal' => false,
+            ]);
+
+            $ticket->events()->create([
+                'event' => 'requester_reply',
+                'description' => "{$ticket->requester_name} replied to the ticket.",
+            ]);
+
+            $recipients = $ticket->assigned_to_user_id
+                ? User::query()->whereKey($ticket->assigned_to_user_id)->where('employment_status', 'active')
+                : User::query()->whereIn('role', ['staff', 'admin'])->where('employment_status', 'active');
+
+            $recipients->get(['id'])->each(
+                fn (User $user) => WorkspaceNotification::create([
+                    'user_id' => $user->id,
+                    'ticket_id' => $ticket->id,
+                    'type' => 'requester_reply',
+                    'title' => 'New requester reply',
+                    'message' => "{$ticket->ticket_number} · {$ticket->subject}",
+                ]),
+            );
+
+            return $ticketWasReopened;
+        });
+
+        $request->session()->put('ticket_lookup_context', [
+            'ticket' => $ticket->ticket_number,
+            'email' => $validated['email'],
+        ]);
+        $request->session()->forget('ticket_lookup_failed');
+
+        $message = $ticketWasReopened
+            ? 'Your reply has been sent and the ticket has been reopened for staff follow-up.'
+            : 'Your reply has been sent to the helpdesk.';
+
+        return to_route('ticket.check')->with('ticket_reply_status', $message);
     }
 
     public function download(LookupTicketRequest $request, TicketAttachment $attachment): StreamedResponse
@@ -150,5 +285,17 @@ class TicketController extends Controller
         abort_unless($disk->exists($attachment->path), 404);
 
         return $disk->download($attachment->path, $attachment->original_name);
+    }
+
+    private function findRequesterTicket(string $ticketNumber, string $email): ?Ticket
+    {
+        return Ticket::query()
+            ->with([
+                'comments' => fn ($query) => $query->where('is_internal', false)->oldest(),
+                'attachments',
+            ])
+            ->where('ticket_number', $ticketNumber)
+            ->whereRaw('LOWER(requester_email) = ?', [Str::lower($email)])
+            ->first();
     }
 }

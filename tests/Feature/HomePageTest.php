@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Department;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -15,25 +14,24 @@ class HomePageTest extends TestCase
     {
         $this->get(route('home'))
             ->assertOk()
-            ->assertSee('<a class="public-brand" href="'.route('home').'">PCU Help Center</a>', false)
+            ->assertSee('<img src="'.asset('images/Philippine_Christian_University_logo.png').'" alt="Philippine Christian University logo">', false)
+            ->assertSee('<span>PCU Helpdesk</span>', false)
             ->assertSee('How can we help you today?')
             ->assertSee('No account needed.')
             ->assertSee('Submit a Ticket')
             ->assertSee('View Your Tickets')
             ->assertSee('<span class="public-divider" aria-hidden="true">|</span>', false)
-            ->assertSee('Staff sign in')
+            ->assertSee('Staff Sign In')
             ->assertDontSee('Register')
             ->assertDontSee('Login');
     }
 
     public function test_requester_only_sees_their_own_recent_tickets(): void
     {
-        $department = Department::create(['name' => 'IT Services', 'is_active' => true]);
         $requester = User::factory()->create();
         $otherRequester = User::factory()->create();
         $requester->tickets()->create([
             'ticket_number' => 'ED-2026-000101',
-            'department_id' => $department->id,
             'requester_name' => $requester->name,
             'student_id' => 'PCU-001',
             'requester_email' => $requester->email,
@@ -42,7 +40,6 @@ class HomePageTest extends TestCase
         ]);
         $otherRequester->tickets()->create([
             'ticket_number' => 'ED-2026-000102',
-            'department_id' => $department->id,
             'requester_name' => $otherRequester->name,
             'student_id' => 'PCU-002',
             'requester_email' => $otherRequester->email,

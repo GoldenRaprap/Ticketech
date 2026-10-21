@@ -15,7 +15,7 @@ class PasswordResetController extends Controller
 {
     public function create(): View
     {
-        return view('pages.forgot-password');
+        return view('helpdesk.forgot-password');
     }
 
     public function sendLink(Request $request): RedirectResponse
@@ -28,7 +28,7 @@ class PasswordResetController extends Controller
             ->whereRaw('LOWER(email) = ?', [Str::lower($validated['email'])])
             ->first();
 
-        if ($user?->isStaff()) {
+        if ($user?->isStaff() && $user->isActive()) {
             Password::sendResetLink(['email' => $user->email]);
         }
 
@@ -37,7 +37,7 @@ class PasswordResetController extends Controller
 
     public function edit(Request $request, string $token): View
     {
-        return view('pages.reset-password', [
+        return view('helpdesk.reset-password', [
             'token' => $token,
             'email' => $request->query('email', ''),
         ]);
@@ -55,7 +55,7 @@ class PasswordResetController extends Controller
             ->whereRaw('LOWER(email) = ?', [Str::lower($validated['email'])])
             ->first();
 
-        if (! $user?->isStaff()) {
+        if (! $user?->isStaff() || ! $user->isActive()) {
             return back()->withErrors([
                 'email' => 'This password reset link is invalid or has expired.',
             ])->onlyInput('email');

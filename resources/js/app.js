@@ -57,3 +57,54 @@ document.querySelectorAll('.attachment-box input[type="file"]').forEach((input) 
 		}
 	});
 });
+
+document.querySelectorAll('[data-ticket-comment-check]').forEach((conversation) => {
+	const notice = document.querySelector('[data-new-reply-notice]');
+	const refreshButton = notice?.querySelector('[data-refresh-ticket]');
+
+	if (!notice || !refreshButton) {
+		return;
+	}
+
+	let latestCommentId = Number(conversation.dataset.lastCommentId);
+	const updatesUrl = conversation.dataset.updatesUrl;
+
+	if (!updatesUrl || !Number.isFinite(latestCommentId)) {
+		console.error('Ticket conversation updates are missing required polling data.');
+		return;
+	}
+
+	refreshButton.addEventListener('click', () => window.location.reload());
+
+	const checkForNewReplies = async () => {
+		if (document.hidden || notice.hidden) {
+			return;
+		}
+
+		try {
+			const response = await fetch(updatesUrl, {
+				headers: { Accept: 'application/json' },
+				credentials: 'same-origin',
+			});
+
+			if (!response.ok) {
+				throw new Error(`Ticket update check failed with status ${response.status}.`);
+			}
+
+			const data = await response.json();
+			const latestServerCommentId = Number(data.latest_comment_id);
+
+			if (!Number.isFinite(latestServerCommentId)) {
+				throw new Error('Ticket update check returned an invalid comment ID.');
+			}
+
+			if (latestServerCommentId > latestCommentId) {
+				notice.hidden = false;
+			}
+		} catch (error) {
+			console.error('Unable to check for new ticket replies.', error);
+		}
+	};
+
+	window.setInterval(checkForNewReplies, 15000);
+});

@@ -14,7 +14,7 @@ class AuthenticatedSessionController extends Controller
 {
     public function create(): View
     {
-        return view('pages.login');
+        return view('helpdesk.login');
     }
 
     public function store(LoginRequest $request): RedirectResponse
@@ -27,7 +27,7 @@ class AuthenticatedSessionController extends Controller
             ])->onlyInput('email');
         }
 
-        if (! $request->user()->isStaff()) {
+        if (! $request->user()->isStaff() || ! $request->user()->isActive()) {
             Auth::logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();

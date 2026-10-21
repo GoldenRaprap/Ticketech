@@ -1,10 +1,18 @@
 <?php
 
+use App\Http\Controllers\AdminAuditLogController;
 use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\AdminModerationController;
+use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthenticatedSessionController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\KnowledgeArticleController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\StaffDashboardController;
+use App\Http\Controllers\StaffNotificationController;
+use App\Http\Controllers\StaffProfileController;
+use App\Http\Controllers\StaffReportsController;
+use App\Http\Controllers\StaffTicketController;
 use App\Http\Controllers\TicketController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,26 +30,48 @@ Route::post('/create-ticket', [TicketController::class, 'store'])->middleware('t
 Route::get('/ticket-submitted', [TicketController::class, 'submitted'])->name('ticket.submitted');
 Route::get('/check-ticket', [TicketController::class, 'lookup'])->name('ticket.check');
 Route::post('/check-ticket', [TicketController::class, 'show'])->middleware('throttle:10,1')->name('ticket.lookup');
+Route::post('/check-ticket/reply', [TicketController::class, 'reply'])->middleware('throttle:10,1')->name('ticket.reply');
+Route::post('/check-ticket/close', [TicketController::class, 'closeView'])->name('ticket.view.close');
 Route::post('/ticket-attachments/{attachment}/download', [TicketController::class, 'download'])->middleware('throttle:15,1')->name('ticket.attachments.download');
-Route::view('/knowledge-base', 'pages.knowledge-base')->name('knowledge-base');
+Route::get('/knowledge-base', [KnowledgeArticleController::class, 'publicIndex'])->name('knowledge-base');
+Route::get('/knowledge-base/{article:slug}', [KnowledgeArticleController::class, 'publicShow'])->name('knowledge-base.show');
 
 Route::prefix('staff')->name('staff.')->group(function () {
     Route::middleware('staff')->group(function () {
         Route::get('/dashboard', StaffDashboardController::class)->name('dashboard');
-        Route::view('/tickets', 'staff.tickets')->name('tickets');
-        Route::view('/tickets/ED-2026-00125', 'staff.ticket-detail')->name('ticket-detail');
-        Route::view('/knowledge-base', 'staff.knowledge-base')->name('knowledge-base');
-        Route::view('/reports', 'staff.reports')->name('reports');
-        Route::view('/notifications', 'staff.notifications')->name('notifications');
-        Route::view('/profile', 'staff.profile')->name('profile');
+        Route::get('/tickets', [StaffTicketController::class, 'index'])->name('tickets');
+        Route::get('/tickets/{ticket:ticket_number}', [StaffTicketController::class, 'show'])->name('ticket-detail');
+        Route::get('/tickets/{ticket:ticket_number}/updates', [StaffTicketController::class, 'updates'])->name('ticket-updates');
+        Route::put('/tickets/{ticket:ticket_number}', [StaffTicketController::class, 'update'])->name('ticket-update');
+        Route::post('/tickets/{ticket:ticket_number}/comments', [StaffTicketController::class, 'comment'])->name('ticket-comments.store');
+        Route::post('/tickets/{ticket:ticket_number}/misuse-reports', [StaffTicketController::class, 'reportClient'])->name('ticket-misuse-reports.store');
+        Route::get('/tickets/{ticket:ticket_number}/attachments/{attachment}', [StaffTicketController::class, 'downloadAttachment'])->name('ticket-attachments.download');
+
+        Route::get('/knowledge-base', [KnowledgeArticleController::class, 'index'])->name('knowledge-base');
+        Route::get('/knowledge-base/create', [KnowledgeArticleController::class, 'create'])->name('knowledge-base.create');
+        Route::post('/knowledge-base', [KnowledgeArticleController::class, 'store'])->name('knowledge-base.store');
+        Route::get('/knowledge-base/{article}/edit', [KnowledgeArticleController::class, 'edit'])->name('knowledge-base.edit');
+        Route::put('/knowledge-base/{article}', [KnowledgeArticleController::class, 'update'])->name('knowledge-base.update');
+        Route::delete('/knowledge-base/{article}', [KnowledgeArticleController::class, 'destroy'])->name('knowledge-base.destroy');
+
+        Route::get('/reports', StaffReportsController::class)->name('reports');
+        Route::get('/notifications', [StaffNotificationController::class, 'index'])->name('notifications');
+        Route::patch('/notifications/read-all', [StaffNotificationController::class, 'markAllRead'])->name('notifications.read-all');
+        Route::patch('/notifications/{notification}/read', [StaffNotificationController::class, 'markRead'])->name('notifications.read');
+        Route::get('/profile', [StaffProfileController::class, 'edit'])->name('profile');
+        Route::put('/profile', [StaffProfileController::class, 'update'])->name('profile.update');
     });
 });
 
 Route::prefix('admin')->name('admin.')->middleware('admin')->group(function () {
     Route::get('/dashboard', AdminDashboardController::class)->name('dashboard');
-    Route::view('/users', 'staff.users')->name('users');
-    Route::view('/categories', 'staff.categories')->name('categories');
+    Route::get('/moderation', [AdminModerationController::class, 'index'])->name('moderation');
+    Route::patch('/moderation/reports/{report}/review', [AdminModerationController::class, 'review'])->name('moderation.review');
+    Route::patch('/moderation/clients/{clientModeration}/clear', [AdminModerationController::class, 'clear'])->name('moderation.clear');
+    Route::get('/users', [AdminUserController::class, 'index'])->name('users');
+    Route::post('/users', [AdminUserController::class, 'store'])->name('users.store');
+    Route::put('/users/{user}', [AdminUserController::class, 'update'])->name('users.update');
     Route::view('/sla-settings', 'staff.sla-settings')->name('sla-settings');
-    Route::view('/audit-logs', 'staff.audit-logs')->name('audit-logs');
+    Route::get('/audit-logs', AdminAuditLogController::class)->name('audit-logs');
     Route::view('/system-settings', 'staff.system-settings')->name('system-settings');
 });

@@ -46,9 +46,9 @@
                     <span><strong>User access</strong><small>Manage staff and requester accounts</small></span>
                     <span class="admin-control-arrow">→</span>
                 </a>
-                <a class="admin-control-link" href="{{ route('admin.categories') }}">
-                    <span class="admin-control-icon">▥</span>
-                    <span><strong>Categories</strong><small>Organize helpdesk request types</small></span>
+                <a class="admin-control-link" href="{{ route('admin.moderation') }}">
+                    <span class="admin-control-icon">⚑</span>
+                    <span><strong>Client moderation</strong><small>Review reports, warnings, and blocked emails</small></span>
                     <span class="admin-control-arrow">→</span>
                 </a>
                 <a class="admin-control-link" href="{{ route('admin.sla-settings') }}">

@@ -3,16 +3,21 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Choose a New Password | PCU Help Center</title>
+    <title>Choose a New Password | PCU Helpdesk</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="password-page-body">
     <header class="password-header">
-        <a class="password-header-brand" href="{{ route('home') }}">PCU Help Center</a>
-        <nav aria-label="Main navigation">
-            <a href="{{ route('login') }}">Staff sign in</a>
-            <a href="{{ route('home') }}">Help Center</a>
-        </nav>
+        <div class="container public-topbar-inner">
+            <a class="password-header-brand" href="{{ route('home') }}">
+                <img src="{{ asset('images/Philippine_Christian_University_logo.png') }}" alt="">
+                <span>PCU Helpdesk</span>
+            </a>
+            <nav aria-label="Main navigation">
+                <a href="{{ route('login') }}">Staff Sign In</a>
+                <a href="{{ route('home') }}">Helpdesk</a>
+            </nav>
+        </div>
     </header>
     <main class="password-page">
         <section class="password-main" aria-label="Reset password">

@@ -28,62 +28,45 @@
 
             <label class="field-label" for="ticket-name">
                 <span class="field-text">Name:<span class="required-mark">*</span></span>
-                <input id="ticket-name" name="name" type="text" value="{{ old('name') }}" autocomplete="name" required>
+                <input id="ticket-name" name="name" type="text" value="{{ old('name') }}" placeholder="Firstname Lastname" autocomplete="name" required>
             </label>
 
             <label class="field-label" for="ticket-student-id">
-                <span class="field-text">Student or employee ID:<span class="required-mark">*</span></span>
-                <input id="ticket-student-id" name="student_id" type="text" value="{{ old('student_id') }}" required>
+                <span class="field-text">Student or Employee ID:<span class="required-mark">*</span></span>
+                <input id="ticket-student-id" name="student_id" type="text" value="{{ old('student_id') }}" placeholder="2023******" required>
             </label>
 
             <label class="field-label" for="ticket-email">
                 <span class="field-text">Email:<span class="required-mark">*</span></span>
-                <input id="ticket-email" name="email" type="email" value="{{ old('email') }}" autocomplete="email" required>
+                <input id="ticket-email" name="email" type="email" value="{{ old('email') }}" placeholder="example@pcu.edu.ph" autocomplete="email" required>
             </label>
 
             <label class="field-label" for="ticket-phone">
                 <span class="field-text">Phone Number:</span>
-                <input id="ticket-phone" name="phone" type="tel" value="{{ old('phone') }}" autocomplete="tel">
-            </label>
-
-            <label class="field-label" for="ticket-department">
-                <span class="field-text">Department:<span class="required-mark">*</span></span>
-                <select id="ticket-department" name="department_id" required>
-                    <option value="">Select a department</option>
-                    @foreach ($departments as $department)
-                        <option value="{{ $department->id }}" @selected(old('department_id') == $department->id)>{{ $department->name }}</option>
-                    @endforeach
-                </select>
-            </label>
-
-            <label class="field-label" for="ticket-category">
-                <span class="field-text">Category:</span>
-                <select id="ticket-category" name="category_id">
-                    <option value="">Select a category</option>
-                    @foreach ($categories as $category)
-                        <option value="{{ $category->id }}" @selected(old('category_id') == $category->id)>{{ $category->name }}</option>
-                    @endforeach
-                </select>
+                <input id="ticket-phone" name="phone" type="tel" value="{{ old('phone') }}" placeholder="e.g. 09171234567" autocomplete="tel">
             </label>
 
             <label class="field-label" for="ticket-priority">
                 <span class="field-text">Priority:<span class="required-mark">*</span></span>
                 <select id="ticket-priority" name="priority" required>
-                    <option value="">Select a priority</option>
-                    <option value="High" @selected(old('priority') === 'High')>High</option>
-                    <option value="Medium" @selected(old('priority', 'Medium') === 'Medium')>Medium</option>
-                    <option value="Low" @selected(old('priority') === 'Low')>Low</option>
+                    <option value="Urgent" @selected(old('priority', 'Low') === 'Urgent')>Urgent — Critical issue</option>
+                    <option value="High" @selected(old('priority', 'Low') === 'High')>High — Work stopped</option>
+                    <option value="Medium" @selected(old('priority', 'Low') === 'Medium')>Medium — Work affected</option>
+                    <option value="Low" @selected(old('priority', 'Low') === 'Low')>Low — General question</option>
                 </select>
+                <small class="field-hint">Urgent: critical issue; High: work stopped; Medium: work affected; Low: general question.</small>
             </label>
 
             <label class="field-label" for="ticket-subject">
                 <span class="field-text">Subject:<span class="required-mark">*</span></span>
-                <input id="ticket-subject" name="subject" type="text" value="{{ old('subject') }}" maxlength="150" required>
+                <input id="ticket-subject" name="subject" type="text" value="{{ old('subject') }}" placeholder="e.g. Unable to access my student portal" maxlength="150" required>
+                <small class="field-hint">Write a brief email subject describing the issue.</small>
             </label>
 
             <label class="field-label textarea-label" for="ticket-message">
                 <span class="field-text">Message:<span class="required-mark">*</span></span>
-                <textarea id="ticket-message" name="message" rows="6" maxlength="500" data-message-counter required>{{ old('message') }}</textarea>
+                <textarea id="ticket-message" name="message" rows="6" maxlength="500" placeholder="Hello, I’m having trouble signing in to my student portal. I see an error after entering my password. Please help me resolve this. Thank you." data-message-counter required>{{ old('message') }}</textarea>
+                <small class="field-hint">Write like an email: explain what happened and what help you need.</small>
             </label>
 
             <div class="field-label attachment-label">

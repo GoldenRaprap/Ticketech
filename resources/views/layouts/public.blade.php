@@ -3,19 +3,22 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>@yield('title', 'PCU Help Center') | PCU Help Center</title>
+    <title>@yield('title', 'PCU Helpdesk') | PCU Helpdesk</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="public-shell @if(request()->routeIs('ticket.create')) ticket-create-shell @endif" style="--pyramid-background: url('{{ asset('images/Background_Pyramids.png') }}');">
     <header class="public-topbar">
         <div class="container public-topbar-inner">
-            <a class="public-brand" href="{{ route('home') }}">PCU Help Center</a>
+            <a class="public-brand" href="{{ route('home') }}">
+                <img src="{{ asset('images/Philippine_Christian_University_logo.png') }}" alt="Philippine Christian University logo">
+                <span>PCU Helpdesk</span>
+            </a>
             <nav class="public-nav" aria-label="Main navigation">
                 <a href="{{ route('ticket.create') }}" @if (request()->routeIs('ticket.create')) aria-current="page" @endif>Submit a Ticket</a>
                 <a href="{{ route('ticket.check') }}" @if (request()->routeIs('ticket.check')) aria-current="page" @endif>View Your Tickets</a>
                 @guest
                     <span class="public-divider" aria-hidden="true">|</span>
-                    <a href="{{ route('login') }}" @if (request()->routeIs('login')) aria-current="page" @endif>Staff sign in</a>
+                    <a href="{{ route('login') }}" @if (request()->routeIs('login')) aria-current="page" @endif>Staff Sign In</a>
                 @endguest
                 @auth
                     @if (auth()->user()->isStaff())
@@ -32,7 +35,7 @@
 
     <div class="crumb-wrap">
         <div class="container breadcrumb">
-            <a href="{{ route('home') }}">PCU Help Center</a>
+            <a href="{{ route('home') }}">PCU Helpdesk</a>
             @if (! request()->routeIs('home'))
                 <span>›</span>
                 <span aria-current="page">@yield('title')</span>

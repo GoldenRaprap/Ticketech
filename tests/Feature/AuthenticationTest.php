@@ -10,6 +10,17 @@ class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_login_page_shows_staff_sign_in_breadcrumb(): void
+    {
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertSee('<div class="container public-topbar-inner">', false)
+            ->assertSee('<a href="'.route('home').'">PCU Helpdesk</a>', false)
+            ->assertSee('<span aria-current="page">Staff Sign In</span>', false)
+            ->assertSee('Philippine_Christian_University_logo.png')
+            ->assertSee('<h1>Staff Sign In</h1>', false);
+    }
+
     public function test_requester_cannot_sign_in_to_staff_admin_portal(): void
     {
         $user = User::factory()->create([
@@ -61,8 +72,39 @@ class AuthenticationTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
 
         $this->actingAs($admin)->get(route('admin.dashboard'))->assertOk();
-        $this->actingAs($admin)->get(route('admin.users'))->assertOk();
+        $this->actingAs($admin)->get(route('admin.users'))->assertOk()
+            ->assertSee('admin-console-page', false)
+            ->assertSee('Manage staff access');
+        $this->actingAs($admin)->get(route('admin.moderation'))->assertOk()
+            ->assertSee('admin-console-page', false)
+            ->assertSee('Pending reports');
+        $this->actingAs($admin)->get(route('admin.sla-settings'))->assertOk()
+            ->assertSee('admin-console-page', false)
+            ->assertSee('Service level targets');
+        $this->actingAs($admin)->get(route('admin.audit-logs'))->assertOk()
+            ->assertSee('admin-console-page', false)
+            ->assertSee('System events')
+            ->assertSee('data-sidebar-icon="audit-logs"', false);
+        $this->actingAs($admin)->get(route('admin.system-settings'))->assertOk()
+            ->assertSee('admin-console-page', false)
+            ->assertSee('Helpdesk identity');
         $this->actingAs($admin)->get(route('staff.dashboard'))->assertOk();
+
+        $this->get(route('admin.dashboard'))->assertDontSee('Categories');
+    }
+
+    public function test_categories_admin_page_is_no_longer_available(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->get('/admin/categories')->assertNotFound();
+    }
+
+    public function test_staff_cannot_access_admin_audit_logs(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+
+        $this->actingAs($staff)->get('/admin/audit-logs')->assertForbidden();
     }
 
     public function test_staff_can_sign_in_to_staff_portal(): void

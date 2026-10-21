@@ -1,23 +1,74 @@
 @extends('layouts.staff')
 @section('title', 'Tickets')
 @section('content')
-<div class="staff-heading"><div><h1>Tickets</h1><p>Browse and review help desk requests.</p></div><span class="badge">59 total</span></div>
-<section class="panel">
-    <div class="toolbar">
-        <input placeholder="Search tickets" aria-label="Search tickets">
-        <select aria-label="Filter by status"><option>Status: All</option><option>New</option><option>Assigned</option><option>In Progress</option><option>Waiting for User</option><option>Resolved</option><option>Closed</option></select>
-        <select aria-label="Filter by category"><option>Category: All</option><option>Registrar</option><option>Bluebook</option><option>PRIISM</option><option>Network</option><option>Hardware</option><option>Software</option></select>
-        <select aria-label="Filter by priority"><option>Priority: All</option><option>Low</option><option>Normal</option><option>High</option><option>Urgent</option></select>
-        <select aria-label="Filter by staff"><option>Assigned staff: All</option><option>Jordan Davis</option><option>IT Staff A</option><option>IT Staff B</option></select>
-        <input type="date" aria-label="Filter by date">
-    </div>
-    <div class="table-wrap"><table>
-        <thead><tr><th>Ticket #</th><th>Subject</th><th>Requester</th><th>Category</th><th>Priority</th><th>Assigned To</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-        <tbody>
-            @foreach ([['ED-2026-00125','Cannot access Bluebook','Mia Chen','Bluebook','High','IT Staff B','In Progress','Sep 26, 2026'],['ED-2026-00124','Wi-Fi disconnects in library','Noah Williams','Network','Normal','Jordan Davis','Assigned','Sep 26, 2026'],['ED-2026-00123','Student portal shows an error','Ava Thompson','PRIISM','Normal','Unassigned','New','Sep 25, 2026'],['ED-2026-00122','Laptop will not connect to projector','Ethan Brown','Hardware','Low','Jordan Davis','Waiting for User','Sep 24, 2026'],['ED-2026-00121','Unable to print transcript','Olivia Garcia','Registrar','Normal','IT Staff A','Resolved','Sep 23, 2026'],['ED-2026-00120','Install approved design software','Liam Wilson','Software','Low','IT Staff C','Closed','Sep 22, 2026']] as $ticket)
-                <tr><td><a href="{{ route('staff.ticket-detail') }}">{{ $ticket[0] }}</a></td><td>{{ $ticket[1] }}</td><td>{{ $ticket[2] }}</td><td>{{ $ticket[3] }}</td><td>{{ $ticket[4] }}</td><td>{{ $ticket[5] }}</td><td><span class="badge">{{ $ticket[6] }}</span></td><td>{{ $ticket[7] }}</td><td><a href="{{ route('staff.ticket-detail') }}">Open</a></td></tr>
-            @endforeach
-        </tbody>
-    </table></div>
-</section>
+<div class="workspace-page tickets-page">
+    <header class="workspace-page-heading">
+        <div>
+            <span class="workspace-eyebrow">Helpdesk operations</span>
+            <h1>Ticket queue</h1>
+            <p>Review incoming requests, follow progress, and keep work moving.</p>
+        </div>
+        <span class="queue-count"><strong>{{ $ticketCount }}</strong> total tickets</span>
+    </header>
+
+    <section class="queue-summary" aria-label="Ticket queue summary">
+        <div><span class="queue-summary-icon queue-summary-icon--blue" aria-hidden="true">▤</span><span><small>All tickets</small><strong>{{ $ticketCount }}</strong></span></div>
+        <div><span class="queue-summary-icon queue-summary-icon--amber" aria-hidden="true">✦</span><span><small>New</small><strong>{{ $newCount }}</strong></span></div>
+        <div><span class="queue-summary-icon queue-summary-icon--violet" aria-hidden="true">◷</span><span><small>In progress</small><strong>{{ $inProgressCount }}</strong></span></div>
+        <div><span class="queue-summary-icon queue-summary-icon--green" aria-hidden="true">✓</span><span><small>Resolved / closed</small><strong>{{ $completedCount }}</strong></span></div>
+    </section>
+
+    <section class="workspace-card ticket-queue-card">
+        <div class="queue-toolbar-heading">
+            <div><h2>All tickets</h2><p>Search requests or filter by status, priority, and assignee.</p></div>
+        </div>
+        <form class="ticket-filters" action="{{ route('staff.tickets') }}" method="get">
+            <label class="ticket-search-field"><span class="sr-only">Search tickets</span><span aria-hidden="true">⌕</span><input name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search by ticket number, subject, or requester" aria-label="Search tickets"></label>
+            <label><span class="sr-only">Filter by status</span><select name="status" aria-label="Filter by status">
+                <option value="">Status: All</option>
+                @foreach (['New', 'Assigned', 'In Progress', 'Waiting for User', 'On Hold', 'Resolved', 'Closed'] as $status)
+                    <option value="{{ $status }}" @selected(($filters['status'] ?? '') === $status)>{{ $status }}</option>
+                @endforeach
+            </select></label>
+            <label><span class="sr-only">Filter by priority</span><select name="priority" aria-label="Filter by priority">
+                <option value="">Priority: All</option>
+                @foreach (['Urgent', 'High', 'Medium', 'Low'] as $priority)
+                    <option value="{{ $priority }}" @selected(($filters['priority'] ?? '') === $priority)>{{ $priority }}</option>
+                @endforeach
+            </select></label>
+            <label><span class="sr-only">Filter by staff</span><select name="assignee" aria-label="Filter by staff">
+                <option value="">Assignee: All</option>
+                <option value="unassigned" @selected(($filters['assignee'] ?? '') === 'unassigned')>Unassigned</option>
+                @foreach ($assignees as $assignee)
+                    <option value="{{ $assignee->id }}" @selected((string) ($filters['assignee'] ?? '') === (string) $assignee->id)>{{ $assignee->name }}</option>
+                @endforeach
+            </select></label>
+            <button class="workspace-button workspace-button--primary" type="submit">Apply filters</button>
+            @if (count($filters) > 0)
+                <a class="workspace-button workspace-button--secondary" href="{{ route('staff.tickets') }}">Clear</a>
+            @endif
+        </form>
+        <div class="ticket-table-scroll">
+            <table class="workspace-table">
+                <thead><tr><th scope="col">Ticket</th><th scope="col">Requester</th><th scope="col">Priority</th><th scope="col">Assignee</th><th scope="col">Status</th><th scope="col">Created</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+                <tbody>
+                    @forelse ($tickets as $ticket)
+                        <tr>
+                            <td><a class="ticket-number-link" href="{{ route('staff.ticket-detail', $ticket) }}"><strong>{{ $ticket->ticket_number }}</strong><span>{{ $ticket->subject }}</span></a></td>
+                            <td><div class="table-requester"><span class="requester-avatar requester-avatar--small" aria-hidden="true">{{ strtoupper(substr($ticket->requester_name, 0, 1)) }}</span><strong>{{ $ticket->requester_name }}</strong></div></td>
+                            <td><span class="priority-pill priority-pill--{{ strtolower($ticket->priority) }}">{{ $ticket->priority }}</span></td>
+                            <td>{{ $ticket->assignedTo?->name ?? 'Unassigned' }}</td>
+                            <td><span class="status-pill status-pill--{{ strtolower(str_replace(' ', '-', $ticket->status)) }}">{{ $ticket->status }}</span></td>
+                            <td><time datetime="{{ $ticket->created_at->toDateString() }}">{{ $ticket->created_at->format('M j, Y') }}</time></td>
+                            <td><a class="table-action-link" href="{{ route('staff.ticket-detail', $ticket) }}">Open <span aria-hidden="true">→</span></a></td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="7"><div class="workspace-empty-state workspace-empty-state--compact"><strong>No matching tickets</strong><p>Try another search term or clear your filters.</p></div></td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <footer class="table-footer"><span>Showing <strong>{{ $tickets->count() }}</strong> of {{ $tickets->total() }} tickets</span>{{ $tickets->links() }}</footer>
+    </section>
+</div>
 @endsection

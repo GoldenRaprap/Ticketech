@@ -11,6 +11,6 @@ class HomeController extends Controller
     {
         $recentTickets = $request->user()?->tickets()->latest()->limit(3)->get() ?? collect();
 
-        return view('pages.home', ['recentTickets' => $recentTickets]);
+        return view('helpdesk.home', ['recentTickets' => $recentTickets]);
     }
 }
