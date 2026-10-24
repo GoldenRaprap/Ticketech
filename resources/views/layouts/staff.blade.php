@@ -32,6 +32,22 @@
         const staffShell = document.querySelector('[data-staff-shell]');
         const sidebarToggles = document.querySelectorAll('[data-sidebar-toggle]');
         const mobileSidebar = window.matchMedia('(max-width: 820px)');
+        const sidebarPreferenceKey = 'ticketech.staff-sidebar-collapsed';
+        let isDesktopSidebarCollapsed = true;
+
+        try {
+            const savedPreference = window.localStorage.getItem(sidebarPreferenceKey);
+
+            if (savedPreference !== null) {
+                isDesktopSidebarCollapsed = savedPreference === 'true';
+            }
+        } catch (error) {
+            console.warn('Unable to read the saved sidebar preference.', error);
+        }
+
+        function applyDesktopSidebarPreference() {
+            staffShell.classList.toggle('sidebar-collapsed', isDesktopSidebarCollapsed);
+        }
 
         function updateSidebarToggle() {
             const isExpanded = mobileSidebar.matches
@@ -52,6 +68,13 @@
                     staffShell.classList.toggle('menu-open');
                 } else {
                     staffShell.classList.toggle('sidebar-collapsed');
+                    isDesktopSidebarCollapsed = staffShell.classList.contains('sidebar-collapsed');
+
+                    try {
+                        window.localStorage.setItem(sidebarPreferenceKey, String(isDesktopSidebarCollapsed));
+                    } catch (error) {
+                        console.warn('Unable to save the sidebar preference.', error);
+                    }
                 }
 
                 updateSidebarToggle();
@@ -62,13 +85,19 @@
             staffShell.classList.remove('menu-open');
 
             if (mobileSidebar.matches) {
-                staffShell.classList.remove('sidebar-collapsed');
-            } else {
                 staffShell.classList.add('sidebar-collapsed');
+            } else {
+                applyDesktopSidebarPreference();
             }
 
             updateSidebarToggle();
         });
+
+        if (mobileSidebar.matches) {
+            staffShell.classList.add('sidebar-collapsed');
+        } else {
+            applyDesktopSidebarPreference();
+        }
 
         updateSidebarToggle();
     </script>

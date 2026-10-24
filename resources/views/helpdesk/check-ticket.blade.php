@@ -117,19 +117,14 @@
                                     <time datetime="{{ $ticket->created_at->toIso8601String() }}">{{ $ticket->created_at->format('M j, Y g:i A') }}</time>
                                 </div>
                                 <p>{{ $ticket->description }}</p>
-                                @if ($ticket->attachments->isNotEmpty())
-                                    <div class="ticket-message-attachments">
-                                        <span class="ticket-message-attachment-label">Attached files</span>
-                                        @foreach ($ticket->attachments as $attachment)
-                                            <form class="ticket-attachment-download" action="{{ route('ticket.attachments.download', $attachment) }}" method="post">
-                                                @csrf
-                                                <input type="hidden" name="ticket" value="{{ $lookupTicketNumber }}">
-                                                <input type="hidden" name="email" value="{{ $lookupEmail }}">
-                                                <button type="submit">Download {{ $attachment->original_name }}</button>
-                                            </form>
-                                        @endforeach
-                                    </div>
-                                @endif
+                                @include('partials.message-attachments', [
+                                    'attachments' => $ticket->attachments,
+                                    'previewRouteName' => 'ticket.attachments.preview',
+                                    'staffView' => false,
+                                    'ticket' => $ticket,
+                                    'lookupTicketNumber' => $lookupTicketNumber,
+                                    'lookupEmail' => $lookupEmail,
+                                ])
                             </div>
                         </article>
 
@@ -151,11 +146,20 @@
                                         <time datetime="{{ $comment->created_at->toIso8601String() }}">{{ $comment->created_at->format('M j, Y g:i A') }}</time>
                                     </div>
                                     <p>{{ $comment->body }}</p>
+                                    @include('partials.message-attachments', [
+                                        'attachments' => $comment->attachments,
+                                        'previewRouteName' => 'ticket.attachments.preview',
+                                        'staffView' => false,
+                                        'ticket' => $ticket,
+                                        'lookupTicketNumber' => $lookupTicketNumber,
+                                        'lookupEmail' => $lookupEmail,
+                                    ])
                                 </div>
                             </article>
                         @endforeach
                     </div>
                 </section>
+                @include('partials.image-preview-dialog')
 
                 @if (in_array($ticket->status, ['Resolved', 'Closed'], true))
                     <aside class="ticket-status-notice" role="status">
@@ -172,7 +176,7 @@
                             <p>Reply here to continue this conversation. Your message will go straight to the helpdesk team.</p>
                         </div>
                     </div>
-                    <form class="ticket-reply-form" action="{{ route('ticket.reply') }}" method="post">
+                    <form class="ticket-reply-form" action="{{ route('ticket.reply') }}" method="post" enctype="multipart/form-data">
                         @csrf
                         <input type="hidden" name="ticket" value="{{ $lookupTicketNumber }}">
                         <input type="hidden" name="email" value="{{ $lookupEmail }}">
@@ -181,6 +185,26 @@
                             <span class="form-field-error">{{ $message }}</span>
                         @enderror
                         <textarea id="client-ticket-reply" name="body" maxlength="5000" placeholder="Type your reply to the PCU Helpdesk..." required>{{ old('body') }}</textarea>
+                        <div class="attachment-label message-attachment-input">
+                            <div class="attachment-heading">
+                                <label class="field-text" for="client-reply-attachments">Attach files:</label>
+                                <small id="client-reply-attachment-count" class="attachment-count" data-attachment-count aria-live="polite"><span>0</span> / 5 files selected</small>
+                            </div>
+                            <label class="attachment-box" for="client-reply-attachments">
+                                <input id="client-reply-attachments" name="attachment[]" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple aria-describedby="client-reply-attachment-help client-reply-attachment-count client-reply-attachment-limit client-reply-attachment-list">
+                                <span class="attachment-inner"><span class="attachment-icon">+</span><span>Choose files or drop them here</span></span>
+                            </label>
+                            <small id="client-reply-attachment-help" class="attachment-help">Attach up to 5 files per reply. PDF, JPG, PNG, DOC, or DOCX; each file up to 5 MB.</small>
+                            <small id="client-reply-attachment-limit" class="attachment-limit-message" data-attachment-limit-message role="status" hidden></small>
+                            <ul id="client-reply-attachment-list" class="attachment-list" data-attachment-list aria-live="polite" aria-relevant="additions removals"></ul>
+                            @foreach ($errors->getMessages() as $field => $messages)
+                                @if ($field === 'attachment' || str_starts_with($field, 'attachment.'))
+                                    @foreach ($messages as $message)
+                                        <span class="form-field-error">{{ $message }}</span>
+                                    @endforeach
+                                @endif
+                            @endforeach
+                        </div>
                         <div class="ticket-reply-form-footer">
                             <span>Your reply will be visible to the support team.</span>
                             <button type="submit" class="view-ticket-button">

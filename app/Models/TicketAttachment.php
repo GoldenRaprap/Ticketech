@@ -6,12 +6,17 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['ticket_id', 'uploaded_by', 'original_name', 'disk', 'path', 'mime_type', 'size_bytes'])]
+#[Fillable(['ticket_id', 'comment_id', 'uploaded_by', 'original_name', 'disk', 'path', 'mime_type', 'size_bytes'])]
 class TicketAttachment extends Model
 {
     public function ticket(): BelongsTo
     {
         return $this->belongsTo(Ticket::class);
+    }
+
+    public function comment(): BelongsTo
+    {
+        return $this->belongsTo(TicketComment::class);
     }
 
     public function uploader(): BelongsTo

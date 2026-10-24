@@ -25,6 +25,24 @@ class StoreStaffTicketCommentRequest extends FormRequest
         return [
             'body' => ['required', 'string', 'max:5000'],
             'is_internal' => ['sometimes', 'boolean'],
+            'attachment' => ['nullable', 'array', 'max:5'],
+            'attachment.*' => ['file', 'mimes:pdf,jpg,jpeg,png,doc,docx', 'max:5120'],
+        ];
+    }
+
+    /**
+     * Get the validation messages for the request.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'attachment.array' => 'Attachments must be submitted as separate files.',
+            'attachment.max' => 'You can attach up to 5 files per message.',
+            'attachment.*.file' => 'File :position could not be uploaded. Please choose the file again.',
+            'attachment.*.mimes' => 'File :position must be a PDF, JPG, PNG, DOC, or DOCX file.',
+            'attachment.*.max' => 'File :position must not exceed 5 MB.',
         ];
     }
 }

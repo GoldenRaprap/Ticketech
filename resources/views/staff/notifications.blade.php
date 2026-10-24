@@ -40,7 +40,7 @@
         </div>
         <div class="notification-list">
             @forelse ($notifications as $notification)
-                <article class="notification-item {{ $notification->read_at ? '' : 'notification-item--unread' }}">
+                <article class="notification-item {{ $notification->read_at ? '' : 'notification-item--unread' }}" @if ($notification->ticket) data-notification-row role="button" tabindex="0" aria-label="Open notification: {{ $notification->title }}" @endif>
                     <span class="notification-icon notification-icon--{{ $notification->type }}" aria-hidden="true">
                         @if ($notification->type === 'assignment') ↗ @elseif ($notification->type === 'reply' || $notification->type === 'requester_reply') ↩ @elseif ($notification->type === 'new_ticket') ＋ @elseif ($notification->type === 'client_report') ⚑ @else ✓ @endif
                     </span>
@@ -50,10 +50,9 @@
                     </div>
                     <time datetime="{{ $notification->created_at->toIso8601String() }}">{{ $notification->created_at->diffForHumans() }}</time>
                     @if ($notification->ticket)
-                        <form class="notification-open-form" action="{{ route('staff.notifications.read', $notification) }}" method="post">
+                        <form data-notification-action action="{{ route('staff.notifications.read', $notification) }}" method="post" hidden>
                             @csrf
                             @method('patch')
-                            <button class="table-action-link" type="submit">Open <span aria-hidden="true">→</span></button>
                         </form>
                     @else
                         <span class="notification-unread-dot" @if ($notification->read_at) hidden @else aria-label="Unread" @endif></span>

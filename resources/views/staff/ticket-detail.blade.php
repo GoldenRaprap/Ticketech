@@ -26,8 +26,19 @@
     <div class="ticket-detail-layout">
         <div class="ticket-detail-main">
             <section class="workspace-card ticket-description-card">
-                <div class="workspace-card-heading"><div><span class="workspace-eyebrow">Request details</span><h2>Problem description</h2></div><span class="ticket-updated-label">Submitted {{ $ticket->created_at->format('M j') }}</span></div>
+                <div class="workspace-card-heading"><div><span class="workspace-eyebrow">Request details</span><h2>Problem description</h2></div><span class="ticket-updated-label">Submitted {{ $ticket->created_at->format('M j, Y g:i A') }}</span></div>
                 <div class="ticket-description-content"><p>{{ $ticket->description }}</p></div>
+                @if ($ticket->attachments->isNotEmpty())
+                    <div class="ticket-original-attachments">
+                        <span class="ticket-message-attachment-label">Attachments sent with this request</span>
+                        @include('partials.message-attachments', [
+                            'attachments' => $ticket->attachments,
+                            'previewRouteName' => 'staff.ticket-attachments.preview',
+                            'staffView' => true,
+                            'ticket' => $ticket,
+                        ])
+                    </div>
+                @endif
                 <div class="ticket-detail-tags">
                     <span class="detail-tag"><small>Requester email</small><strong>{{ $ticket->requester_email }}</strong></span>
                     <span class="detail-tag"><small>Student or Employee ID</small><strong>{{ $ticket->student_id }}</strong></span>
@@ -35,19 +46,6 @@
                         <span class="detail-tag"><small>Phone number</small><strong>{{ $ticket->requester_phone }}</strong></span>
                     @endif
                 </div>
-            </section>
-
-            <section class="workspace-card ticket-attachments-card">
-                <div class="workspace-card-heading"><div><span class="workspace-eyebrow">Supporting files</span><h2>Attachments <span class="section-count">{{ $ticket->attachments->count() }}</span></h2></div></div>
-                @forelse ($ticket->attachments as $attachment)
-                    <a class="ticket-attachment-link" href="{{ route('staff.ticket-attachments.download', [$ticket, $attachment]) }}">
-                        <span class="ticket-attachment-icon" aria-hidden="true">▧</span>
-                        <span><strong>{{ $attachment->original_name }}</strong><small>{{ $attachment->size_bytes ? number_format($attachment->size_bytes / 1024, 0).' KB' : 'Attachment' }}</small></span>
-                        <span class="ticket-attachment-download">Download <span aria-hidden="true">↓</span></span>
-                    </a>
-                @empty
-                    <div class="ticket-no-attachments"><span aria-hidden="true">⌁</span><span>No files were attached to this ticket.</span></div>
-                @endforelse
             </section>
 
             <section class="workspace-card conversation-card">
@@ -79,13 +77,19 @@
                                     <time datetime="{{ $comment->created_at->toIso8601String() }}">{{ $comment->created_at->format('M j, Y g:i A') }}</time>
                                 </div>
                                 <p>{{ $comment->body }}</p>
+                                @include('partials.message-attachments', [
+                                    'attachments' => $comment->attachments,
+                                    'previewRouteName' => 'staff.ticket-attachments.preview',
+                                    'staffView' => true,
+                                    'ticket' => $ticket,
+                                ])
                             </div>
                         </article>
                     @empty
                         <div class="workspace-empty-state workspace-empty-state--compact"><strong>No replies yet</strong><p>Add a reply or internal note to record progress.</p></div>
                     @endforelse
                 </div>
-                <form class="reply-composer" action="{{ route('staff.ticket-comments.store', $ticket) }}" method="post">
+                <form class="reply-composer" action="{{ route('staff.ticket-comments.store', $ticket) }}" method="post" enctype="multipart/form-data">
                     @csrf
                     <div class="conversation-composer-intro">
                         <strong>Reply to requester</strong>
@@ -94,12 +98,33 @@
                     <label for="ticket-reply">Add a reply or note</label>
                     @error('body')<span class="form-field-error">{{ $message }}</span>@enderror
                     <textarea id="ticket-reply" name="body" maxlength="5000" placeholder="Write a clear update..." required>{{ old('body') }}</textarea>
+                    <div class="attachment-label message-attachment-input">
+                        <div class="attachment-heading">
+                            <span class="message-attachment-input-title">Attach files</span>
+                            <small id="staff-reply-attachment-count" class="attachment-count" data-attachment-count aria-live="polite"><span>0</span> / 5 files selected</small>
+                        </div>
+                        <label class="attachment-box" for="staff-reply-attachments">
+                            <input id="staff-reply-attachments" name="attachment[]" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple aria-describedby="staff-reply-attachment-help staff-reply-attachment-count staff-reply-attachment-limit staff-reply-attachment-list">
+                            <span class="attachment-inner"><span class="attachment-icon">+</span><span>Choose files or drop them here</span></span>
+                        </label>
+                        <small id="staff-reply-attachment-help" class="attachment-help">Attach up to 5 files per message. PDF, JPG, PNG, DOC, or DOCX; each file up to 5 MB.</small>
+                        <small id="staff-reply-attachment-limit" class="attachment-limit-message" data-attachment-limit-message role="status" hidden></small>
+                        <ul id="staff-reply-attachment-list" class="attachment-list" data-attachment-list aria-live="polite" aria-relevant="additions removals"></ul>
+                        @foreach ($errors->getMessages() as $field => $messages)
+                            @if ($field === 'attachment' || str_starts_with($field, 'attachment.'))
+                                @foreach ($messages as $message)
+                                    <span class="form-field-error">{{ $message }}</span>
+                                @endforeach
+                            @endif
+                        @endforeach
+                    </div>
                     <div class="reply-composer-footer">
                         <label class="internal-note-toggle"><input type="checkbox" name="is_internal" value="1" @checked(old('is_internal'))> Add as an internal note</label>
                         <button class="workspace-button workspace-button--primary" type="submit">Add comment <span aria-hidden="true">→</span></button>
                     </div>
                 </form>
             </section>
+            @include('partials.image-preview-dialog')
         </div>
 
         <aside class="ticket-detail-sidebar">
@@ -143,50 +168,54 @@
                 @endif
             </section>
 
-            <section class="workspace-card ticket-timing-card">
-                <div class="workspace-card-heading"><div><span class="workspace-eyebrow">SERVICE TIMING</span><h2>Time tracking</h2></div></div>
-                <dl class="ticket-timing-list">
-                    <div><dt>Time to first assignment</dt><dd>{{ $ticketTiming['first_assignment'] ?? 'Not assigned yet' }}</dd></div>
-                    <div><dt>Latest resolution interval</dt><dd>{{ $ticketTiming['latest_resolution'] ?? 'Not resolved yet' }}</dd></div>
-                    <div><dt>Total elapsed to last resolution</dt><dd>{{ $ticketTiming['total_elapsed'] ?? 'Not resolved yet' }}</dd></div>
-                </dl>
-                <p class="ticket-timing-note">Durations use calendar time, not active work time. The latest resolution interval starts at submission or the latest reopening; total elapsed starts at submission.</p>
-            </section>
+            <details class="workspace-card ticket-collapsible-card client-report-card" @if ($errors->has('reason') || $errors->has('details')) open @endif>
+                <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">CLIENT CONDUCT</span><h2>Report client</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>
+                <div class="ticket-collapsible-content">
+                    <p class="client-report-intro">Use this for spam, abusive messages, or repeated misuse. An administrator reviews reports before issuing a warning or blocking the client's email.</p>
+                    @forelse ($ticket->misuseReports as $report)
+                        <div class="client-report-history">
+                            <strong>{{ str($report->reason)->replace('_', ' ')->title() }}</strong>
+                            <span>{{ ucfirst($report->status) }}{{ $report->action ? ' · '.ucfirst($report->action) : '' }}</span>
+                            <small>Reported by {{ $report->reporter->name }} · {{ $report->created_at->format('M j, Y') }}</small>
+                        </div>
+                    @empty
+                        <p class="client-report-empty">No reports have been submitted for this ticket.</p>
+                    @endforelse
+                    <form class="client-report-form" action="{{ route('staff.ticket-misuse-reports.store', $ticket) }}" method="post">
+                        @csrf
+                        <label class="workspace-field">
+                            <span>Reason</span>
+                            <select name="reason" required>
+                                <option value="">Select a reason</option>
+                                <option value="spam" @selected(old('reason') === 'spam')>Spam or repeated duplicate tickets</option>
+                                <option value="abusive" @selected(old('reason') === 'abusive')>Abusive or threatening content</option>
+                                <option value="irrelevant" @selected(old('reason') === 'irrelevant')>Clearly irrelevant or deliberately false request</option>
+                                <option value="repeated" @selected(old('reason') === 'repeated')>Repeated misuse after prior warning</option>
+                                <option value="other" @selected(old('reason') === 'other')>Other conduct concern</option>
+                            </select>
+                            @error('reason')<span class="form-field-error">{{ $message }}</span>@enderror
+                        </label>
+                        <label class="workspace-field">
+                            <span>Details for admin review</span>
+                            <textarea name="details" maxlength="1000" placeholder="Describe the behavior and relevant context.">{{ old('details') }}</textarea>
+                            @error('details')<span class="form-field-error">{{ $message }}</span>@enderror
+                        </label>
+                        <button class="workspace-button workspace-button--secondary" type="submit">Submit report for review</button>
+                    </form>
+                </div>
+            </details>
 
-            <section class="workspace-card client-report-card">
-                <div class="workspace-card-heading"><div><span class="workspace-eyebrow">CLIENT CONDUCT</span><h2>Report client</h2></div></div>
-                <p class="client-report-intro">Use this for spam, abusive messages, or repeated misuse. An administrator reviews reports before issuing a warning or blocking the client's email.</p>
-                @forelse ($ticket->misuseReports as $report)
-                    <div class="client-report-history">
-                        <strong>{{ str($report->reason)->replace('_', ' ')->title() }}</strong>
-                        <span>{{ ucfirst($report->status) }}{{ $report->action ? ' · '.ucfirst($report->action) : '' }}</span>
-                        <small>Reported by {{ $report->reporter->name }} · {{ $report->created_at->format('M j, Y') }}</small>
-                    </div>
-                @empty
-                    <p class="client-report-empty">No reports have been submitted for this ticket.</p>
-                @endforelse
-                <form class="client-report-form" action="{{ route('staff.ticket-misuse-reports.store', $ticket) }}" method="post">
-                    @csrf
-                    <label class="workspace-field">
-                        <span>Reason</span>
-                        <select name="reason" required>
-                            <option value="">Select a reason</option>
-                            <option value="spam" @selected(old('reason') === 'spam')>Spam or repeated duplicate tickets</option>
-                            <option value="abusive" @selected(old('reason') === 'abusive')>Abusive or threatening content</option>
-                            <option value="irrelevant" @selected(old('reason') === 'irrelevant')>Clearly irrelevant or deliberately false request</option>
-                            <option value="repeated" @selected(old('reason') === 'repeated')>Repeated misuse after prior warning</option>
-                            <option value="other" @selected(old('reason') === 'other')>Other conduct concern</option>
-                        </select>
-                        @error('reason')<span class="form-field-error">{{ $message }}</span>@enderror
-                    </label>
-                    <label class="workspace-field">
-                        <span>Details for admin review</span>
-                        <textarea name="details" maxlength="1000" placeholder="Describe the behavior and relevant context.">{{ old('details') }}</textarea>
-                        @error('details')<span class="form-field-error">{{ $message }}</span>@enderror
-                    </label>
-                    <button class="workspace-button workspace-button--secondary" type="submit">Submit report for review</button>
-                </form>
-            </section>
+            <details class="workspace-card ticket-collapsible-card ticket-timing-card">
+                <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">SERVICE TIMING</span><h2>Time tracking</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>
+                <div class="ticket-collapsible-content">
+                    <dl class="ticket-timing-list">
+                        <div><dt>Time to first assignment</dt><dd>{{ $ticketTiming['first_assignment'] ?? 'Not assigned yet' }}</dd></div>
+                        <div><dt>Latest resolution interval</dt><dd>{{ $ticketTiming['latest_resolution'] ?? 'Not resolved yet' }}</dd></div>
+                        <div><dt>Total elapsed to last resolution</dt><dd>{{ $ticketTiming['total_elapsed'] ?? 'Not resolved yet' }}</dd></div>
+                    </dl>
+                    <p class="ticket-timing-note">Durations use calendar time, not active work time. The latest resolution interval starts at submission or the latest reopening; total elapsed starts at submission.</p>
+                </div>
+            </details>
 
             <section class="workspace-card ticket-timeline-card">
                 <div class="workspace-card-heading"><div><span class="workspace-eyebrow">History</span><h2>Ticket activity</h2></div></div>

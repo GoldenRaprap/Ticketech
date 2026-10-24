@@ -50,20 +50,19 @@
         </form>
         <div class="ticket-table-scroll">
             <table class="workspace-table">
-                <thead><tr><th scope="col">Ticket</th><th scope="col">Requester</th><th scope="col">Priority</th><th scope="col">Assignee</th><th scope="col">Status</th><th scope="col">Created</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+                <thead><tr><th scope="col">Ticket</th><th scope="col">Requester</th><th scope="col">Priority</th><th scope="col">Assignee</th><th scope="col">Status</th><th scope="col">Created</th></tr></thead>
                 <tbody>
                     @forelse ($tickets as $ticket)
-                        <tr>
+                        <tr data-ticket-row data-ticket-url="{{ route('staff.ticket-detail', $ticket) }}" tabindex="0" aria-label="Open ticket {{ $ticket->ticket_number }}: {{ $ticket->subject }}">
                             <td><a class="ticket-number-link" href="{{ route('staff.ticket-detail', $ticket) }}"><strong>{{ $ticket->ticket_number }}</strong><span>{{ $ticket->subject }}</span></a></td>
                             <td><div class="table-requester"><span class="requester-avatar requester-avatar--small" aria-hidden="true">{{ strtoupper(substr($ticket->requester_name, 0, 1)) }}</span><strong>{{ $ticket->requester_name }}</strong></div></td>
                             <td><span class="priority-pill priority-pill--{{ strtolower($ticket->priority) }}">{{ $ticket->priority }}</span></td>
                             <td>{{ $ticket->assignedTo?->name ?? 'Unassigned' }}</td>
                             <td><span class="status-pill status-pill--{{ strtolower(str_replace(' ', '-', $ticket->status)) }}">{{ $ticket->status }}</span></td>
                             <td><time datetime="{{ $ticket->created_at->toDateString() }}">{{ $ticket->created_at->format('M j, Y') }}</time></td>
-                            <td><a class="table-action-link" href="{{ route('staff.ticket-detail', $ticket) }}">Open <span aria-hidden="true">→</span></a></td>
                         </tr>
                     @empty
-                        <tr><td colspan="7"><div class="workspace-empty-state workspace-empty-state--compact"><strong>No matching tickets</strong><p>Try another search term or clear your filters.</p></div></td></tr>
+                        <tr><td colspan="6"><div class="workspace-empty-state workspace-empty-state--compact"><strong>No matching tickets</strong><p>Try another search term or clear your filters.</p></div></td></tr>
                     @endforelse
                 </tbody>
             </table>

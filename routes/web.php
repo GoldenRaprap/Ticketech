@@ -13,6 +13,7 @@ use App\Http\Controllers\StaffNotificationController;
 use App\Http\Controllers\StaffProfileController;
 use App\Http\Controllers\StaffReportsController;
 use App\Http\Controllers\StaffTicketController;
+use App\Http\Controllers\TicketAttachmentPreviewController;
 use App\Http\Controllers\TicketController;
 use Illuminate\Support\Facades\Route;
 
@@ -33,6 +34,7 @@ Route::post('/check-ticket', [TicketController::class, 'show'])->middleware('thr
 Route::post('/check-ticket/reply', [TicketController::class, 'reply'])->middleware('throttle:10,1')->name('ticket.reply');
 Route::post('/check-ticket/close', [TicketController::class, 'closeView'])->name('ticket.view.close');
 Route::post('/ticket-attachments/{attachment}/download', [TicketController::class, 'download'])->middleware('throttle:15,1')->name('ticket.attachments.download');
+Route::get('/ticket-attachments/{attachment}/preview', [TicketAttachmentPreviewController::class, 'requester'])->middleware('throttle:30,1')->name('ticket.attachments.preview');
 Route::get('/knowledge-base', [KnowledgeArticleController::class, 'publicIndex'])->name('knowledge-base');
 Route::get('/knowledge-base/{article:slug}', [KnowledgeArticleController::class, 'publicShow'])->name('knowledge-base.show');
 
@@ -46,6 +48,7 @@ Route::prefix('staff')->name('staff.')->group(function () {
         Route::post('/tickets/{ticket:ticket_number}/comments', [StaffTicketController::class, 'comment'])->name('ticket-comments.store');
         Route::post('/tickets/{ticket:ticket_number}/misuse-reports', [StaffTicketController::class, 'reportClient'])->name('ticket-misuse-reports.store');
         Route::get('/tickets/{ticket:ticket_number}/attachments/{attachment}', [StaffTicketController::class, 'downloadAttachment'])->name('ticket-attachments.download');
+        Route::get('/tickets/{ticket:ticket_number}/attachments/{attachment}/preview', [TicketAttachmentPreviewController::class, 'staff'])->middleware('throttle:30,1')->name('ticket-attachments.preview');
 
         Route::get('/knowledge-base', [KnowledgeArticleController::class, 'index'])->name('knowledge-base');
         Route::get('/knowledge-base/create', [KnowledgeArticleController::class, 'create'])->name('knowledge-base.create');

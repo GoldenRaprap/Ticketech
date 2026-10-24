@@ -9,6 +9,7 @@ use App\Models\TicketAttachment;
 use App\Models\User;
 use App\Models\WorkspaceNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -28,6 +29,8 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->get(route('staff.tickets', ['search' => 'ED-2026-000301']))
             ->assertOk()
             ->assertSee($matchingTicket->ticket_number)
+            ->assertSee('data-ticket-row', false)
+            ->assertSee('data-ticket-url="'.route('staff.ticket-detail', $matchingTicket).'"', false)
             ->assertDontSee('ED-2026-000302');
     }
 
@@ -363,6 +366,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_staff_can_add_internal_ticket_notes_without_assignment_notification(): void
     {
+        Storage::fake('private');
         $staff = User::factory()->create(['role' => 'staff']);
         $assignee = User::factory()->create(['role' => 'staff']);
         $ticket = $this->createTicket('ED-2026-000305', 'Portal access issue', $assignee->id);
@@ -371,6 +375,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->post(route('staff.ticket-comments.store', $ticket), [
                 'body' => 'Escalated to the platform team.',
                 'is_internal' => '1',
+                'attachment' => [UploadedFile::fake()->create('internal-evidence.png', 20, 'image/png')],
             ])
             ->assertRedirect(route('staff.ticket-detail', $ticket));
 
@@ -385,6 +390,27 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             'event' => 'internal_note_added',
         ]);
         $this->assertDatabaseCount('workspace_notifications', 0);
+        $this->assertDatabaseHas('ticket_attachments', [
+            'ticket_id' => $ticket->id,
+            'comment_id' => $ticket->comments()->firstOrFail()->id,
+            'original_name' => 'internal-evidence.png',
+        ]);
+
+        $attachment = TicketAttachment::query()->firstOrFail();
+        $this->get(route('staff.ticket-attachments.preview', [$ticket, $attachment]))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png');
+
+        $this->post(route('ticket.lookup'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => $ticket->requester_email,
+        ])->assertOk();
+
+        $this->get(route('ticket.check'))
+            ->assertOk()
+            ->assertDontSee('internal-evidence.png');
+
+        $this->get(route('ticket.attachments.preview', $attachment))->assertNotFound();
     }
 
     public function test_staff_ticket_activity_separates_public_replies_and_internal_notes(): void
@@ -418,6 +444,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_public_staff_reply_notifies_the_assigned_staff_member(): void
     {
+        Storage::fake('private');
         $staff = User::factory()->create(['role' => 'staff']);
         $assignee = User::factory()->create(['role' => 'staff']);
         $ticket = $this->createTicket('ED-2026-000315', 'Portal access issue', $assignee->id);
@@ -425,6 +452,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->actingAs($staff)
             ->post(route('staff.ticket-comments.store', $ticket), [
                 'body' => 'We have received your request and are investigating.',
+                'attachment' => [UploadedFile::fake()->create('progress.png', 20, 'image/png')],
             ])
             ->assertRedirect(route('staff.ticket-detail', $ticket));
 
@@ -438,6 +466,17 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             'ticket_id' => $ticket->id,
             'type' => 'reply',
         ]);
+        $this->assertDatabaseHas('ticket_attachments', [
+            'ticket_id' => $ticket->id,
+            'original_name' => 'progress.png',
+        ]);
+
+        $this->get(route('staff.ticket-detail', $ticket))
+            ->assertOk()
+            ->assertSee('progress.png')
+            ->assertSee('data-image-preview', false)
+            ->assertSee('enctype="multipart/form-data"', false)
+            ->assertSee('name="attachment[]"', false);
     }
 
     public function test_staff_attachment_download_is_scoped_to_its_ticket(): void
@@ -607,6 +646,32 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->patch(route('staff.notifications.read', $notification))
             ->assertRedirect(route('staff.notifications'));
         $this->assertNotNull($notification->fresh()->read_at);
+    }
+
+    public function test_ticket_notifications_render_as_clickable_rows_without_an_open_button(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+        $ticket = $this->createTicket('ED-2026-000399', 'Notification ticket');
+        $notification = WorkspaceNotification::create([
+            'user_id' => $staff->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'new_ticket',
+            'title' => 'New support ticket',
+            'message' => 'A ticket is waiting for review.',
+        ]);
+
+        $this->actingAs($staff)
+            ->get(route('staff.notifications'))
+            ->assertOk()
+            ->assertDontSee('type="submit">Open', false)
+            ->assertSee('data-notification-row role="button" tabindex="0"', false)
+            ->assertSee('data-notification-action', false)
+            ->assertSee('action="'.route('staff.notifications.read', $notification).'"', false)
+            ->assertSee('name="_method" value="patch"', false);
+
+        $this->actingAs($staff)
+            ->patch(route('staff.notifications.read', $notification))
+            ->assertRedirect(route('staff.ticket-detail', $ticket));
     }
 
     public function test_staff_can_update_profile_and_email_must_be_unique(): void

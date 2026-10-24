@@ -16,7 +16,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class StaffTicketController extends Controller
 {
@@ -75,8 +77,8 @@ class StaffTicketController extends Controller
     {
         $ticket->load([
             'assignedTo:id,name,email',
-            'comments' => fn ($query) => $query->with('author:id,name,role')->oldest(),
-            'attachments',
+            'comments' => fn ($query) => $query->with(['author:id,name,role', 'attachments'])->oldest(),
+            'attachments' => fn ($query) => $query->whereNull('comment_id'),
             'events' => fn ($query) => $query->with('actor:id,name')->oldest(),
             'misuseReports' => fn ($query) => $query->with('reporter:id,name')->latest(),
         ]);
@@ -193,35 +195,71 @@ class StaffTicketController extends Controller
     {
         $validated = $request->validated();
         $isInternal = (bool) ($validated['is_internal'] ?? false);
+        $uploads = $request->file('attachment', []) ?? [];
+        $storedAttachments = [];
 
-        DB::transaction(function () use ($request, $ticket, $validated, $isInternal): void {
-            $ticket->comments()->create([
-                'author_id' => $request->user()->id,
-                'author_name' => $request->user()->name,
-                'body' => $validated['body'],
-                'is_internal' => $isInternal,
-            ]);
+        try {
+            foreach ($uploads as $upload) {
+                $path = $upload->store('ticket-attachments', 'private');
 
-            TicketEvent::create([
-                'ticket_id' => $ticket->id,
-                'actor_id' => $request->user()->id,
-                'event' => $isInternal ? 'internal_note_added' : 'comment_added',
-                'description' => $isInternal
-                    ? "{$request->user()->name} added an internal note."
-                    : "{$request->user()->name} replied to the requester.",
-            ]);
+                if (! is_string($path) || $path === '') {
+                    throw new RuntimeException('Unable to store a staff ticket comment attachment.');
+                }
 
-            if (! $isInternal && $ticket->assigned_to_user_id && $ticket->assigned_to_user_id !== $request->user()->id) {
-                WorkspaceNotification::create([
-                    'user_id' => $ticket->assigned_to_user_id,
+                $storedAttachments[] = [
+                    'upload' => $upload,
+                    'path' => $path,
+                ];
+            }
+
+            DB::transaction(function () use ($request, $ticket, $validated, $isInternal, $storedAttachments): void {
+                $comment = $ticket->comments()->create([
+                    'author_id' => $request->user()->id,
+                    'author_name' => $request->user()->name,
+                    'body' => $validated['body'],
+                    'is_internal' => $isInternal,
+                ]);
+
+                foreach ($storedAttachments as $storedAttachment) {
+                    $upload = $storedAttachment['upload'];
+                    $comment->attachments()->create([
+                        'ticket_id' => $ticket->id,
+                        'uploaded_by' => $request->user()->id,
+                        'original_name' => $upload->getClientOriginalName(),
+                        'disk' => 'private',
+                        'path' => $storedAttachment['path'],
+                        'mime_type' => $upload->getMimeType(),
+                        'size_bytes' => $upload->getSize(),
+                    ]);
+                }
+
+                TicketEvent::create([
                     'ticket_id' => $ticket->id,
                     'actor_id' => $request->user()->id,
-                    'type' => 'reply',
-                    'title' => 'New ticket reply',
-                    'message' => "{$ticket->ticket_number} · {$ticket->subject}",
+                    'event' => $isInternal ? 'internal_note_added' : 'comment_added',
+                    'description' => $isInternal
+                        ? "{$request->user()->name} added an internal note."
+                        : "{$request->user()->name} replied to the requester.",
                 ]);
+
+                if (! $isInternal && $ticket->assigned_to_user_id && $ticket->assigned_to_user_id !== $request->user()->id) {
+                    WorkspaceNotification::create([
+                        'user_id' => $ticket->assigned_to_user_id,
+                        'ticket_id' => $ticket->id,
+                        'actor_id' => $request->user()->id,
+                        'type' => 'reply',
+                        'title' => 'New ticket reply',
+                        'message' => "{$ticket->ticket_number} · {$ticket->subject}",
+                    ]);
+                }
+            });
+        } catch (Throwable $exception) {
+            foreach ($storedAttachments as $storedAttachment) {
+                Storage::disk('private')->delete($storedAttachment['path']);
             }
-        });
+
+            throw $exception;
+        }
 
         return to_route('staff.ticket-detail', $ticket)->with('status', 'Reply added successfully.');
     }

@@ -69,7 +69,10 @@ class StaffDashboardTest extends TestCase
         $this->actingAs($staff)
             ->get(route('staff.ticket-detail', $ticket))
             ->assertOk()
-            ->assertSee('Problem description');
+            ->assertSee('Problem description')
+            ->assertSeeInOrder(['Report client', 'Time tracking'])
+            ->assertSee('<details class="workspace-card ticket-collapsible-card client-report-card"', false)
+            ->assertSee('<details class="workspace-card ticket-collapsible-card ticket-timing-card"', false);
     }
 
     public function test_staff_profile_displays_the_authenticated_account_details(): void

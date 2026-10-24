@@ -67,21 +67,25 @@
                 <span class="field-text">Message:<span class="required-mark">*</span></span>
                 <textarea id="ticket-message" name="message" rows="6" maxlength="500" placeholder="Hello, I’m having trouble signing in to my student portal. I see an error after entering my password. Please help me resolve this. Thank you." data-message-counter required>{{ old('message') }}</textarea>
                 <small class="field-hint">Write like an email: explain what happened and what help you need.</small>
+                <small class="message-counter" aria-live="polite"><span data-message-count>0</span> / 500 characters</small>
             </label>
 
             <div class="field-label attachment-label">
-                <span class="field-text">Attachment:</span>
-                <label class="attachment-box" for="ticket-attachment">
-                    <input id="ticket-attachment" name="attachment" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
+                <div class="attachment-heading">
+                    <span class="field-text">Attachments:</span>
+                    <small id="ticket-attachment-count" class="attachment-count" data-attachment-count aria-live="polite"><span>0</span> / 5 files selected</small>
+                </div>
+                <label class="attachment-box" for="ticket-attachments">
+                    <input id="ticket-attachments" name="attachment[]" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple aria-describedby="ticket-attachment-help ticket-attachment-count ticket-attachment-limit ticket-attachment-list">
                     <span class="attachment-inner">
                         <span class="attachment-icon">+</span>
-                        <span>Choose a file or drop it here</span>
+                        <span>Choose files or drop them here</span>
                     </span>
                 </label>
-                <small class="attachment-help">PDF, JPG, PNG, DOC, or DOCX. Maximum file size: 5 MB.</small>
+                <small id="ticket-attachment-help" class="attachment-help">Attach up to 5 PDF, JPG, PNG, DOC, or DOCX files. Each file may be up to 5 MB.</small>
+                <small id="ticket-attachment-limit" class="attachment-limit-message" data-attachment-limit-message role="status" hidden></small>
+                <ul id="ticket-attachment-list" class="attachment-list" data-attachment-list aria-live="polite" aria-relevant="additions removals"></ul>
             </div>
-
-            <div class="message-counter" aria-live="polite"><span data-message-count>0</span> / 500 characters</div>
 
             <button type="submit" class="submit-ticket-button">Submit Ticket</button>
         </form>

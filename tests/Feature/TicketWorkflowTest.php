@@ -30,6 +30,10 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('Urgent — Critical issue')
             ->assertSee('Low — General question')
             ->assertSee('value="Low" selected', false)
+            ->assertSee('name="attachment[]"', false)
+            ->assertSee('0</span> / 5 files selected', false)
+            ->assertSee('Attach up to 5')
+            ->assertSee('multiple', false)
             ->assertDontSee('name="department_id"', false)
             ->assertDontSee('name="category_id"', false);
 
@@ -42,7 +46,7 @@ class TicketWorkflowTest extends TestCase
         $this->assertSame(false, Schema::hasColumn('tickets', 'category_id'));
     }
 
-    public function test_guest_submission_creates_a_ticket_and_private_attachment(): void
+    public function test_guest_submission_creates_a_ticket_with_private_attachments(): void
     {
         Storage::fake('private');
 
@@ -53,7 +57,13 @@ class TicketWorkflowTest extends TestCase
             'phone' => '09171234567',
             'subject' => 'Cannot access Bluebook',
             'message' => 'The course page returns an error.',
-            'attachment' => UploadedFile::fake()->create('proof.pdf', 50, 'application/pdf'),
+            'attachment' => [
+                UploadedFile::fake()->create('proof.pdf', 50, 'application/pdf'),
+                UploadedFile::fake()->create('screenshot.jpg', 50, 'image/jpeg'),
+                UploadedFile::fake()->create('notes.doc', 50, 'application/msword'),
+                UploadedFile::fake()->create('report.docx', 50, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+                UploadedFile::fake()->create('image.png', 50, 'image/png'),
+            ],
         ]);
 
         $response->assertRedirect(route('ticket.submitted'));
@@ -65,7 +75,10 @@ class TicketWorkflowTest extends TestCase
             'priority' => 'Low',
             'status' => 'New',
         ]);
-        Storage::disk('private')->assertExists($ticket->attachments->firstOrFail()->path);
+        $this->assertCount(5, $ticket->attachments);
+        foreach ($ticket->attachments as $attachment) {
+            Storage::disk('private')->assertExists($attachment->path);
+        }
 
         $this->get(route('ticket.submitted'))
             ->assertOk()
@@ -74,6 +87,60 @@ class TicketWorkflowTest extends TestCase
             ->assertSee($ticket->ticket_number)
             ->assertSee($ticket->created_at->format('F j, Y g:i A'))
             ->assertSee('Check Ticket Status');
+    }
+
+    public function test_invalid_attachment_in_a_multiple_file_submission_is_reported_by_file_index(): void
+    {
+        Storage::fake('private');
+
+        $this->from(route('ticket.create'))
+            ->post(route('ticket.store'), [
+                'name' => 'Jamie Student',
+                'student_id' => 'PCU-2026-001',
+                'email' => 'jamie@example.edu',
+                'subject' => 'Cannot access Bluebook',
+                'message' => 'The course page returns an error.',
+                'attachment' => [
+                    UploadedFile::fake()->create('proof.pdf', 50, 'application/pdf'),
+                    UploadedFile::fake()->create('too-large.pdf', 5121, 'application/pdf'),
+                ],
+            ])
+            ->assertRedirect(route('ticket.create'))
+            ->assertSessionHasErrors([
+                'attachment.1' => 'File 2 must not exceed 5 MB.',
+            ]);
+
+        $this->assertDatabaseCount('tickets', 0);
+        Storage::disk('private')->assertDirectoryEmpty('ticket-attachments');
+    }
+
+    public function test_submission_rejects_more_than_five_attachments(): void
+    {
+        Storage::fake('private');
+
+        $this->from(route('ticket.create'))
+            ->post(route('ticket.store'), [
+                'name' => 'Jamie Student',
+                'student_id' => 'PCU-2026-001',
+                'email' => 'jamie@example.edu',
+                'subject' => 'Cannot access Bluebook',
+                'message' => 'The course page returns an error.',
+                'attachment' => [
+                    UploadedFile::fake()->create('one.pdf', 50, 'application/pdf'),
+                    UploadedFile::fake()->create('two.pdf', 50, 'application/pdf'),
+                    UploadedFile::fake()->create('three.pdf', 50, 'application/pdf'),
+                    UploadedFile::fake()->create('four.pdf', 50, 'application/pdf'),
+                    UploadedFile::fake()->create('five.pdf', 50, 'application/pdf'),
+                    UploadedFile::fake()->create('six.pdf', 50, 'application/pdf'),
+                ],
+            ])
+            ->assertRedirect(route('ticket.create'))
+            ->assertSessionHasErrors([
+                'attachment' => 'You can attach up to 5 files to a ticket.',
+            ]);
+
+        $this->assertDatabaseCount('tickets', 0);
+        Storage::disk('private')->assertDirectoryEmpty('ticket-attachments');
     }
 
     public function test_guest_can_submit_a_ticket_with_urgent_priority(): void
@@ -257,7 +324,11 @@ class TicketWorkflowTest extends TestCase
         $this->post(route('ticket.lookup'), [
             'ticket' => $ticket->ticket_number,
             'email' => 'jamie@example.edu',
-        ])->assertOk();
+        ])
+            ->assertOk()
+            ->assertSee('enctype="multipart/form-data"', false)
+            ->assertSee('name="attachment[]"', false)
+            ->assertSee('Attach up to 5 files per reply.');
 
         $this->post(route('ticket.reply'), [
             'ticket' => $ticket->ticket_number,
@@ -285,6 +356,132 @@ class TicketWorkflowTest extends TestCase
         $this->get(route('ticket.check'))
             ->assertOk()
             ->assertSee('I still cannot sign in.');
+    }
+
+    public function test_client_can_attach_multiple_files_to_a_reply_and_preview_them_in_the_conversation(): void
+    {
+        Storage::fake('private');
+        $staff = User::factory()->create(['role' => 'staff']);
+        $ticket = $this->createTicket();
+
+        $this->get(route('ticket.attachments.preview', 1))->assertNotFound();
+
+        $this->post(route('ticket.lookup'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ])->assertOk();
+
+        $this->post(route('ticket.reply'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+            'body' => 'Here are the screenshots and error details.',
+            'attachment' => [
+                UploadedFile::fake()->create('error-screen.png', 20, 'image/png'),
+                UploadedFile::fake()->create('diagnostic.pdf', 20, 'application/pdf'),
+            ],
+        ])->assertRedirect(route('ticket.check'));
+
+        $comment = $ticket->comments()->with('attachments')->firstOrFail();
+        $this->assertCount(2, $comment->attachments);
+        foreach ($comment->attachments as $attachment) {
+            Storage::disk('private')->assertExists($attachment->path);
+            $this->assertSame($comment->id, $attachment->comment_id);
+        }
+
+        $image = $comment->attachments->firstWhere('original_name', 'error-screen.png');
+        $this->post(route('ticket.view.close'))->assertRedirect(route('ticket.check'));
+        $this->get(route('ticket.attachments.preview', $image))->assertNotFound();
+
+        $this->post(route('ticket.lookup'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ])->assertOk();
+
+        $this->get(route('ticket.attachments.preview', $image))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+
+        $this->get(route('ticket.check'))
+            ->assertOk()
+            ->assertSee('Here are the screenshots and error details.')
+            ->assertSee('error-screen.png')
+            ->assertSee('diagnostic.pdf')
+            ->assertSee('data-image-preview', false)
+            ->assertSee('data-attachment-preview-dialog', false);
+
+        $this->actingAs($staff)
+            ->get(route('staff.ticket-detail', $ticket))
+            ->assertOk()
+            ->assertSee('error-screen.png')
+            ->assertSee('diagnostic.pdf');
+    }
+
+    public function test_client_reply_rejects_more_than_five_attachments(): void
+    {
+        Storage::fake('private');
+        $ticket = $this->createTicket();
+
+        $this->post(route('ticket.lookup'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ])->assertOk();
+
+        $this->from(route('ticket.check'))
+            ->post(route('ticket.reply'), [
+                'ticket' => $ticket->ticket_number,
+                'email' => 'jamie@example.edu',
+                'body' => 'Uploading too many files.',
+                'attachment' => array_map(
+                    fn (int $index) => UploadedFile::fake()->create("screen-{$index}.png", 20, 'image/png'),
+                    range(1, 6),
+                ),
+            ])
+            ->assertRedirect(route('ticket.check'))
+            ->assertSessionHasErrors('attachment');
+
+        $this->assertDatabaseCount('ticket_comments', 0);
+        Storage::disk('private')->assertDirectoryEmpty('ticket-attachments');
+    }
+
+    public function test_client_cannot_view_or_download_internal_note_attachments(): void
+    {
+        Storage::fake('private');
+        $staff = User::factory()->create(['role' => 'staff']);
+        $ticket = $this->createTicket();
+        Storage::disk('private')->put('ticket-attachments/internal.png', 'private image content');
+        $comment = $ticket->comments()->create([
+            'author_id' => $staff->id,
+            'author_name' => $staff->name,
+            'body' => 'Internal review only.',
+            'is_internal' => true,
+        ]);
+        $attachment = TicketAttachment::create([
+            'ticket_id' => $ticket->id,
+            'comment_id' => $comment->id,
+            'uploaded_by' => $staff->id,
+            'original_name' => 'internal.png',
+            'disk' => 'private',
+            'path' => 'ticket-attachments/internal.png',
+            'mime_type' => 'image/png',
+            'size_bytes' => 21,
+        ]);
+
+        $this->post(route('ticket.lookup'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ])->assertOk();
+
+        $this->get(route('ticket.check'))
+            ->assertOk()
+            ->assertDontSee('Internal review only.')
+            ->assertDontSee('internal.png');
+
+        $this->get(route('ticket.attachments.preview', $attachment))->assertNotFound();
+        $this->post(route('ticket.attachments.download', $attachment), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ])->assertNotFound();
     }
 
     public function test_client_reply_reopens_a_closed_ticket_and_clears_resolution_time(): void
