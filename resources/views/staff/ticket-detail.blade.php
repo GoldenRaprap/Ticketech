@@ -147,7 +147,7 @@
                         <label class="workspace-field"><span>Assigned to</span><select name="assigned_to_user_id">
                             <option value="">Unassigned</option>
                             @foreach ($staffUsers as $staffUser)
-                                <option value="{{ $staffUser->id }}" @selected((string) old('assigned_to_user_id', $ticket->assigned_to_user_id) === (string) $staffUser->id)>{{ $staffUser->name }}</option>
+                                <option value="{{ $staffUser->id }}" @selected((string) old('assigned_to_user_id', $ticket->assigned_to_user_id) === (string) $staffUser->id)>{{ $staffUser->displayName() }}</option>
                             @endforeach
                         </select></label>
                     </div>
