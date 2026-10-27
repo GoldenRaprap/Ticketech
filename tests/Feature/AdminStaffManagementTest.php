@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Ticket;
 use App\Models\User;
-use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
@@ -13,23 +12,16 @@ class AdminStaffManagementTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_can_add_staff_and_send_a_password_setup_link(): void
+    public function test_admin_cannot_create_staff_accounts_from_the_user_directory(): void
     {
-        Notification::fake();
         $admin = User::factory()->create(['role' => 'admin']);
 
-        $response = $this->actingAs($admin)->post(route('admin.users.store'), [
+        $this->actingAs($admin)->post('/admin/users', [
             'name' => 'New Hire',
             'email' => 'new.hire@pcu.edu.ph',
-        ]);
+        ])->assertMethodNotAllowed();
 
-        $response->assertRedirect(route('admin.users'))
-            ->assertSessionHas('status', 'Staff account created. A password setup link was sent to new.hire@pcu.edu.ph.');
-        $staff = User::query()->where('email', 'new.hire@pcu.edu.ph')->firstOrFail();
-        $this->assertModelExists($staff);
-        $this->assertSame('staff', $staff->role);
-        $this->assertSame('active', $staff->employment_status);
-        Notification::assertSentTo($staff, ResetPassword::class);
+        $this->assertDatabaseMissing('users', ['email' => 'new.hire@pcu.edu.ph']);
     }
 
     public function test_admin_can_update_staff_and_reactivate_after_departure(): void
@@ -94,10 +86,10 @@ class AdminStaffManagementTest extends TestCase
         $staff = User::factory()->create(['role' => 'staff']);
         $anotherStaff = User::factory()->create(['role' => 'staff']);
 
-        $this->actingAs($staff)->post(route('admin.users.store'), [
+        $this->actingAs($staff)->post('/admin/users', [
             'name' => 'Unauthorized User',
             'email' => 'unauthorized@pcu.edu.ph',
-        ])->assertForbidden();
+        ])->assertMethodNotAllowed();
 
         $this->actingAs($staff)->put(route('admin.users.update', $anotherStaff), [
             'staff' => [
@@ -113,18 +105,15 @@ class AdminStaffManagementTest extends TestCase
         $this->assertSame('active', $anotherStaff->refresh()->employment_status);
     }
 
-    public function test_account_creation_rejects_duplicate_emails(): void
+    public function test_empty_pending_approvals_are_collapsed_after_the_staff_directory(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        User::factory()->create(['email' => 'existing@pcu.edu.ph', 'role' => 'staff']);
 
-        $this->actingAs($admin)->from(route('admin.users'))->post(route('admin.users.store'), [
-            'name' => 'Duplicate Account',
-            'email' => 'existing@pcu.edu.ph',
-        ])->assertRedirect(route('admin.users'))
-            ->assertSessionHasErrors('email');
-
-        $this->assertSame(1, User::query()->where('email', 'existing@pcu.edu.ph')->count());
+        $this->actingAs($admin)->get(route('admin.users'))
+            ->assertOk()
+            ->assertSee('<details class="admin-pending-empty">', false)
+            ->assertDontSee('<details class="admin-pending-empty" open>', false)
+            ->assertSeeInOrder(['Manage staff access', 'Pending staff approvals', 'No pending staff applications']);
     }
 
     public function test_admin_user_directory_lists_real_staff_and_filters_by_employment_status(): void
@@ -141,7 +130,7 @@ class AdminStaffManagementTest extends TestCase
             ->assertOk()
             ->assertSee($retiredStaff->name)
             ->assertDontSee($activeStaff->name)
-            ->assertSee('Add a staff member')
+            ->assertDontSee('Add a staff member')
             ->assertSee('Terminated');
     }
 

@@ -6,6 +6,7 @@ use App\Mail\ClientConductWarning;
 use App\Models\ClientModeration;
 use App\Models\TicketEvent;
 use App\Models\TicketMisuseReport;
+use App\Services\AuditActivityLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -34,15 +35,18 @@ class AdminModerationController extends Controller
         ]);
     }
 
-    public function review(Request $request, TicketMisuseReport $report): RedirectResponse
-    {
+    public function review(
+        Request $request,
+        TicketMisuseReport $report,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
         $validated = $request->validate([
             'action' => ['required', 'in:warn,block,dismiss'],
         ]);
 
         $email = Str::lower(trim($report->ticket->requester_email));
 
-        DB::transaction(function () use ($request, $report, $validated, $email): void {
+        DB::transaction(function () use ($request, $report, $validated, $email, $auditLogger): void {
             $report = TicketMisuseReport::query()
                 ->whereKey($report->id)
                 ->lockForUpdate()
@@ -93,6 +97,13 @@ class AdminModerationController extends Controller
                     default => 'Administrator dismissed the client conduct report.',
                 },
             ]);
+            $auditLogger->record(
+                $request,
+                'client_moderation_reviewed',
+                'Reviewed a client conduct report.',
+                $report,
+                ['action' => $validated['action']],
+            );
         });
 
         if ($validated['action'] === 'warn') {
@@ -102,9 +113,12 @@ class AdminModerationController extends Controller
         return to_route('admin.moderation')->with('status', 'Client report review saved.');
     }
 
-    public function clear(ClientModeration $clientModeration): RedirectResponse
-    {
-        DB::transaction(function () use ($clientModeration): void {
+    public function clear(
+        Request $request,
+        ClientModeration $clientModeration,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
+        DB::transaction(function () use ($request, $clientModeration, $auditLogger): void {
             $clientModeration = ClientModeration::query()
                 ->whereKey($clientModeration->id)
                 ->lockForUpdate()
@@ -112,6 +126,13 @@ class AdminModerationController extends Controller
             abort_if($clientModeration->cleared_at !== null, 404);
 
             $clientModeration->update(['cleared_at' => now()]);
+            $auditLogger->record(
+                $request,
+                'client_moderation_cleared',
+                'Cleared a client warning or block.',
+                $clientModeration,
+                ['status' => $clientModeration->status],
+            );
         });
 
         return to_route('admin.moderation')->with('status', 'Client warning or block cleared.');

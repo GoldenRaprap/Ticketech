@@ -28,7 +28,7 @@
 
             <label class="field-label" for="ticket-name">
                 <span class="field-text">Name:<span class="required-mark">*</span></span>
-                <input id="ticket-name" name="name" type="text" value="{{ old('name') }}" placeholder="Firstname Lastname" autocomplete="name" required>
+                <input id="ticket-name" name="name" type="text" value="{{ old('name') }}" placeholder="e.g. James Smith" autocomplete="name" required>
             </label>
 
             <label class="field-label" for="ticket-student-id">

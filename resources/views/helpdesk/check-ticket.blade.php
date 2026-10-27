@@ -64,6 +64,16 @@
                     {{ session('ticket_reply_status') }}
                 </p>
             @endif
+            @if (session('ticket_reply_error'))
+                <aside class="ticket-status-notice" role="alert">{{ session('ticket_reply_error') }}</aside>
+            @endif
+
+            @if ($ticket->status === 'Closed')
+                <aside class="ticket-status-notice" role="status">
+                    <p><strong>This ticket is closed.</strong></p>
+                    <p>Closed tickets no longer accept replies or attachments. If the problem persists, please <a href="{{ route('ticket.create') }}">submit a new ticket</a>.</p>
+                </aside>
+            @endif
 
             <section class="ticket-lookup-result ticket-view" aria-label="Ticket details">
                 <header class="ticket-view-header">
@@ -71,6 +81,21 @@
                         <span class="ticket-view-eyebrow">Your support request</span>
                         <div class="ticket-view-actions">
                             <span class="ticket-view-number">{{ $ticket->ticket_number }}</span>
+                            <div class="ticket-document-actions">
+                                <form action="{{ route('ticket.download') }}" method="post" target="_blank">
+                                    @csrf
+                                    <input type="hidden" name="ticket" value="{{ $lookupTicketNumber }}">
+                                    <input type="hidden" name="email" value="{{ $lookupEmail }}">
+                                    <input type="hidden" name="print" value="1">
+                                    <button class="ticket-document-button" type="submit">Print ticket</button>
+                                </form>
+                                <form action="{{ route('ticket.download') }}" method="post">
+                                    @csrf
+                                    <input type="hidden" name="ticket" value="{{ $lookupTicketNumber }}">
+                                    <input type="hidden" name="email" value="{{ $lookupEmail }}">
+                                    <button class="ticket-document-button" type="submit">Download ticket</button>
+                                </form>
+                            </div>
                             <form action="{{ route('ticket.view.close') }}" method="post">
                                 @csrf
                                 <button class="ticket-view-close-button" type="submit" aria-label="Close ticket view and hide these details">
@@ -80,7 +105,7 @@
                         </div>
                     </div>
                     <h1>{{ $ticket->subject }}</h1>
-                    <p class="ticket-view-created">Submitted {{ $ticket->created_at->format('F j, Y \a\t g:i A') }}</p>
+                    <p class="ticket-view-created">Submitted {{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('F j, Y \a\t g:i A') }}</p>
                 </header>
 
                 <dl class="ticket-view-summary">
@@ -114,7 +139,7 @@
                                 <div class="ticket-message-meta">
                                     <strong>{{ $ticket->requester_name }}</strong>
                                     <span>Original request</span>
-                                    <time datetime="{{ $ticket->created_at->toIso8601String() }}">{{ $ticket->created_at->format('M j, Y g:i A') }}</time>
+                                    <time datetime="{{ $ticket->created_at->toIso8601String() }}">{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</time>
                                 </div>
                                 <p>{{ $ticket->description }}</p>
                                 @include('partials.message-attachments', [
@@ -143,7 +168,7 @@
                                     <div class="ticket-message-meta">
                                         <strong>{{ $publicAuthorName }}</strong>
                                         <span>{{ $isRequesterComment ? 'Your reply' : 'Support team' }}</span>
-                                        <time datetime="{{ $comment->created_at->toIso8601String() }}">{{ $comment->created_at->format('M j, Y g:i A') }}</time>
+                                        <time datetime="{{ $comment->created_at->toIso8601String() }}">{{ $comment->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</time>
                                     </div>
                                     <p>{{ $comment->body }}</p>
                                     @include('partials.message-attachments', [
@@ -161,13 +186,14 @@
                 </section>
                 @include('partials.image-preview-dialog')
 
-                @if (in_array($ticket->status, ['Resolved', 'Closed'], true))
+                @if ($ticket->status === 'Resolved')
                     <aside class="ticket-status-notice" role="status">
                         <p><strong>This ticket is currently marked: {{ $ticket->status }}.</strong></p>
                         <p>Only reply if the issue is still happening or comes up again. Your reply will reopen this ticket so PCU IT Support can assist further.</p>
                     </aside>
                 @endif
 
+                @if ($ticket->status !== 'Closed')
                 <section class="ticket-reply-panel" aria-labelledby="client-ticket-reply-heading">
                     <div class="ticket-reply-panel-heading">
                         <span class="ticket-reply-icon" aria-hidden="true">↩</span>
@@ -213,22 +239,8 @@
                         </div>
                     </form>
                 </section>
+                @endif
 
-                <details class="ticket-change-lookup">
-                    <summary>Need to check a different ticket?</summary>
-                    <form class="lookup-form" action="{{ route('ticket.lookup') }}" method="post">
-                        @csrf
-                        <label class="field-label" for="ticket-number">
-                            <span>Ticket number:<b>*</b></span>
-                            <input id="ticket-number" name="ticket" type="text" placeholder="e.g. ED-2026-000123" autocapitalize="characters" autocomplete="off" required>
-                        </label>
-                        <label class="field-label" for="lookup-email">
-                            <span>Email:<b>*</b></span>
-                            <input id="lookup-email" type="email" name="email" value="{{ $rememberedEmail }}" autocomplete="email" required>
-                        </label>
-                        <button type="submit" class="view-ticket-button">View ticket</button>
-                    </form>
-                </details>
             </section>
         @endif
     </div>

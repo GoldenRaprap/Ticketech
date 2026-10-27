@@ -37,7 +37,11 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_ticket_queue_filters_by_status_priority_and_assignee(): void
     {
         $staff = User::factory()->create(['role' => 'staff']);
-        $assignee = User::factory()->create(['role' => 'staff']);
+        $assignee = User::factory()->create([
+            'name' => 'Jordan Lee',
+            'nickname' => 'Jo',
+            'role' => 'staff',
+        ]);
         $matchingTicket = $this->createTicket('ED-2026-000311', 'Matching ticket', $assignee->id, 'High', 'In Progress');
         $this->createTicket('ED-2026-000312', 'Wrong status', $assignee->id, 'High', 'New');
         $this->createTicket('ED-2026-000313', 'Unassigned ticket', null, 'High', 'In Progress');
@@ -49,9 +53,13 @@ class StaffWorkspaceFunctionalityTest extends TestCase
                 'assignee' => (string) $assignee->id,
             ]))
             ->assertOk()
+            ->assertSee('data-auto-submit-on-change', false)
+            ->assertDontSee('Apply filters')
             ->assertSee($matchingTicket->ticket_number)
             ->assertDontSee('ED-2026-000312')
-            ->assertDontSee('ED-2026-000313');
+            ->assertDontSee('ED-2026-000313')
+            ->assertSee('>Jo</option>', false)
+            ->assertDontSee('>Jordan Lee</option>', false);
     }
 
     public function test_staff_can_update_ticket_status_priority_and_assignee(): void
@@ -83,6 +91,79 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             'ticket_id' => $ticket->id,
             'type' => 'assignment',
         ]);
+    }
+
+    public function test_ticket_assignment_options_only_include_approved_active_staff(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+        $approvedStaff = User::factory()->create([
+            'name' => 'Taylor Morgan',
+            'nickname' => 'Tay',
+            'role' => 'staff',
+            'staff_approval_status' => 'approved',
+        ]);
+        $pendingStaff = User::factory()->create([
+            'role' => 'staff',
+            'staff_approval_status' => 'pending',
+        ]);
+        $deniedStaff = User::factory()->create([
+            'role' => 'staff',
+            'staff_approval_status' => 'denied',
+        ]);
+        $ticket = $this->createTicket('ED-2026-000319', 'Assignment options ticket');
+
+        $expectedAssigneeIds = [$staff->id, $approvedStaff->id];
+        sort($expectedAssigneeIds);
+
+        $this->actingAs($staff)
+            ->get(route('staff.tickets'))
+            ->assertOk()
+            ->assertViewHas('assignees', function ($assignees) use ($expectedAssigneeIds): bool {
+                $actualIds = $assignees->modelKeys();
+                sort($actualIds);
+
+                return $actualIds === $expectedAssigneeIds;
+            })
+            ->assertSee('>Tay</option>', false)
+            ->assertDontSee('>Taylor Morgan</option>', false);
+
+        $this->get(route('staff.ticket-detail', $ticket))
+            ->assertOk()
+            ->assertViewHas('staffUsers', function ($staffUsers) use ($staff, $approvedStaff): bool {
+                $expectedIds = [$staff->id, $approvedStaff->id];
+                $actualIds = $staffUsers->modelKeys();
+                sort($expectedIds);
+                sort($actualIds);
+
+                return $actualIds === $expectedIds;
+            })
+            ->assertSee('>Tay</option>', false)
+            ->assertDontSee('>Taylor Morgan</option>', false)
+            ->assertDontSee($pendingStaff->name)
+            ->assertDontSee($deniedStaff->name);
+    }
+
+    public function test_staff_cannot_assign_a_ticket_to_a_denied_staff_account(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+        $deniedStaff = User::factory()->create([
+            'role' => 'staff',
+            'staff_approval_status' => 'denied',
+        ]);
+        $ticket = $this->createTicket('ED-2026-000320', 'Denied assignee ticket');
+
+        $this->actingAs($staff)
+            ->from(route('staff.ticket-detail', $ticket))
+            ->put(route('staff.ticket-update', $ticket), [
+                'status' => 'In Progress',
+                'priority' => 'High',
+                'assigned_to_user_id' => $deniedStaff->id,
+            ])
+            ->assertRedirect(route('staff.ticket-detail', $ticket))
+            ->assertSessionHasErrors('assigned_to_user_id');
+
+        $this->assertNull($ticket->fresh()->assigned_to_user_id);
+        $this->assertDatabaseMissing('ticket_events', ['ticket_id' => $ticket->id]);
     }
 
     public function test_ticket_update_preserves_assignee_when_field_is_omitted(): void
@@ -361,7 +442,12 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertSessionHasErrors('assigned_to_user_id');
 
         $this->assertSame('New', $ticket->fresh()->status);
-        $this->assertDatabaseCount('ticket_events', 0);
+        $this->assertDatabaseMissing('ticket_events', ['ticket_id' => $ticket->id]);
+        $this->assertDatabaseHas('ticket_events', [
+            'actor_id' => $staff->id,
+            'event' => 'staff_action_performed',
+            'route_name' => 'staff.ticket-update',
+        ]);
     }
 
     public function test_staff_can_add_internal_ticket_notes_without_assignment_notification(): void
@@ -585,7 +671,11 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_admin_audit_logs_show_real_ticket_events_and_filter_them(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = User::factory()->create([
+            'name' => 'Taylor Morgan',
+            'nickname' => 'Tay',
+            'role' => 'staff',
+        ]);
         $ticket = $this->createTicket('ED-2026-000322', 'Audit log target');
         $otherTicket = $this->createTicket('ED-2026-000323', 'Filtered audit event');
         $event = $ticket->events()->create([
@@ -609,6 +699,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertSee($ticket->ticket_number)
             ->assertSee('Status changed from New to In Progress.')
             ->assertSee($staff->name)
+            ->assertSee('<option value="'.$staff->id.'" selected>Tay</option>', false)
             ->assertSee(route('staff.ticket-detail', $ticket), false)
             ->assertDontSee($otherTicket->ticket_number)
             ->assertDontSee('Priority changed to Urgent.')
@@ -703,6 +794,131 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertSessionHasErrors('email');
     }
 
+    public function test_staff_can_save_a_nickname_while_preserving_their_full_name(): void
+    {
+        $staff = User::factory()->create([
+            'name' => 'Taylor Morgan',
+            'role' => 'staff',
+        ]);
+
+        $this->actingAs($staff)
+            ->put(route('staff.profile.update'), [
+                'name' => 'Taylor Morgan',
+                'nickname' => 'Tay',
+                'email' => $staff->email,
+            ])
+            ->assertRedirect(route('staff.profile'));
+
+        $this->assertDatabaseHas('users', [
+            'id' => $staff->id,
+            'name' => 'Taylor Morgan',
+            'nickname' => 'Tay',
+        ]);
+
+        $this->actingAs($staff->fresh())
+            ->get(route('staff.profile'))
+            ->assertOk()
+            ->assertSee('<h2>Tay</h2>', false)
+            ->assertSee('Full name: Taylor Morgan')
+            ->assertSee('value="Tay"', false);
+
+        $this->actingAs($staff->fresh())
+            ->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertSee('>Tay</strong>', false);
+    }
+
+    public function test_nickname_must_not_exceed_80_characters(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+
+        $this->actingAs($staff)
+            ->from(route('staff.profile'))
+            ->put(route('staff.profile.update'), [
+                'name' => $staff->name,
+                'nickname' => str_repeat('a', 81),
+                'email' => $staff->email,
+            ])
+            ->assertRedirect(route('staff.profile'))
+            ->assertSessionHasErrors('nickname');
+
+        $this->assertNull($staff->fresh()->nickname);
+    }
+
+    public function test_staff_without_a_nickname_uses_their_full_name_for_display(): void
+    {
+        $staff = User::factory()->create([
+            'name' => 'Taylor Morgan',
+            'nickname' => null,
+            'role' => 'staff',
+        ]);
+
+        $this->actingAs($staff)
+            ->get(route('staff.profile'))
+            ->assertOk()
+            ->assertSee('<h2>Taylor Morgan</h2>', false)
+            ->assertDontSee('Full name: Taylor Morgan');
+    }
+
+    public function test_staff_can_upload_and_replace_their_profile_photo(): void
+    {
+        Storage::fake('public');
+        $staff = User::factory()->create(['role' => 'staff']);
+        $oldPhotoPath = Storage::disk('public')->putFile(
+            'profile-photos',
+            $this->fakeProfilePhoto('old-photo.png'),
+        );
+        $staff->forceFill(['profile_photo_path' => $oldPhotoPath])->save();
+
+        $this->actingAs($staff)
+            ->put(route('staff.profile.update'), [
+                'name' => $staff->name,
+                'email' => $staff->email,
+                'avatar' => $this->fakeProfilePhoto('new-photo.png'),
+            ])
+            ->assertRedirect(route('staff.profile'));
+
+        $newPhotoPath = $staff->fresh()->profile_photo_path;
+        $this->assertNotSame($oldPhotoPath, $newPhotoPath);
+        Storage::disk('public')->assertExists($newPhotoPath);
+        Storage::disk('public')->assertMissing($oldPhotoPath);
+
+        $this->actingAs($staff->fresh())
+            ->get(route('staff.profile'))
+            ->assertOk()
+            ->assertSee(asset('storage/'.$newPhotoPath), false);
+
+        $this->actingAs($staff->fresh())
+            ->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertSee(asset('storage/'.$newPhotoPath), false);
+    }
+
+    public function test_staff_profile_rejects_non_image_uploads_without_replacing_the_current_photo(): void
+    {
+        Storage::fake('public');
+        $staff = User::factory()->create(['role' => 'staff']);
+        $existingPhotoPath = Storage::disk('public')->putFile(
+            'profile-photos',
+            $this->fakeProfilePhoto('current-photo.png'),
+        );
+        $staff->forceFill(['profile_photo_path' => $existingPhotoPath])->save();
+
+        $this->actingAs($staff)
+            ->from(route('staff.profile'))
+            ->put(route('staff.profile.update'), [
+                'name' => $staff->name,
+                'email' => $staff->email,
+                'avatar' => UploadedFile::fake()->create('not-an-image.pdf', 20, 'application/pdf'),
+            ])
+            ->assertRedirect(route('staff.profile'))
+            ->assertSessionHasErrors('avatar');
+
+        $this->assertSame($existingPhotoPath, $staff->fresh()->profile_photo_path);
+        Storage::disk('public')->assertExists($existingPhotoPath);
+        $this->assertSame(1, count(Storage::disk('public')->allFiles('profile-photos')));
+    }
+
     private function createTicket(
         string $ticketNumber,
         string $subject,
@@ -721,5 +937,13 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             'priority' => $priority,
             'status' => $status,
         ]);
+    }
+
+    private function fakeProfilePhoto(string $filename): UploadedFile
+    {
+        return UploadedFile::fake()->createWithContent(
+            $filename,
+            file_get_contents(public_path('images/TickeTech_Logo_Transparent.png')),
+        );
     }
 }

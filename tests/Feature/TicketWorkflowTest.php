@@ -21,7 +21,7 @@ class TicketWorkflowTest extends TestCase
         $this->get(route('ticket.create'))
             ->assertOk()
             ->assertSee('No account is needed.')
-            ->assertSee('Firstname Lastname')
+            ->assertSee('e.g. James Smith')
             ->assertSee('Student or Employee ID:')
             ->assertSee('placeholder="2023******"', false)
             ->assertSee('example@pcu.edu.ph')
@@ -49,6 +49,8 @@ class TicketWorkflowTest extends TestCase
     public function test_guest_submission_creates_a_ticket_with_private_attachments(): void
     {
         Storage::fake('private');
+        config()->set('app.display_timezone', 'Asia/Manila');
+        $this->travelTo('2026-10-27 10:00:00');
 
         $response = $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
@@ -85,8 +87,86 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('class="help-scene ticket-submitted-page"', false)
             ->assertSee('Ticket Submitted')
             ->assertSee($ticket->ticket_number)
-            ->assertSee($ticket->created_at->format('F j, Y g:i A'))
+            ->assertSee('October 27, 2026 6:00 PM')
+            ->assertSee('name="print" value="1"', false)
+            ->assertSee('Print ticket')
+            ->assertSee('Download ticket')
             ->assertSee('Check Ticket Status');
+
+        $downloadResponse = $this->post(route('ticket.download'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ]);
+        $downloadResponse->assertOk()
+            ->assertHeader('Content-Disposition', 'attachment; filename="ticket-'.strtolower($ticket->ticket_number).'.html"')
+            ->assertSee('Cannot access Bluebook')
+            ->assertSee('October 27, 2026 6:00 PM')
+            ->assertSee('The course page returns an error.')
+            ->assertSee('Jamie Student');
+
+        $printResponse = $this->post(route('ticket.download'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+            'print' => '1',
+        ]);
+        $printResponse->assertOk()
+            ->assertSee('Cannot access Bluebook')
+            ->assertSee('October 27, 2026 6:00 PM')
+            ->assertSee('The course page returns an error.')
+            ->assertSee('Jamie Student')
+            ->assertSee('window.print()');
+        $this->assertFalse($printResponse->headers->has('Content-Disposition'));
+    }
+
+    public function test_client_can_download_a_ticket_with_only_their_verified_public_conversation(): void
+    {
+        $ticket = $this->createTicket();
+        $staff = User::factory()->create(['role' => 'staff']);
+        $ticket->comments()->create([
+            'author_id' => $staff->id,
+            'author_name' => 'PCU IT Support',
+            'body' => 'Visible support update.',
+            'is_internal' => false,
+        ]);
+        $ticket->comments()->create([
+            'author_id' => $staff->id,
+            'author_name' => 'PCU IT Support',
+            'body' => 'Internal note must not be downloaded.',
+            'is_internal' => true,
+        ]);
+
+        $this->post(route('ticket.lookup'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ])->assertOk()
+            ->assertSee($ticket->created_at->copy()->timezone('Asia/Manila')->format('F j, Y \a\t g:i A'))
+            ->assertSee('name="print" value="1"', false)
+            ->assertSee('Print ticket')
+            ->assertSee('Download ticket');
+
+        $downloadResponse = $this->post(route('ticket.download'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ]);
+        $downloadResponse->assertOk()
+            ->assertSee('Visible support update.')
+            ->assertDontSee('Internal note must not be downloaded.');
+
+        $printResponse = $this->post(route('ticket.download'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+            'print' => '1',
+        ]);
+        $printResponse->assertOk()
+            ->assertSee('Visible support update.')
+            ->assertDontSee('Internal note must not be downloaded.')
+            ->assertSee('window.print()');
+        $this->assertFalse($printResponse->headers->has('Content-Disposition'));
+
+        $this->post(route('ticket.download'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'wrong@example.edu',
+        ])->assertNotFound();
     }
 
     public function test_invalid_attachment_in_a_multiple_file_submission_is_reported_by_file_index(): void
@@ -264,7 +344,7 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('Have more to add?')
             ->assertDontSee('Only reply if the issue is still happening or comes up again.')
             ->assertSee('Type your reply to the PCU Helpdesk...')
-            ->assertSee('Need to check a different ticket?')
+            ->assertDontSee('Need to check a different ticket?')
             ->assertSee('<script>alert("xss")</script>')
             ->assertDontSee('<script>alert("xss")</script>', false)
             ->assertSee('Requester-visible progress update.')
@@ -281,13 +361,28 @@ class TicketWorkflowTest extends TestCase
         foreach (['Resolved', 'Closed'] as $status) {
             $ticket->update(['status' => $status]);
 
-            $this->post(route('ticket.lookup'), [
+            $response = $this->post(route('ticket.lookup'), [
                 'ticket' => $ticket->ticket_number,
                 'email' => 'jamie@example.edu',
-            ])->assertOk()
-                ->assertSee("This ticket is currently marked: {$status}.")
+            ])->assertOk();
+
+            if ($status === 'Closed') {
+                $response->assertSee('This ticket is closed.')
+                    ->assertSeeInOrder([
+                        'Closed tickets no longer accept replies or attachments.',
+                        'Your support request',
+                    ])
+                    ->assertSee('<a href="'.route('ticket.create').'">submit a new ticket</a>', false)
+                    ->assertDontSee('name="attachment[]"', false)
+                    ->assertDontSee('name="body"', false);
+
+                continue;
+            }
+
+            $response->assertSee("This ticket is currently marked: {$status}.")
                 ->assertSee('Only reply if the issue is still happening or comes up again.')
-                ->assertSee('Your reply will reopen this ticket so PCU IT Support can assist further.');
+                ->assertSee('Your reply will reopen this ticket so PCU IT Support can assist further.')
+                ->assertSee('name="attachment[]"', false);
         }
     }
 
@@ -484,30 +579,51 @@ class TicketWorkflowTest extends TestCase
         ])->assertNotFound();
     }
 
-    public function test_client_reply_reopens_a_closed_ticket_and_clears_resolution_time(): void
+    public function test_closed_ticket_rejects_client_replies_and_attachments(): void
     {
+        Storage::fake('private');
         $ticket = $this->createTicket();
+        $resolvedAt = now()->subDay();
         $ticket->update([
             'status' => 'Closed',
-            'resolved_at' => now()->subDay(),
+            'resolved_at' => $resolvedAt,
         ]);
+
+        $this->post(route('ticket.lookup'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ])->assertOk();
 
         $this->post(route('ticket.reply'), [
             'ticket' => $ticket->ticket_number,
             'email' => 'jamie@example.edu',
             'body' => 'The issue has happened again.',
-        ])->assertRedirect(route('ticket.check'));
+            'attachment' => [
+                UploadedFile::fake()->create('follow-up.pdf', 20, 'application/pdf'),
+            ],
+        ])->assertRedirect(route('ticket.check'))
+            ->assertSessionHas('ticket_reply_error', 'This ticket is closed and can no longer accept replies or attachments.');
 
-        $this->assertDatabaseHas('tickets', [
-            'id' => $ticket->id,
-            'status' => 'In Progress',
-            'resolved_at' => null,
-        ]);
-        $this->assertDatabaseHas('ticket_events', [
+        $ticket->refresh();
+        $this->assertSame('Closed', $ticket->status);
+        $this->assertSame($resolvedAt->toDateTimeString(), $ticket->resolved_at->toDateTimeString());
+        $this->assertDatabaseCount('ticket_comments', 0);
+        $this->assertDatabaseMissing('ticket_events', [
             'ticket_id' => $ticket->id,
-            'event' => 'status_changed',
-            'description' => 'Ticket reopened after a requester reply (Closed → In Progress).',
+            'event' => 'requester_reply',
         ]);
+        $this->assertDatabaseMissing('workspace_notifications', [
+            'ticket_id' => $ticket->id,
+            'type' => 'requester_reply',
+        ]);
+        $this->assertDatabaseCount('ticket_attachments', 0);
+        Storage::disk('private')->assertDirectoryEmpty('ticket-attachments');
+
+        $this->get(route('ticket.check'))
+            ->assertOk()
+            ->assertSee('Closed tickets no longer accept replies or attachments.')
+            ->assertDontSee('name="attachment[]"', false)
+            ->assertDontSee('name="body"', false);
     }
 
     public function test_client_reply_reopens_a_resolved_ticket_and_clears_resolution_time(): void

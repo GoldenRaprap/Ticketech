@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreKnowledgeArticleRequest;
 use App\Http\Requests\UpdateKnowledgeArticleRequest;
 use App\Models\KnowledgeArticle;
+use App\Services\AuditActivityLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -74,7 +75,7 @@ class KnowledgeArticleController extends Controller
         return view('staff.knowledge-article-form', ['article' => new KnowledgeArticle]);
     }
 
-    public function store(StoreKnowledgeArticleRequest $request): RedirectResponse
+    public function store(StoreKnowledgeArticleRequest $request, AuditActivityLogger $auditLogger): RedirectResponse
     {
         $data = $request->validated();
         $isPublished = (bool) ($data['is_published'] ?? false);
@@ -89,6 +90,19 @@ class KnowledgeArticleController extends Controller
             'is_published' => $isPublished,
             'published_at' => $isPublished ? now() : null,
         ]);
+        $auditLogger->record(
+            $request,
+            'knowledge_article_created',
+            "Created knowledge article {$article->title}.",
+            $article,
+            [
+                'after' => [
+                    'title' => $article->title,
+                    'category' => $article->category,
+                    'is_published' => $article->is_published,
+                ],
+            ],
+        );
 
         return to_route('staff.knowledge-base.edit', $article)->with('status', 'Article created successfully.');
     }
@@ -98,8 +112,16 @@ class KnowledgeArticleController extends Controller
         return view('staff.knowledge-article-form', compact('article'));
     }
 
-    public function update(UpdateKnowledgeArticleRequest $request, KnowledgeArticle $article): RedirectResponse
-    {
+    public function update(
+        UpdateKnowledgeArticleRequest $request,
+        KnowledgeArticle $article,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
+        $previousDetails = [
+            'title' => $article->title,
+            'category' => $article->category,
+            'is_published' => $article->is_published,
+        ];
         $data = $request->validated();
         $isPublished = (bool) ($data['is_published'] ?? false);
         $wasPublished = $article->is_published;
@@ -118,6 +140,20 @@ class KnowledgeArticleController extends Controller
         }
 
         $article->save();
+        $auditLogger->record(
+            $request,
+            'knowledge_article_updated',
+            "Updated knowledge article {$article->title}.",
+            $article,
+            [
+                'before' => $previousDetails,
+                'after' => [
+                    'title' => $article->title,
+                    'category' => $article->category,
+                    'is_published' => $article->is_published,
+                ],
+            ],
+        );
 
         $message = $wasPublished === $isPublished
             ? 'Article updated successfully.'
@@ -126,9 +162,25 @@ class KnowledgeArticleController extends Controller
         return to_route('staff.knowledge-base')->with('status', $message);
     }
 
-    public function destroy(KnowledgeArticle $article): RedirectResponse
-    {
+    public function destroy(
+        Request $request,
+        KnowledgeArticle $article,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
+        $title = $article->title;
+        $previousDetails = [
+            'title' => $article->title,
+            'category' => $article->category,
+            'is_published' => $article->is_published,
+        ];
         $article->delete();
+        $auditLogger->record(
+            $request,
+            'knowledge_article_deleted',
+            "Deleted knowledge article {$title}.",
+            $article,
+            ['before' => $previousDetails],
+        );
 
         return to_route('staff.knowledge-base')->with('status', 'Article deleted.');
     }

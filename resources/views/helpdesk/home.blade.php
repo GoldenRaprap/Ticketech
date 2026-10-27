@@ -41,17 +41,22 @@
             </a>
         </div>
 
-        <p class="home-note">No account needed. Submit a request or check its status using your ticket number and email.</p>
+        <p class="home-note">
+            No account needed. Submit a request or check its status using your ticket number and email.
+            @auth
+                @if (auth()->user()->isStaff())
+                    Staff sign-in is shared across this browser's tabs. Closing one tab will not sign out the others; use a separate browser profile or private window for another staff member.
+                @endif
+            @endauth
+        </p>
 
-        @guest
-            <a class="admin-link" href="{{ route('login') }}">Staff and administrator sign in</a>
-        @else
+        @auth
             @if (auth()->user()->isAdmin())
                 <a class="admin-link" href="{{ route('admin.dashboard') }}">Open Admin Console</a>
             @elseif (auth()->user()->isStaff())
                 <a class="admin-link" href="{{ route('staff.dashboard') }}">Open Staff Workspace</a>
             @endif
-        @endguest
+        @endauth
 
         @if ($recentTickets->isNotEmpty())
             <section class="home-recent-tickets" aria-label="Recent requests">

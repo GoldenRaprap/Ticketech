@@ -1,5 +1,8 @@
 <aside id="staff-sidebar" class="staff-sidebar" aria-label="{{ auth()->user()->isAdmin() ? 'Administrator' : 'Staff' }} navigation">
     <div class="sidebar-top">
+        <a class="sidebar-brand" href="{{ auth()->user()->isAdmin() ? route('admin.dashboard') : route('staff.dashboard') }}">
+            <img src="{{ asset('images/TickeTech_Logo_Transparent.png') }}" alt="Ticketech Edtech Support System">
+        </a>
         <button class="sidebar-toggle" type="button" aria-label="Expand sidebar" aria-controls="staff-sidebar" aria-expanded="false" data-sidebar-toggle>
             <span aria-hidden="true">☰</span>
         </button>
@@ -82,16 +85,26 @@
 
     <div class="sidebar-footer">
         <div class="user-mini">
-            <a class="user-mini-profile {{ request()->routeIs('staff.profile') ? 'active' : '' }}" href="{{ route('staff.profile') }}" aria-label="View profile" title="Profile">
-                <span class="user-mini-avatar">{{ strtoupper(substr(auth()->user()->name, 0, 1)) }}</span>
+            <a class="user-mini-profile {{ request()->routeIs('staff.profile') ? 'active' : '' }}" href="{{ route('staff.profile') }}" aria-label="View {{ auth()->user()->displayName() }}'s profile" title="Profile">
+                <span class="user-mini-avatar">
+                    @if (auth()->user()->profile_photo_path)
+                        <img src="{{ asset('storage/'.auth()->user()->profile_photo_path) }}" alt="">
+                    @else
+                        <span aria-hidden="true">{{ strtoupper(substr(auth()->user()->displayName(), 0, 1)) }}</span>
+                    @endif
+                </span>
                 <span class="user-mini-details">
-                    <strong>{{ auth()->user()->name }}</strong>
-                    <small>{{ auth()->user()->isAdmin() ? 'Administrator' : 'Helpdesk Staff' }}</small>
+                    <strong>{{ auth()->user()->displayName() }}</strong>
+                    <small>{{ auth()->user()->isAdmin() ? 'Admin Account' : 'Staff Account' }}</small>
                 </span>
             </a>
             <form class="sidebar-logout" action="{{ route('logout') }}" method="post">
                 @csrf
-                <button type="submit" aria-label="Sign out" title="Sign out">↗</button>
+                <button type="submit" aria-label="Sign out" title="Sign out">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M13.5 4.5h4A1.5 1.5 0 0 1 19 6v12a1.5 1.5 0 0 1-1.5 1.5h-4M10 8l4 4-4 4m4-4H4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
             </form>
         </div>
     </div>

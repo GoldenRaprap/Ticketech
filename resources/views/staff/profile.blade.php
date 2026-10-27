@@ -21,11 +21,22 @@
     <section class="profile-hero-card">
         <div class="profile-hero-pattern" aria-hidden="true"><span></span><span></span><span></span></div>
         <div class="profile-hero-content">
-            <span class="profile-large-avatar" aria-hidden="true">{{ strtoupper(substr($user->name, 0, 1)) }}</span>
+            <span class="profile-large-avatar">
+                @if ($user->profile_photo_path)
+                    <img src="{{ asset('storage/'.$user->profile_photo_path) }}" alt="{{ $user->name }} profile photo">
+                @else
+                    <span aria-hidden="true">{{ strtoupper(substr($user->displayName(), 0, 1)) }}</span>
+                @endif
+            </span>
             <div class="profile-hero-copy">
                 <span class="profile-role-badge">{{ $roleLabel }}</span>
-                <h2>{{ $user->name }}</h2>
-                <p>{{ $user->email }}</p>
+                <h2>{{ $user->displayName() }}</h2>
+                <p>
+                    @if (filled($user->nickname))
+                        Full name: {{ $user->name }} ·
+                    @endif
+                    {{ $user->email }}
+                </p>
             </div>
             <div class="profile-hero-meta"><small>Member since</small><strong>{{ $user->created_at->format('F Y') }}</strong></div>
         </div>
@@ -34,15 +45,23 @@
     <div class="profile-content-grid">
         <section class="workspace-card profile-information-card">
             <div class="workspace-card-heading">
-                <div><span class="workspace-eyebrow">Personal details</span><h2>Account information</h2><p>Update the name and email associated with your staff account.</p></div>
+                <div><span class="workspace-eyebrow">Personal details</span><h2>Account information</h2><p>Update your full name, nickname, and email.</p></div>
             </div>
             @if ($errors->any())
                 <div class="workspace-alert workspace-alert--error" role="alert"><strong>Unable to update profile:</strong><ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
             @endif
-            <form action="{{ route('staff.profile.update') }}" method="post" class="profile-edit-form">
+            <form action="{{ route('staff.profile.update') }}" method="post" class="profile-edit-form" enctype="multipart/form-data">
                 @csrf
                 @method('put')
+                <div class="profile-edit-field profile-photo-edit-field">
+                    <label for="profile-avatar"><span class="profile-detail-icon" aria-hidden="true">◉</span>Profile photo</label>
+                    <div class="profile-photo-input">
+                        <input id="profile-avatar" name="avatar" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" aria-describedby="profile-avatar-help">
+                        <small id="profile-avatar-help">Choose a JPG, PNG, or WebP image up to 2 MB.</small>
+                    </div>
+                </div>
                 <label class="profile-edit-field" for="profile-name"><span><span class="profile-detail-icon" aria-hidden="true">♙</span>Full name</span><input id="profile-name" name="name" value="{{ old('name', $user->name) }}" autocomplete="name" maxlength="255" required></label>
+                <label class="profile-edit-field" for="profile-nickname"><span><span class="profile-detail-icon" aria-hidden="true">✦</span>Nickname</span><input id="profile-nickname" name="nickname" value="{{ old('nickname', $user->nickname) }}" autocomplete="nickname" maxlength="80" placeholder="Optional"></label>
                 <label class="profile-edit-field" for="profile-email"><span><span class="profile-detail-icon" aria-hidden="true">@</span>Email address</span><input id="profile-email" name="email" type="email" value="{{ old('email', $user->email) }}" autocomplete="email" maxlength="255" required></label>
                 <div class="profile-detail-row"><dt><span class="profile-detail-icon" aria-hidden="true">▤</span>Account role</dt><dd><span class="profile-detail-role">{{ $roleLabel }}</span></dd></div>
                 <div class="profile-detail-row"><dt><span class="profile-detail-icon" aria-hidden="true">◷</span>Account created</dt><dd>{{ $user->created_at->format('F j, Y') }}</dd></div>

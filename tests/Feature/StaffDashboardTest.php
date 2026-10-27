@@ -23,6 +23,8 @@ class StaffDashboardTest extends TestCase
         $response->assertOk()
             ->assertSee('class="staff-shell sidebar-collapsed"', false)
             ->assertSee('Philippine_Christian_University_logo.png')
+            ->assertSee('images/TickeTech_Logo_Transparent.png')
+            ->assertSee('alt="Ticketech Edtech Support System"', false)
             ->assertSee('data-sidebar-toggle', false)
             ->assertSee('aria-controls="staff-sidebar"', false)
             ->assertSee('id="staff-sidebar"', false)
@@ -37,6 +39,9 @@ class StaffDashboardTest extends TestCase
             ->assertViewHas('newTicketCount', 1)
             ->assertViewHas('unassignedTicketCount', 1)
             ->assertViewHas('assignedToMeCount', 1)
+            ->assertSee('class="workspace-button workspace-button--secondary dashboard-view-all-button"', false)
+            ->assertSee('View all tickets')
+            ->assertDontSee('Open ticket queue')
             ->assertSee('ED-2026-000201')
             ->assertSee('ED-2026-000202')
             ->assertSee('ED-2026-000203');

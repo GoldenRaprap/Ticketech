@@ -22,7 +22,7 @@
         <div class="queue-toolbar-heading">
             <div><h2>All tickets</h2><p>Search requests or filter by status, priority, and assignee.</p></div>
         </div>
-        <form class="ticket-filters" action="{{ route('staff.tickets') }}" method="get">
+        <form class="ticket-filters" action="{{ route('staff.tickets') }}" method="get" data-auto-submit-on-change>
             <label class="ticket-search-field"><span class="sr-only">Search tickets</span><span aria-hidden="true">⌕</span><input name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search by ticket number, subject, or requester" aria-label="Search tickets"></label>
             <label><span class="sr-only">Filter by status</span><select name="status" aria-label="Filter by status">
                 <option value="">Status: All</option>
@@ -40,10 +40,9 @@
                 <option value="">Assignee: All</option>
                 <option value="unassigned" @selected(($filters['assignee'] ?? '') === 'unassigned')>Unassigned</option>
                 @foreach ($assignees as $assignee)
-                    <option value="{{ $assignee->id }}" @selected((string) ($filters['assignee'] ?? '') === (string) $assignee->id)>{{ $assignee->name }}</option>
+                    <option value="{{ $assignee->id }}" @selected((string) ($filters['assignee'] ?? '') === (string) $assignee->id)>{{ $assignee->displayName() }}</option>
                 @endforeach
             </select></label>
-            <button class="workspace-button workspace-button--primary" type="submit">Apply filters</button>
             @if (count($filters) > 0)
                 <a class="workspace-button workspace-button--secondary" href="{{ route('staff.tickets') }}">Clear</a>
             @endif

@@ -38,6 +38,22 @@
             </div>
         </dl>
 
+        <div class="ticket-document-actions">
+            <form action="{{ route('ticket.download') }}" method="post" target="_blank">
+                @csrf
+                <input type="hidden" name="ticket" value="{{ $submittedTicket['ticket_number'] }}">
+                <input type="hidden" name="email" value="{{ $submittedTicket['email'] }}">
+                <input type="hidden" name="print" value="1">
+                <button class="ticket-document-button" type="submit">Print ticket</button>
+            </form>
+            <form action="{{ route('ticket.download') }}" method="post">
+                @csrf
+                <input type="hidden" name="ticket" value="{{ $submittedTicket['ticket_number'] }}">
+                <input type="hidden" name="email" value="{{ $submittedTicket['email'] }}">
+                <button class="ticket-document-button" type="submit">Download ticket</button>
+            </form>
+        </div>
+
         <a class="view-ticket-button ticket-confirmation-button" href="{{ route('ticket.check') }}">Check Ticket Status</a>
         <a class="ticket-confirmation-home" href="{{ route('home') }}">Return to Helpdesk</a>
     </div>

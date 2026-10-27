@@ -26,6 +26,7 @@ class LookupTicketRequest extends FormRequest
             'ticket' => ['required', 'string', 'max:32'],
             'email' => ['required', 'email', 'max:255'],
             'remember_email' => ['sometimes', 'boolean'],
+            'print' => ['sometimes', 'boolean'],
         ];
     }
 }

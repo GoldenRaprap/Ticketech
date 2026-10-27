@@ -19,9 +19,10 @@ class PasswordResetTest extends TestCase
         $this->get(route('password.request'))
             ->assertOk()
             ->assertSee('<div class="container public-topbar-inner">', false)
+            ->assertSee('<a href="'.route('login').'">Go Back</a>', false)
             ->assertSee('<a href="'.route('home').'">PCU Helpdesk</a>', false)
             ->assertSee('Philippine_Christian_University_logo.png')
-            ->assertSee('<a href="'.route('login').'">Staff Sign In</a>', false)
+            ->assertSee('<a class="header-sign-in" href="'.route('login').'">Sign in</a>', false)
             ->assertSee('<span aria-current="page">Forgot Password</span>', false)
             ->assertSee('Back to Staff Sign In');
     }
@@ -71,6 +72,8 @@ class PasswordResetTest extends TestCase
 
         $this->get(route('password.reset', ['token' => $token, 'email' => $user->email]))
             ->assertOk()
+            ->assertSee('<a class="header-sign-in" href="'.route('login').'">Sign in</a>', false)
+            ->assertSee('<a href="'.route('home').'">Go Back</a>', false)
             ->assertSee('Choose a new password');
 
         $this->post(route('password.update'), [

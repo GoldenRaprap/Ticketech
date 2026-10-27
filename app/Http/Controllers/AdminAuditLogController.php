@@ -23,6 +23,10 @@ class AdminAuditLogController extends Controller
                 $query->where(function ($query) use ($search): void {
                     $query->where('event', 'like', '%'.$search.'%')
                         ->orWhere('description', 'like', '%'.$search.'%')
+                        ->orWhere('route_name', 'like', '%'.$search.'%')
+                        ->orWhere('subject_name', 'like', '%'.$search.'%')
+                        ->orWhere('ip_address', 'like', '%'.$search.'%')
+                        ->orWhere('actor_name', 'like', '%'.$search.'%')
                         ->orWhereHas('actor', fn ($actorQuery) => $actorQuery->where('name', 'like', '%'.$search.'%'))
                         ->orWhereHas('ticket', function ($ticketQuery) use ($search): void {
                             $ticketQuery->where('ticket_number', 'like', '%'.$search.'%')
@@ -42,7 +46,7 @@ class AdminAuditLogController extends Controller
             'actors' => User::query()
                 ->whereIn('id', TicketEvent::query()->whereNotNull('actor_id')->select('actor_id')->distinct())
                 ->orderBy('name')
-                ->get(['id', 'name']),
+                ->get(['id', 'name', 'nickname']),
         ]);
     }
 }

@@ -36,7 +36,8 @@ class StaffTicketController extends Controller
                     $request->input('assignee') !== 'unassigned',
                     ['integer', Rule::exists('users', 'id')->where(fn ($query) => $query
                         ->whereIn('role', ['staff', 'admin'])
-                        ->where('employment_status', 'active'))],
+                        ->where('employment_status', 'active')
+                        ->where('staff_approval_status', 'approved'))],
                 ),
             ],
         ]);
@@ -65,7 +66,12 @@ class StaffTicketController extends Controller
         return view('staff.tickets', [
             'tickets' => $tickets,
             'filters' => $filters,
-            'assignees' => User::query()->whereIn('role', ['staff', 'admin'])->where('employment_status', 'active')->orderBy('name')->get(['id', 'name']),
+            'assignees' => User::query()
+                ->whereIn('role', ['staff', 'admin'])
+                ->where('employment_status', 'active')
+                ->where('staff_approval_status', 'approved')
+                ->orderBy('name')
+                ->get(['id', 'name', 'nickname']),
             'ticketCount' => Ticket::query()->count(),
             'newCount' => Ticket::query()->where('status', 'New')->count(),
             'inProgressCount' => Ticket::query()->where('status', 'In Progress')->count(),
@@ -91,7 +97,12 @@ class StaffTicketController extends Controller
 
         return view('staff.ticket-detail', [
             'ticket' => $ticket,
-            'staffUsers' => User::query()->whereIn('role', ['staff', 'admin'])->where('employment_status', 'active')->orderBy('name')->get(['id', 'name']),
+            'staffUsers' => User::query()
+                ->whereIn('role', ['staff', 'admin'])
+                ->where('employment_status', 'active')
+                ->where('staff_approval_status', 'approved')
+                ->orderBy('name')
+                ->get(['id', 'name', 'nickname']),
             'ticketTiming' => [
                 'first_assignment' => $ticket->first_assigned_at
                     ? $this->formatDuration($ticket->created_at->diffInSeconds($ticket->first_assigned_at))

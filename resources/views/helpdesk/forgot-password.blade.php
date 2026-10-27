@@ -14,8 +14,8 @@
                 <span>PCU Helpdesk</span>
             </a>
             <nav aria-label="Main navigation">
-                <a href="{{ route('login') }}">Staff Sign In</a>
-                <a href="{{ route('home') }}">Helpdesk</a>
+                <a class="header-sign-in" href="{{ route('login') }}">Sign in</a>
+                <a href="{{ route('login') }}">Go Back</a>
             </nav>
         </div>
     </header>

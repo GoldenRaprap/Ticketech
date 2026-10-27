@@ -6,7 +6,7 @@
     <title>@yield('title', 'PCU Helpdesk') | PCU Helpdesk</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="public-shell @if(request()->routeIs('ticket.create')) ticket-create-shell @endif" style="--pyramid-background: url('{{ asset('images/Background_Pyramids.png') }}');">
+<body class="public-shell @if(request()->routeIs('ticket.create')) ticket-create-shell @endif @if(request()->routeIs('home', 'helpdesk')) home-shell @endif" style="--pyramid-background: url('{{ asset('images/Background_Pyramids.png') }}');">
     <header class="public-topbar">
         <div class="container public-topbar-inner">
             <a class="public-brand" href="{{ route('home') }}">
@@ -14,11 +14,8 @@
                 <span>PCU Helpdesk</span>
             </a>
             <nav class="public-nav" aria-label="Main navigation">
-                <a href="{{ route('ticket.create') }}" @if (request()->routeIs('ticket.create')) aria-current="page" @endif>Submit a Ticket</a>
-                <a href="{{ route('ticket.check') }}" @if (request()->routeIs('ticket.check')) aria-current="page" @endif>View Your Tickets</a>
                 @guest
-                    <span class="public-divider" aria-hidden="true">|</span>
-                    <a href="{{ route('login') }}" @if (request()->routeIs('login')) aria-current="page" @endif>Staff Sign In</a>
+                    <a class="header-sign-in" href="{{ route('login') }}" @if (request()->routeIs('login')) aria-current="page" @endif>Sign in</a>
                 @endguest
                 @auth
                     @if (auth()->user()->isStaff())

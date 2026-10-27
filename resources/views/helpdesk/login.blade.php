@@ -14,7 +14,7 @@
                 <span>PCU Helpdesk</span>
             </a>
             <nav aria-label="Main navigation">
-                <a href="{{ route('home') }}">Helpdesk</a>
+                <a href="{{ route('home') }}">Go Back</a>
             </nav>
         </div>
     </header>
@@ -43,7 +43,7 @@
                 <div class="password-form-inner login-form-inner">
                     <p class="password-eyebrow">PCU STAFF PORTAL</p>
                     <h1>Staff Sign In</h1>
-                    <p>Use your assigned university account to access the staff or administrator workspace.</p>
+                    <p>Sign in with your PCU staff account.</p>
                     @if (session('status'))
                         <p class="password-form-status" role="status">{{ session('status') }}</p>
                     @endif
@@ -75,6 +75,7 @@
                             <a class="login-forgot-link" href="{{ route('password.request') }}">Forgot password?</a>
                         </div>
                         <button type="submit">Sign in</button>
+                        <a class="auth-back-link" href="{{ route('register') }}">Register for staff access</a>
                     </form>
 
                     @if (config('app.env') === 'local')

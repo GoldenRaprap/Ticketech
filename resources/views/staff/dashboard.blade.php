@@ -39,7 +39,7 @@
         <section class="workspace-card dashboard-recent-card">
             <div class="workspace-card-heading">
                 <div><span class="workspace-eyebrow">Latest requests</span><h2>Recent tickets</h2></div>
-                <a class="workspace-text-link" href="{{ route('staff.tickets') }}">View all tickets <span aria-hidden="true">→</span></a>
+                <a class="workspace-button workspace-button--secondary dashboard-view-all-button" href="{{ route('staff.tickets') }}">View all tickets <span aria-hidden="true">→</span></a>
             </div>
 
             @forelse ($recentTickets as $ticket)
@@ -83,7 +83,6 @@
                     </div>
                 @endforelse
             </div>
-            <a class="workspace-button workspace-button--secondary workspace-button--full" href="{{ route('staff.tickets') }}">Open ticket queue</a>
         </aside>
     </div>
 </div>

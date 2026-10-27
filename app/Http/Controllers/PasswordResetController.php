@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\AuditActivityLogger;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -43,7 +44,7 @@ class PasswordResetController extends Controller
         ]);
     }
 
-    public function update(Request $request): RedirectResponse
+    public function update(Request $request, AuditActivityLogger $auditLogger): RedirectResponse
     {
         $validated = $request->validate([
             'token' => ['required', 'string'],
@@ -74,6 +75,14 @@ class PasswordResetController extends Controller
         );
 
         if ($status === Password::PASSWORD_RESET) {
+            $auditLogger->record(
+                $request,
+                'password_reset_succeeded',
+                'Staff password reset successfully.',
+                $user,
+                actor: $user,
+            );
+
             return to_route('login')->with('status', 'Your password has been reset. You can now sign in.');
         }
 

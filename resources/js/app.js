@@ -24,6 +24,26 @@ document.querySelectorAll('[data-ticket-row]').forEach((row) => {
 	});
 });
 
+document.querySelectorAll('[data-auto-submit-on-change]').forEach((form) => {
+	if (!(form instanceof HTMLFormElement)) {
+		console.error('Auto-submit filter is not a form.');
+		return;
+	}
+
+	form.addEventListener('change', (event) => {
+		if (event.target instanceof HTMLSelectElement) {
+			form.requestSubmit();
+		}
+	});
+
+	form.addEventListener('keydown', (event) => {
+		if (event.target instanceof HTMLInputElement && event.target.name === 'search' && event.key === 'Enter') {
+			event.preventDefault();
+			form.requestSubmit();
+		}
+	});
+});
+
 document.querySelectorAll('[data-notification-row]').forEach((row) => {
 	const form = row.querySelector('[data-notification-action]');
 

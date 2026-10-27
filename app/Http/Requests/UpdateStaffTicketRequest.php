@@ -30,7 +30,8 @@ class UpdateStaffTicketRequest extends FormRequest
                 'nullable',
                 Rule::exists('users', 'id')->where(fn ($query) => $query
                     ->whereIn('role', ['staff', 'admin'])
-                    ->where('employment_status', 'active')),
+                    ->where('employment_status', 'active')
+                    ->where('staff_approval_status', 'approved')),
             ],
         ];
     }

@@ -20,10 +20,6 @@
             <div class="staff-badge-row">
                 <span class="workspace-role">{{ auth()->user()->isAdmin() ? 'Administrator' : 'Helpdesk Staff' }}</span>
                 <a class="primary-button" href="{{ route('staff.tickets') }}">View Tickets</a>
-                <form class="header-logout" action="{{ route('logout') }}" method="post">
-                    @csrf
-                    <button type="submit">Sign Out</button>
-                </form>
             </div>
         </header>
         <main class="staff-content">@yield('content')</main>

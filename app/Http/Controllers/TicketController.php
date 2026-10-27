@@ -18,6 +18,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -117,8 +118,11 @@ class TicketController extends Controller
 
         $request->session()->flash('submitted_ticket', [
             'ticket_number' => $ticket->ticket_number,
-            'submitted_at' => $ticket->created_at->format('F j, Y g:i A'),
+            'submitted_at' => $ticket->created_at->copy()
+                ->timezone(config('app.display_timezone'))
+                ->format('F j, Y g:i A'),
             'status' => $ticket->status,
+            'email' => $ticket->requester_email,
             'moderation_warning' => $moderation?->status === 'warning',
         ]);
 
@@ -233,37 +237,43 @@ class TicketController extends Controller
         $storedAttachments = [];
 
         try {
-            foreach ($uploads as $upload) {
-                $path = $upload->store('ticket-attachments', 'private');
+            $ticketWasReopened = DB::transaction(function () use ($ticket, $validated, $uploads, &$storedAttachments): ?bool {
+                $lockedTicket = Ticket::query()->lockForUpdate()->findOrFail($ticket->getKey());
 
-                if (! is_string($path) || $path === '') {
-                    throw new RuntimeException('Unable to store a requester reply attachment.');
+                if ($lockedTicket->status === 'Closed') {
+                    return null;
                 }
 
-                $storedAttachments[] = [
-                    'upload' => $upload,
-                    'path' => $path,
-                ];
-            }
+                foreach ($uploads as $upload) {
+                    $path = $upload->store('ticket-attachments', 'private');
 
-            $ticketWasReopened = DB::transaction(function () use ($ticket, $validated, $storedAttachments): bool {
-                $previousStatus = $ticket->status;
-                $ticketWasReopened = in_array($previousStatus, ['Resolved', 'Closed'], true);
+                    if (! is_string($path) || $path === '') {
+                        throw new RuntimeException('Unable to store a requester reply attachment.');
+                    }
+
+                    $storedAttachments[] = [
+                        'upload' => $upload,
+                        'path' => $path,
+                    ];
+                }
+
+                $previousStatus = $lockedTicket->status;
+                $ticketWasReopened = $previousStatus === 'Resolved';
 
                 if ($ticketWasReopened) {
-                    $ticket->status = 'In Progress';
-                    $ticket->resolved_at = null;
-                    $ticket->last_reopened_at = now();
-                    $ticket->save();
+                    $lockedTicket->status = 'In Progress';
+                    $lockedTicket->resolved_at = null;
+                    $lockedTicket->last_reopened_at = now();
+                    $lockedTicket->save();
 
-                    $ticket->events()->create([
+                    $lockedTicket->events()->create([
                         'event' => 'status_changed',
                         'description' => "Ticket reopened after a requester reply ({$previousStatus} → In Progress).",
                     ]);
                 }
 
-                $comment = $ticket->comments()->create([
-                    'author_name' => $ticket->requester_name,
+                $comment = $lockedTicket->comments()->create([
+                    'author_name' => $lockedTicket->requester_name,
                     'body' => $validated['body'],
                     'is_internal' => false,
                 ]);
@@ -271,7 +281,7 @@ class TicketController extends Controller
                 foreach ($storedAttachments as $storedAttachment) {
                     $upload = $storedAttachment['upload'];
                     $comment->attachments()->create([
-                        'ticket_id' => $ticket->id,
+                        'ticket_id' => $lockedTicket->id,
                         'original_name' => $upload->getClientOriginalName(),
                         'disk' => 'private',
                         'path' => $storedAttachment['path'],
@@ -280,22 +290,22 @@ class TicketController extends Controller
                     ]);
                 }
 
-                $ticket->events()->create([
+                $lockedTicket->events()->create([
                     'event' => 'requester_reply',
-                    'description' => "{$ticket->requester_name} replied to the ticket.",
+                    'description' => "{$lockedTicket->requester_name} replied to the ticket.",
                 ]);
 
-                $recipients = $ticket->assigned_to_user_id
-                    ? User::query()->whereKey($ticket->assigned_to_user_id)->where('employment_status', 'active')
+                $recipients = $lockedTicket->assigned_to_user_id
+                    ? User::query()->whereKey($lockedTicket->assigned_to_user_id)->where('employment_status', 'active')
                     : User::query()->whereIn('role', ['staff', 'admin'])->where('employment_status', 'active');
 
                 $recipients->get(['id'])->each(
                     fn (User $user) => WorkspaceNotification::create([
                         'user_id' => $user->id,
-                        'ticket_id' => $ticket->id,
+                        'ticket_id' => $lockedTicket->id,
                         'type' => 'requester_reply',
                         'title' => 'New requester reply',
-                        'message' => "{$ticket->ticket_number} · {$ticket->subject}",
+                        'message' => "{$lockedTicket->ticket_number} · {$lockedTicket->subject}",
                     ]),
                 );
 
@@ -309,6 +319,15 @@ class TicketController extends Controller
             throw $exception;
         }
 
+        if ($ticketWasReopened === null) {
+            $request->session()->put('ticket_lookup_context', [
+                'ticket' => $ticket->ticket_number,
+                'email' => $validated['email'],
+            ]);
+
+            return to_route('ticket.check')->with('ticket_reply_error', 'This ticket is closed and can no longer accept replies or attachments.');
+        }
+
         $request->session()->put('ticket_lookup_context', [
             'ticket' => $ticket->ticket_number,
             'email' => $validated['email'],
@@ -320,6 +339,27 @@ class TicketController extends Controller
             : 'Your reply has been sent to the helpdesk.';
 
         return to_route('ticket.check')->with('ticket_reply_status', $message);
+    }
+
+    public function downloadTicket(LookupTicketRequest $request): Response
+    {
+        $validated = $request->validated();
+        $ticket = $this->findRequesterTicket($validated['ticket'], $validated['email']);
+
+        abort_unless($ticket, 404);
+
+        $response = response()
+            ->view('helpdesk.ticket-download', [
+                'ticket' => $ticket,
+                'autoPrint' => $request->boolean('print'),
+            ])
+            ->header('Content-Type', 'text/html; charset=UTF-8');
+
+        if (! $request->boolean('print')) {
+            $response->header('Content-Disposition', 'attachment; filename="ticket-'.Str::slug($ticket->ticket_number).'.html"');
+        }
+
+        return $response;
     }
 
     public function download(LookupTicketRequest $request, TicketAttachment $attachment): StreamedResponse

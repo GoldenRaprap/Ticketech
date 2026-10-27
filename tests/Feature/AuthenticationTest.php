@@ -15,10 +15,15 @@ class AuthenticationTest extends TestCase
         $this->get(route('login'))
             ->assertOk()
             ->assertSee('<div class="container public-topbar-inner">', false)
+            ->assertSee('<a href="'.route('home').'">Go Back</a>', false)
             ->assertSee('<a href="'.route('home').'">PCU Helpdesk</a>', false)
             ->assertSee('<span aria-current="page">Staff Sign In</span>', false)
             ->assertSee('Philippine_Christian_University_logo.png')
-            ->assertSee('<h1>Staff Sign In</h1>', false);
+            ->assertSee('<h1>Staff Sign In</h1>', false)
+            ->assertSee(route('register'))
+            ->assertSee('Register for staff access')
+            ->assertSee('Sign in with your PCU staff account.')
+            ->assertDontSee('Staff sessions are shared across tabs');
     }
 
     public function test_requester_cannot_sign_in_to_staff_admin_portal(): void
@@ -58,6 +63,28 @@ class AuthenticationTest extends TestCase
         $this->actingAs($requester)->get(route('staff.dashboard'))->assertForbidden();
     }
 
+    public function test_admin_routes_reject_guests_and_requesters(): void
+    {
+        $this->get(route('admin.dashboard'))->assertRedirect(route('login'));
+
+        $requester = User::factory()->create(['role' => 'requester']);
+        $this->actingAs($requester)->get(route('admin.dashboard'))->assertForbidden();
+    }
+
+    public function test_inactive_admin_is_logged_out_when_accessing_admin_routes(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'employment_status' => 'retired',
+        ]);
+
+        $this->actingAs($admin)->get(route('admin.dashboard'))
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors(['email']);
+
+        $this->assertGuest();
+    }
+
     public function test_staff_cannot_access_admin_controls(): void
     {
         $staff = User::factory()->create(['role' => 'staff']);
@@ -91,6 +118,25 @@ class AuthenticationTest extends TestCase
         $this->actingAs($admin)->get(route('staff.dashboard'))->assertOk();
 
         $this->get(route('admin.dashboard'))->assertDontSee('Categories');
+    }
+
+    public function test_staff_and_admin_can_sign_out_from_the_sidebar_account_control(): void
+    {
+        $staff = User::factory()->create(['name' => 'Staff Member', 'role' => 'staff']);
+        $this->actingAs($staff)->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertSee('Staff Member')
+            ->assertSee('Staff Account')
+            ->assertSee('<form class="sidebar-logout"', false)
+            ->assertDontSee('<form class="header-logout"', false);
+
+        $admin = User::factory()->create(['name' => 'Admin Member', 'role' => 'admin']);
+        $this->actingAs($admin)->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('Admin Member')
+            ->assertSee('Admin Account')
+            ->assertSee('<form class="sidebar-logout"', false)
+            ->assertDontSee('<form class="header-logout"', false);
     }
 
     public function test_categories_admin_page_is_no_longer_available(): void

@@ -32,6 +32,16 @@ class EnsureStaff
             ]);
         }
 
+        if ($request->user()->staff_approval_status === 'denied') {
+            return to_route('staff.application.denied');
+        }
+
+        if (! $request->user()->isStaffApproved()) {
+            return to_route($request->user()->hasVerifiedEmail()
+                ? 'staff.approval.pending'
+                : 'verification.notice');
+        }
+
         return $next($request);
     }
 }

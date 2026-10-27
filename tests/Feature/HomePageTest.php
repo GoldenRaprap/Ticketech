@@ -20,10 +20,21 @@ class HomePageTest extends TestCase
             ->assertSee('No account needed.')
             ->assertSee('Submit a Ticket')
             ->assertSee('View Your Tickets')
-            ->assertSee('<span class="public-divider" aria-hidden="true">|</span>', false)
-            ->assertSee('Staff Sign In')
+            ->assertSee('>Sign in</a>', false)
+            ->assertDontSee('>Submit a Ticket</a>', false)
+            ->assertDontSee('>View Your Tickets</a>', false)
+            ->assertDontSee('Staff and administrator sign in')
             ->assertDontSee('Register')
             ->assertDontSee('Login');
+    }
+
+    public function test_homepage_is_also_available_at_the_helpdesk_url(): void
+    {
+        $this->get('/Helpdesk')
+            ->assertOk()
+            ->assertSee('How can we help you today?')
+            ->assertSee('Submit a Ticket')
+            ->assertSee('View Your Tickets');
     }
 
     public function test_requester_only_sees_their_own_recent_tickets(): void
@@ -53,5 +64,21 @@ class HomePageTest extends TestCase
             ->assertSee('My course portal')
             ->assertDontSee('ED-2026-000102')
             ->assertDontSee('Private request title');
+    }
+
+    public function test_staff_homepage_redirects_to_the_staff_dashboard(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+
+        $this->actingAs($staff)->get(route('home'))
+            ->assertRedirect(route('staff.dashboard'));
+    }
+
+    public function test_admin_helpdesk_url_redirects_to_the_admin_dashboard(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->get(route('helpdesk'))
+            ->assertRedirect(route('admin.dashboard'));
     }
 }

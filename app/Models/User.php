@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,12 +11,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password', 'role', 'employment_status'])]
+#[Fillable(['name', 'nickname', 'email', 'password', 'role', 'employment_status'])]
 #[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
     protected $attributes = [
         'employment_status' => 'active',
+        'staff_approval_status' => 'approved',
     ];
 
     /** @use HasFactory<UserFactory> */
@@ -65,8 +66,18 @@ class User extends Authenticatable
         return $this->employment_status === 'active';
     }
 
+    public function isStaffApproved(): bool
+    {
+        return $this->staff_approval_status === 'approved';
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    public function displayName(): string
+    {
+        return filled($this->nickname) ? $this->nickname : $this->name;
     }
 }
