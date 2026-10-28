@@ -4,6 +4,7 @@ use App\Http\Middleware\ApplySystemMailSettings;
 use App\Http\Middleware\EnsureAdmin;
 use App\Http\Middleware\EnsureStaff;
 use App\Http\Middleware\RecordStaffActivity;
+use App\Http\Middleware\RedirectWorkspaceUsers;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -20,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'staff' => EnsureStaff::class,
             'admin' => EnsureAdmin::class,
+            'redirect.workspace-users' => RedirectWorkspaceUsers::class,
             'audit.activity' => RecordStaffActivity::class,
         ]);
     })

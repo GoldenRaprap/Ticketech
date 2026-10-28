@@ -33,7 +33,14 @@
     <div class="crumb-wrap">
         <div class="container breadcrumb">
             <a href="{{ route('home') }}">PCU Helpdesk</a>
-            @if (! request()->routeIs('home'))
+            @if (request()->routeIs('knowledge-base.show'))
+                <span aria-hidden="true">›</span>
+                <a href="{{ route('knowledge-base') }}">Knowledge Base</a>
+                <span aria-hidden="true">›</span>
+                <span>{{ $article->category }}</span>
+                <span aria-hidden="true">›</span>
+                <span aria-current="page">@yield('title')</span>
+            @elseif (! request()->routeIs('home'))
                 <span>›</span>
                 <span aria-current="page">@yield('title')</span>
             @endif

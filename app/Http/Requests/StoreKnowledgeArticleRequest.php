@@ -28,6 +28,8 @@ class StoreKnowledgeArticleRequest extends FormRequest
             'summary' => ['required', 'string', 'max:500'],
             'body' => ['required', 'string', 'max:30000'],
             'is_published' => ['sometimes', 'boolean'],
+            'images' => ['sometimes', 'array', 'max:5'],
+            'images.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ];
     }
 }

@@ -12,7 +12,13 @@
         <header class="staff-header">
             <div class="staff-header-left">
                 <button class="menu-toggle" type="button" aria-label="Open navigation" aria-controls="staff-sidebar" aria-expanded="false" data-sidebar-toggle>
-                    <span aria-hidden="true">☰</span>
+                    <svg data-sidebar-toggle-icon="menu" aria-hidden="true" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                    <svg data-sidebar-toggle-icon="arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M6 3.75h12A2.25 2.25 0 0 1 20.25 6v12A2.25 2.25 0 0 1 18 20.25H6A2.25 2.25 0 0 1 3.75 18V6A2.25 2.25 0 0 1 6 3.75Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                        <path d="M9.5 4v16.25m6.75-11.5-3 3 3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
                 </button>
                 <img class="staff-header-logo" src="{{ asset('images/Philippine_Christian_University_logo.png') }}" alt="">
                 <div class="staff-header-title">@yield('heading', auth()->user()->isAdmin() ? 'Admin Console' : 'Staff Workspace')</div>
@@ -55,6 +61,8 @@
                 toggle.setAttribute('aria-label', mobileSidebar.matches
                     ? (isExpanded ? 'Close navigation' : 'Open navigation')
                     : (isExpanded ? 'Collapse sidebar' : 'Expand sidebar'));
+                toggle.querySelector('[data-sidebar-toggle-icon="menu"]').toggleAttribute('hidden', isExpanded);
+                toggle.querySelector('[data-sidebar-toggle-icon="arrow"]').toggleAttribute('hidden', !isExpanded);
             });
         }
 

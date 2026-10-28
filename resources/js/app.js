@@ -44,6 +44,100 @@ document.querySelectorAll('[data-auto-submit-on-change]').forEach((form) => {
 	});
 });
 
+document.querySelectorAll('.public-review-choices').forEach((choices) => {
+	const ratings = choices.querySelectorAll('input[name="rating"]');
+
+	const updateLitStars = () => {
+		const selectedRating = Number(choices.querySelector('input[name="rating"]:checked')?.value || 0);
+
+		choices.querySelectorAll('[data-star-value]').forEach((star) => {
+			star.classList.toggle('is-lit', Number(star.dataset.starValue) <= selectedRating);
+		});
+	};
+
+	ratings.forEach((rating) => rating.addEventListener('change', updateLitStars));
+	updateLitStars();
+});
+
+document.querySelectorAll('[data-report-period-form]').forEach((form) => {
+	if (!(form instanceof HTMLFormElement)) {
+		console.error('Report period filter is not a form.');
+		return;
+	}
+
+	const periodSelect = form.querySelector('[data-report-period]');
+	const referenceField = form.querySelector('[data-report-reference-field]');
+	const referenceDateInput = form.querySelector('[data-report-reference-input]');
+	const referenceDateLabel = form.querySelector('[data-report-reference-label]');
+	const customRange = form.querySelector('[data-report-custom-range]');
+	const startDateInput = form.querySelector('[data-report-start-date]');
+	const endDateInput = form.querySelector('[data-report-end-date]');
+
+	if (
+		!(periodSelect instanceof HTMLSelectElement)
+		|| !(referenceField instanceof HTMLElement)
+		|| !(referenceDateInput instanceof HTMLInputElement)
+		|| !(referenceDateLabel instanceof HTMLElement)
+		|| !(customRange instanceof HTMLElement)
+		|| !(startDateInput instanceof HTMLInputElement)
+		|| !(endDateInput instanceof HTMLInputElement)
+	) {
+		console.error('Report period filter is missing a required control.');
+		return;
+	}
+
+	const updateReportPeriodControls = () => {
+		const isCustom = periodSelect.value === 'custom';
+
+		referenceField.hidden = isCustom;
+		referenceDateInput.disabled = isCustom;
+		customRange.hidden = !isCustom;
+		startDateInput.disabled = !isCustom;
+		endDateInput.disabled = !isCustom;
+		startDateInput.required = isCustom;
+		endDateInput.required = isCustom;
+		endDateInput.min = isCustom ? startDateInput.value : '';
+
+		referenceDateLabel.textContent = periodSelect.value === 'weekly'
+			? 'Date in week'
+			: periodSelect.value === 'monthly'
+				? 'Date in month'
+				: periodSelect.value === 'yearly'
+					? 'Date in year'
+					: 'Report date';
+	};
+
+	const submitCustomRangeIfValid = () => {
+		if (
+			periodSelect.value === 'custom'
+			&& startDateInput.value
+			&& endDateInput.value
+			&& startDateInput.value <= endDateInput.value
+		) {
+			form.requestSubmit();
+		}
+	};
+
+	periodSelect.addEventListener('change', () => {
+		updateReportPeriodControls();
+
+		if (periodSelect.value !== 'custom') {
+			form.requestSubmit();
+		}
+	});
+	referenceDateInput.addEventListener('change', () => {
+		if (periodSelect.value !== 'custom') {
+			form.requestSubmit();
+		}
+	});
+	startDateInput.addEventListener('change', () => {
+		endDateInput.min = startDateInput.value;
+		submitCustomRangeIfValid();
+	});
+	endDateInput.addEventListener('change', submitCustomRangeIfValid);
+	updateReportPeriodControls();
+});
+
 document.querySelectorAll('[data-notification-row]').forEach((row) => {
 	const form = row.querySelector('[data-notification-action]');
 

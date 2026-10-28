@@ -20,8 +20,16 @@ use App\Http\Controllers\TicketAttachmentPreviewController;
 use App\Http\Controllers\TicketController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', HomeController::class)->name('home');
-Route::get('/Helpdesk', HomeController::class)->name('helpdesk');
+Route::middleware('redirect.workspace-users')->group(function () {
+    Route::get('/', HomeController::class)->name('home');
+    Route::get('/Helpdesk', HomeController::class)->name('helpdesk');
+    Route::get('/knowledge-base', [KnowledgeArticleController::class, 'publicIndex'])->name('knowledge-base');
+    Route::get('/knowledge-base/{article:slug}', [KnowledgeArticleController::class, 'publicShow'])->name('knowledge-base.show');
+    Route::post('/knowledge-base/{article:slug}/reviews', [KnowledgeArticleController::class, 'storeReview'])
+        ->middleware('throttle:5,1')
+        ->name('knowledge-base.reviews.store');
+});
+
 Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
 Route::post('/login', [AuthenticatedSessionController::class, 'store'])->middleware('throttle:5,1')->name('login.store');
 Route::post('/login/preview/{role}', [AuthenticatedSessionController::class, 'preview'])->where('role', 'staff|admin')->middleware('throttle:10,1')->name('login.preview');
@@ -57,9 +65,6 @@ Route::post('/check-ticket/reply', [TicketController::class, 'reply'])->middlewa
 Route::post('/check-ticket/close', [TicketController::class, 'closeView'])->name('ticket.view.close');
 Route::post('/ticket-attachments/{attachment}/download', [TicketController::class, 'download'])->middleware('throttle:15,1')->name('ticket.attachments.download');
 Route::get('/ticket-attachments/{attachment}/preview', [TicketAttachmentPreviewController::class, 'requester'])->middleware('throttle:30,1')->name('ticket.attachments.preview');
-Route::get('/knowledge-base', [KnowledgeArticleController::class, 'publicIndex'])->name('knowledge-base');
-Route::get('/knowledge-base/{article:slug}', [KnowledgeArticleController::class, 'publicShow'])->name('knowledge-base.show');
-
 Route::prefix('staff')->name('staff.')->group(function () {
     Route::middleware(['audit.activity', 'staff'])->group(function () {
         Route::get('/dashboard', StaffDashboardController::class)->name('dashboard');
@@ -72,14 +77,8 @@ Route::prefix('staff')->name('staff.')->group(function () {
         Route::get('/tickets/{ticket:ticket_number}/attachments/{attachment}', [StaffTicketController::class, 'downloadAttachment'])->name('ticket-attachments.download');
         Route::get('/tickets/{ticket:ticket_number}/attachments/{attachment}/preview', [TicketAttachmentPreviewController::class, 'staff'])->middleware('throttle:30,1')->name('ticket-attachments.preview');
 
-        Route::get('/knowledge-base', [KnowledgeArticleController::class, 'index'])->name('knowledge-base');
-        Route::get('/knowledge-base/create', [KnowledgeArticleController::class, 'create'])->name('knowledge-base.create');
-        Route::post('/knowledge-base', [KnowledgeArticleController::class, 'store'])->name('knowledge-base.store');
-        Route::get('/knowledge-base/{article}/edit', [KnowledgeArticleController::class, 'edit'])->name('knowledge-base.edit');
-        Route::put('/knowledge-base/{article}', [KnowledgeArticleController::class, 'update'])->name('knowledge-base.update');
-        Route::delete('/knowledge-base/{article}', [KnowledgeArticleController::class, 'destroy'])->name('knowledge-base.destroy');
-
         Route::get('/reports', StaffReportsController::class)->name('reports');
+        Route::get('/reports/export', [StaffReportsController::class, 'export'])->name('reports.export');
         Route::get('/notifications', [StaffNotificationController::class, 'index'])->name('notifications');
         Route::patch('/notifications/read-all', [StaffNotificationController::class, 'markAllRead'])->name('notifications.read-all');
         Route::patch('/notifications/{notification}/read', [StaffNotificationController::class, 'markRead'])->name('notifications.read');
@@ -97,6 +96,13 @@ Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])-
     Route::post('/users/{user}/approve', [AdminUserController::class, 'approve'])->name('users.approve');
     Route::post('/users/{user}/deny', [AdminUserController::class, 'deny'])->name('users.deny');
     Route::put('/users/{user}', [AdminUserController::class, 'update'])->name('users.update');
+    Route::get('/knowledge-base', [KnowledgeArticleController::class, 'index'])->name('knowledge-base');
+    Route::put('/knowledge-base/review-settings', [KnowledgeArticleController::class, 'updateReviewSettings'])->name('knowledge-base.review-settings');
+    Route::get('/knowledge-base/create', [KnowledgeArticleController::class, 'create'])->name('knowledge-base.create');
+    Route::post('/knowledge-base', [KnowledgeArticleController::class, 'store'])->name('knowledge-base.store');
+    Route::get('/knowledge-base/{article}/edit', [KnowledgeArticleController::class, 'edit'])->name('knowledge-base.edit');
+    Route::put('/knowledge-base/{article}', [KnowledgeArticleController::class, 'update'])->name('knowledge-base.update');
+    Route::delete('/knowledge-base/{article}', [KnowledgeArticleController::class, 'destroy'])->name('knowledge-base.destroy');
     Route::view('/sla-settings', 'staff.sla-settings')->name('sla-settings');
     Route::get('/audit-logs', AdminAuditLogController::class)->name('audit-logs');
     Route::get('/system-settings', [AdminSystemSettingsController::class, 'index'])->name('system-settings');

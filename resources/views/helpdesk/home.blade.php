@@ -71,5 +71,40 @@
             </section>
         @endif
     </div>
+
+    <section class="home-knowledge-panel" aria-labelledby="home-knowledge-heading">
+        <div class="home-knowledge-section">
+            <header class="home-knowledge-heading">
+                <span class="home-knowledge-eyebrow">SELF-SERVICE SUPPORT</span>
+                <h2 id="home-knowledge-heading">Knowledge Base</h2>
+                <p>Browse helpful guides and answers from the PCU Helpdesk team.</p>
+            </header>
+
+            <div class="public-article-grid home-knowledge-grid">
+                @forelse ($featuredArticles as $article)
+                    <article class="public-article-card">
+                        @if ($article->images->isNotEmpty())
+                            <a class="public-article-card-image" href="{{ route('knowledge-base.show', $article->slug) }}" tabindex="-1" aria-hidden="true">
+                                <img src="{{ $article->images->first()->url() }}" alt="" loading="lazy">
+                            </a>
+                        @endif
+                        <div class="public-article-card-copy">
+                            <span class="public-article-category">{{ $article->category }}</span>
+                            <h3><a href="{{ route('knowledge-base.show', $article->slug) }}">{{ $article->title }}</a></h3>
+                            <p>{{ $article->summary }}</p>
+                            <div class="public-article-card-footer">
+                                @include('helpdesk.partials.article-rating', ['article' => $article, 'reviewThreshold' => $reviewThreshold])
+                                <a class="public-article-read-link" href="{{ route('knowledge-base.show', $article->slug) }}">Read article <span aria-hidden="true">→</span></a>
+                            </div>
+                        </div>
+                    </article>
+                @empty
+                    <p class="home-knowledge-empty">There are no published help articles yet.</p>
+                @endforelse
+            </div>
+
+            <a class="home-knowledge-all" href="{{ route('knowledge-base') }}">Browse all articles <span aria-hidden="true">→</span></a>
+        </div>
+    </section>
 </section>
 @endsection

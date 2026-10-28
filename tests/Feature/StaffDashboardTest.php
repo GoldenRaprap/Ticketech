@@ -59,7 +59,6 @@ class StaffDashboardTest extends TestCase
         $pages = [
             ['staff.dashboard', 'Dashboard'],
             ['staff.tickets', 'Ticket queue'],
-            ['staff.knowledge-base', 'Knowledge base'],
             ['staff.reports', 'Reports'],
             ['staff.notifications', 'Notifications'],
         ];
@@ -70,6 +69,17 @@ class StaffDashboardTest extends TestCase
                 ->assertOk()
                 ->assertSee($expectedContent);
         }
+
+        $this->actingAs($staff)
+            ->get(route('staff.dashboard'))
+            ->assertDontSee('data-sidebar-icon="knowledge-base"', false)
+            ->assertSee('data-sidebar-icon="profile"', false)
+            ->assertSee('sidebar-link-label">Profile</span>', false)
+            ->assertDontSee('Knowledge Base');
+
+        $this->actingAs($staff)
+            ->get(route('admin.knowledge-base'))
+            ->assertForbidden();
 
         $this->actingAs($staff)
             ->get(route('staff.ticket-detail', $ticket))
