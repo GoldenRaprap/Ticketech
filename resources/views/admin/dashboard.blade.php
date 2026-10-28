@@ -37,7 +37,6 @@
                     <p class="admin-eyebrow">ACCESS AND CONFIGURATION</p>
                     <h2>Administration</h2>
                 </div>
-                <span class="admin-count">{{ $activeDepartmentCount }} active departments</span>
             </div>
 
             <div class="admin-control-grid">

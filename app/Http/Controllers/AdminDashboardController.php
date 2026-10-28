@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\View\View;
@@ -18,7 +17,6 @@ class AdminDashboardController extends Controller
             'openTicketCount' => Ticket::query()->whereIn('status', $openStatuses)->count(),
             'staffCount' => User::query()->where('role', 'staff')->where('employment_status', 'active')->count(),
             'requesterCount' => User::query()->where('role', 'requester')->count(),
-            'activeDepartmentCount' => Department::query()->where('is_active', true)->count(),
         ]);
     }
 }
