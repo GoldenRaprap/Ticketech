@@ -107,7 +107,8 @@ class AuthenticationTest extends TestCase
             ->assertSee('Pending reports');
         $this->actingAs($admin)->get(route('admin.sla-settings'))->assertOk()
             ->assertSee('admin-console-page', false)
-            ->assertSee('Service level targets');
+            ->assertSee('Service level targets')
+            ->assertSee('Save SLA targets');
         $this->actingAs($admin)->get(route('admin.audit-logs'))->assertOk()
             ->assertSee('admin-console-page', false)
             ->assertSee('System events')

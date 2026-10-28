@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminAuditLogController;
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdminModerationController;
+use App\Http\Controllers\AdminSlaSettingsController;
 use App\Http\Controllers\AdminSystemSettingsController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthenticatedSessionController;
@@ -103,7 +104,8 @@ Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])-
     Route::get('/knowledge-base/{article}/edit', [KnowledgeArticleController::class, 'edit'])->name('knowledge-base.edit');
     Route::put('/knowledge-base/{article}', [KnowledgeArticleController::class, 'update'])->name('knowledge-base.update');
     Route::delete('/knowledge-base/{article}', [KnowledgeArticleController::class, 'destroy'])->name('knowledge-base.destroy');
-    Route::view('/sla-settings', 'staff.sla-settings')->name('sla-settings');
+    Route::get('/sla-settings', [AdminSlaSettingsController::class, 'index'])->name('sla-settings');
+    Route::put('/sla-settings', [AdminSlaSettingsController::class, 'update'])->name('sla-settings.update');
     Route::get('/audit-logs', AdminAuditLogController::class)->name('audit-logs');
     Route::get('/system-settings', [AdminSystemSettingsController::class, 'index'])->name('system-settings');
     Route::put('/system-settings', [AdminSystemSettingsController::class, 'update'])->name('system-settings.update');

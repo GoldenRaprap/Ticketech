@@ -8329,7 +8329,8 @@ img, svg { display: block; max-width: 100%; }
     border-top: 1px solid #edf1f5;
 }
 
-.admin-sla-target > span {
+.admin-sla-target > span,
+.admin-sla-target > label {
     color: #7a8a9a;
     font-size: 0.65rem;
 }
@@ -8337,6 +8338,43 @@ img, svg { display: block; max-width: 100%; }
 .admin-sla-target > strong {
     color: #294965;
     font-size: 0.82rem;
+}
+
+.admin-sla-input-group {
+    display: grid;
+    grid-template-columns: minmax(52px, 0.45fr) minmax(0, 1fr);
+    gap: 7px;
+}
+
+.admin-sla-input-group input,
+.admin-sla-input-group select {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    padding: 7px 8px;
+    border: 1px solid #d5e0ea;
+    border-radius: 7px;
+    background: #fff;
+    color: #304e68;
+    font: inherit;
+    font-size: 0.68rem;
+}
+
+.admin-sla-input-group input:focus,
+.admin-sla-input-group select:focus {
+    border-color: #4c83bc;
+    outline: 2px solid rgba(76, 131, 188, 0.16);
+}
+
+.admin-sla-error {
+    color: #a64c45;
+    font-size: 0.65rem;
+}
+
+.admin-sla-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 14px;
 }
 
 .admin-sla-card > footer {
