@@ -76,7 +76,7 @@
         <div class="home-knowledge-section">
             <header class="home-knowledge-heading">
                 <span class="home-knowledge-eyebrow">SELF-SERVICE SUPPORT</span>
-                <h2 id="home-knowledge-heading">Knowledge Base</h2>
+                <h2 id="home-knowledge-heading">Helpful Articles</h2>
                 <p>Browse helpful guides and answers from the PCU Helpdesk team.</p>
             </header>
 

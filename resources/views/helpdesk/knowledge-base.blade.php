@@ -1,10 +1,10 @@
 @extends('layouts.public')
-@section('title', 'Knowledge Base')
+@section('title', 'Helpful Articles')
 @section('content')
 <main class="page-wrap help-scene public-knowledge-scene"><div class="container public-knowledge-page">
     <header class="public-knowledge-heading">
         <span class="eyebrow">SELF-SERVICE SUPPORT</span>
-        <h1 class="page-title">Helpdesk Knowledge Base</h1>
+        <h1 class="page-title">Helpful Articles</h1>
         <p class="page-intro">Clear guides and answers from the PCU Helpdesk team.</p>
     </header>
     <form class="public-knowledge-search" action="{{ route('knowledge-base') }}" method="get">

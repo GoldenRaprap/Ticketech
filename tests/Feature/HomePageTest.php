@@ -70,7 +70,7 @@ class HomePageTest extends TestCase
         $this->get(route('home'))
             ->assertOk()
             ->assertSee('View Your Tickets')
-            ->assertSee('Knowledge Base')
+            ->assertSee('Helpful Articles')
             ->assertSee('Account security guide')
             ->assertSee('Campus Wi-Fi guide')
             ->assertSee('Browse all articles')

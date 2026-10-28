@@ -623,6 +623,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->actingAs($publicReader)->get(route('knowledge-base'))
             ->assertOk()
             ->assertSee('class="page-wrap help-scene public-knowledge-scene"', false)
+            ->assertSee('Helpful Articles')
             ->assertSee($article->title);
         $this->actingAs($publicReader)->get(route('knowledge-base.show', $article->slug))
             ->assertOk()
