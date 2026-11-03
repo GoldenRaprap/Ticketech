@@ -117,9 +117,14 @@
         </header>
 
         <div class="admin-ticket-options-grid">
-            <section>
-                <header class="admin-console-card-heading">
-                    <div><h3>Departments</h3><p>{{ $departments->where('is_active', true)->count() }} active</p></div>
+            <section class="admin-ticket-option-panel" aria-labelledby="departments-heading">
+                <header class="admin-ticket-option-heading">
+                    <div>
+                        <span class="admin-page-eyebrow">01 / TICKET ROUTING</span>
+                        <h3 id="departments-heading">Departments</h3>
+                        <p>Choose where incoming tickets are sent.</p>
+                    </div>
+                    <span class="admin-ticket-option-count"><span aria-hidden="true"></span>{{ $departments->where('is_active', true)->count() }} active</span>
                 </header>
                 <form class="admin-console-toolbar admin-ticket-option-form" action="{{ route('admin.sla-settings.departments.store') }}" method="post">
                     @csrf
@@ -127,24 +132,22 @@
                         <span class="visually-hidden">New department name</span>
                         <input id="department-name" name="department_name" value="{{ old('department_name') }}" maxlength="255" placeholder="New department name" required>
                     </label>
-                    <button class="admin-console-button" type="submit">Add department</button>
+                    <button class="admin-console-button" type="submit"><span aria-hidden="true">+</span> Add department</button>
                 </form>
-                <div class="admin-staff-list">
+                <div class="admin-ticket-option-list">
                     @forelse ($departments as $department)
-                        <article class="admin-staff-card">
-                            <header class="admin-staff-card-heading">
-                                <div><strong>{{ $department->name }}</strong></div>
-                                <span class="admin-readonly-badge">{{ $department->is_active ? 'Active' : 'Inactive' }}</span>
-                            </header>
-                            <div class="admin-staff-card-actions">
-                                <form action="{{ route('admin.sla-settings.departments.toggle', $department) }}" method="post">
-                                    @csrf
-                                    @method('patch')
-                                    <button class="admin-console-button {{ $department->is_active ? 'admin-console-button--danger' : '' }}" type="submit">
-                                        {{ $department->is_active ? 'Deactivate' : 'Reactivate' }}
-                                    </button>
-                                </form>
-                            </div>
+                        <article class="admin-ticket-option-item">
+                            <div class="admin-ticket-option-copy"><strong>{{ $department->name }}</strong></div>
+                            <span class="admin-ticket-option-status {{ $department->is_active ? '' : 'admin-ticket-option-status--inactive' }}">
+                                <span aria-hidden="true"></span>{{ $department->is_active ? 'Active' : 'Inactive' }}
+                            </span>
+                            <form action="{{ route('admin.sla-settings.departments.toggle', $department) }}" method="post">
+                                @csrf
+                                @method('patch')
+                                <button class="admin-console-button {{ $department->is_active ? 'admin-console-button--danger' : '' }}" type="submit">
+                                    {{ $department->is_active ? 'Deactivate' : 'Reactivate' }}
+                                </button>
+                            </form>
                         </article>
                     @empty
                         <div class="workspace-empty-state workspace-empty-state--compact"><strong>No departments yet</strong><p>Add a department before accepting ticket submissions.</p></div>
@@ -152,9 +155,14 @@
                 </div>
             </section>
 
-            <section>
-                <header class="admin-console-card-heading">
-                    <div><h3>Categories</h3><p>{{ $categories->where('is_active', true)->count() }} active</p></div>
+            <section class="admin-ticket-option-panel" aria-labelledby="categories-heading">
+                <header class="admin-ticket-option-heading">
+                    <div>
+                        <span class="admin-page-eyebrow">02 / TICKET DETAILS</span>
+                        <h3 id="categories-heading">Categories</h3>
+                        <p>Give requesters a way to describe the issue.</p>
+                    </div>
+                    <span class="admin-ticket-option-count"><span aria-hidden="true"></span>{{ $categories->where('is_active', true)->count() }} active</span>
                 </header>
                 <form class="admin-console-toolbar admin-ticket-option-form admin-ticket-option-form--category" action="{{ route('admin.sla-settings.categories.store') }}" method="post">
                     @csrf
@@ -166,29 +174,27 @@
                         <span class="visually-hidden">Category description</span>
                         <input id="category-description" name="description" value="{{ old('description') }}" maxlength="255" placeholder="Description (optional)">
                     </label>
-                    <button class="admin-console-button" type="submit">Add category</button>
+                    <button class="admin-console-button" type="submit"><span aria-hidden="true">+</span> Add category</button>
                 </form>
-                <div class="admin-staff-list">
+                <div class="admin-ticket-option-list">
                     @forelse ($categories as $category)
-                        <article class="admin-staff-card">
-                            <header class="admin-staff-card-heading">
-                                <div>
-                                    <strong>{{ $category->name }}</strong>
-                                    @if ($category->description)
-                                        <small>{{ $category->description }}</small>
-                                    @endif
-                                </div>
-                                <span class="admin-readonly-badge">{{ $category->is_active ? 'Active' : 'Inactive' }}</span>
-                            </header>
-                            <div class="admin-staff-card-actions">
-                                <form action="{{ route('admin.sla-settings.categories.toggle', $category) }}" method="post">
-                                    @csrf
-                                    @method('patch')
-                                    <button class="admin-console-button {{ $category->is_active ? 'admin-console-button--danger' : '' }}" type="submit">
-                                        {{ $category->is_active ? 'Deactivate' : 'Reactivate' }}
-                                    </button>
-                                </form>
+                        <article class="admin-ticket-option-item">
+                            <div class="admin-ticket-option-copy">
+                                <strong>{{ $category->name }}</strong>
+                                @if ($category->description)
+                                    <small>{{ $category->description }}</small>
+                                @endif
                             </div>
+                            <span class="admin-ticket-option-status {{ $category->is_active ? '' : 'admin-ticket-option-status--inactive' }}">
+                                <span aria-hidden="true"></span>{{ $category->is_active ? 'Active' : 'Inactive' }}
+                            </span>
+                            <form action="{{ route('admin.sla-settings.categories.toggle', $category) }}" method="post">
+                                @csrf
+                                @method('patch')
+                                <button class="admin-console-button {{ $category->is_active ? 'admin-console-button--danger' : '' }}" type="submit">
+                                    {{ $category->is_active ? 'Deactivate' : 'Reactivate' }}
+                                </button>
+                            </form>
                         </article>
                     @empty
                         <div class="workspace-empty-state workspace-empty-state--compact"><strong>No categories yet</strong><p>Add categories to help classify incoming tickets.</p></div>
