@@ -21,14 +21,6 @@
             </nav>
         </div>
     </header>
-    <div class="crumb-wrap">
-        <div class="container breadcrumb">
-            <a href="{{ route('home') }}">PCU Helpdesk</a>
-            <span>›</span>
-            <span aria-current="page">Approval pending</span>
-        </div>
-    </div>
-
     <main class="password-page">
         <section class="password-main" aria-label="Staff registration approval status">
             <div class="password-art-panel">

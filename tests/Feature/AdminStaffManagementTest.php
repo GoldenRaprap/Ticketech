@@ -176,7 +176,6 @@ class AdminStaffManagementTest extends TestCase
 
         $this->actingAs($staff)->put(route('staff.ticket-update', $ticket), [
             'status' => 'Assigned',
-            'priority' => 'Low',
             'assigned_to_user_id' => $departedStaff->id,
         ])->assertSessionHasErrors('assigned_to_user_id');
 

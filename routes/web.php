@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminAuditLogController;
 use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\AdminDepartmentCategoryController;
 use App\Http\Controllers\AdminModerationController;
 use App\Http\Controllers\AdminSlaSettingsController;
 use App\Http\Controllers\AdminSystemSettingsController;
@@ -106,6 +107,10 @@ Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])-
     Route::delete('/knowledge-base/{article}', [KnowledgeArticleController::class, 'destroy'])->name('knowledge-base.destroy');
     Route::get('/sla-settings', [AdminSlaSettingsController::class, 'index'])->name('sla-settings');
     Route::put('/sla-settings', [AdminSlaSettingsController::class, 'update'])->name('sla-settings.update');
+    Route::post('/sla-settings/departments', [AdminDepartmentCategoryController::class, 'storeDepartment'])->name('sla-settings.departments.store');
+    Route::patch('/sla-settings/departments/{department}/activation', [AdminDepartmentCategoryController::class, 'toggleDepartment'])->name('sla-settings.departments.toggle');
+    Route::post('/sla-settings/categories', [AdminDepartmentCategoryController::class, 'storeCategory'])->name('sla-settings.categories.store');
+    Route::patch('/sla-settings/categories/{category}/activation', [AdminDepartmentCategoryController::class, 'toggleCategory'])->name('sla-settings.categories.toggle');
     Route::get('/audit-logs', AdminAuditLogController::class)->name('audit-logs');
     Route::get('/system-settings', [AdminSystemSettingsController::class, 'index'])->name('system-settings');
     Route::put('/system-settings', [AdminSystemSettingsController::class, 'update'])->name('system-settings.update');

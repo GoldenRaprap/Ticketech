@@ -157,25 +157,6 @@ img, svg { display: block; max-width: 100%; }
     cursor: pointer;
 }
 
-.crumb-wrap {
-    background: #f7f8f9;
-    border-bottom: 1px solid #dfe6ed;
-}
-
-.breadcrumb {
-    padding: 14px 0;
-    font-size: 0.8rem;
-    color: #2b4d79;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-
-.breadcrumb span {
-    opacity: 0.6;
-}
-
 .help-scene {
     position: relative;
     min-height: 620px;
@@ -196,28 +177,37 @@ img, svg { display: block; max-width: 100%; }
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: clamp(16px, 3vh, 28px);
+        gap: clamp(64px, 9vh, 96px);
         padding: clamp(24px, 5vh, 48px) 0;
     }
 
     .home-shell .help-panel {
-        min-height: 0;
+        width: min(920px, calc(100% - 64px));
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 390px;
         margin: 0 auto;
-        padding: clamp(24px, 5vh, 48px) 48px;
+        padding: clamp(36px, 5vh, 48px) 56px;
     }
 
     .home-shell .home-knowledge-panel {
         width: min(1040px, calc(100% - 64px));
+        margin: 0 auto;
     }
 
     .home-shell .help-grid {
-        margin-top: clamp(16px, 3vh, 28px);
-        gap: clamp(12px, 2vh, 20px);
+        margin-top: clamp(28px, 4vh, 36px);
+        gap: clamp(18px, 2.5vh, 24px);
     }
 
     .home-shell .option-card {
-        min-height: clamp(72px, 11vh, 92px);
-        padding: 14px 18px;
+        min-height: clamp(100px, 12vh, 112px);
+        padding: 20px 24px;
+    }
+
+    .home-shell .option-copy small {
+        font-size: 0.84rem;
     }
 
     .home-shell .home-note {
@@ -476,6 +466,7 @@ img, svg { display: block; max-width: 100%; }
     position: relative;
     z-index: 1;
     width: min(1040px, calc(100% - 64px));
+    margin: clamp(52px, 8vh, 76px) auto 0;
     padding: clamp(22px, 4vw, 36px);
     border: 1px solid rgba(123, 147, 180, 0.24);
     border-radius: 12px;
@@ -4673,6 +4664,7 @@ img, svg { display: block; max-width: 100%; }
         margin-top: 28px;
         padding: 34px 22px 38px;
     }
+    .home-shell .help-panel { min-height: 0; padding: 40px 22px 44px; }
     .home-knowledge-panel { width: min(100% - 30px, 680px); padding: 22px 18px; }
     .help-panel h1, .help-panel h2 { font-size: 1.55rem; }
     .option-card { padding: 16px 14px; }
@@ -5300,6 +5292,8 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .profile-large-avatar img {
+    position: absolute;
+    inset: 0;
     border-radius: inherit;
 }
 
@@ -7147,9 +7141,11 @@ img, svg { display: block; max-width: 100%; }
 
 .profile-large-avatar {
     display: grid;
+    position: relative;
     width: 78px;
     height: 78px;
     flex: 0 0 78px;
+    overflow: hidden;
     place-items: center;
     border: 3px solid rgba(255,255,255,0.76);
     border-radius: 50%;
@@ -8278,6 +8274,43 @@ img, svg { display: block; max-width: 100%; }
     gap: 13px;
 }
 
+.admin-priority-rules-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.admin-priority-rule-field {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+}
+
+.admin-priority-rule-field > span {
+    color: #60758a;
+    font-size: 0.72rem;
+    font-weight: 650;
+}
+
+.admin-priority-rule-field textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 82px;
+    padding: 9px 10px;
+    border: 1px solid #dce5ed;
+    border-radius: 8px;
+    background: #fff;
+    color: #344f69;
+    font: inherit;
+    font-size: 0.74rem;
+    resize: vertical;
+}
+
+.admin-priority-rule-field textarea:focus {
+    border-color: #4c83bc;
+    outline: 2px solid rgba(76, 131, 188, 0.16);
+}
+
 .admin-sla-card {
     overflow: hidden;
     padding: 16px;
@@ -8360,6 +8393,15 @@ img, svg { display: block; max-width: 100%; }
     font-size: 0.68rem;
 }
 
+.admin-sla-input-group select {
+    appearance: none;
+    padding-right: 28px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2 4 4 4 4-4' fill='none' stroke='%23304e68' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5'/%3E%3C/svg%3E");
+    background-position: right 9px center;
+    background-repeat: no-repeat;
+    background-size: 12px;
+}
+
 .admin-sla-input-group input:focus,
 .admin-sla-input-group select:focus {
     border-color: #4c83bc;
@@ -8392,6 +8434,55 @@ img, svg { display: block; max-width: 100%; }
     border: 1px solid #d8e5f0;
     border-radius: 11px;
     background: #f3f8fc;
+}
+
+.admin-ticket-options-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 18px;
+}
+
+.admin-ticket-options-grid > section {
+    min-width: 0;
+}
+
+.admin-ticket-options-grid .admin-console-card-heading h3 {
+    margin: 4px 0 0;
+    color: #234460;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.admin-ticket-option-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.admin-ticket-option-form--category {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+}
+
+.admin-ticket-option-form .admin-filter-field {
+    width: 100%;
+    min-width: 0;
+}
+
+.admin-ticket-option-form .admin-console-button {
+    min-width: 0;
+}
+
+.admin-ticket-options-grid .admin-staff-card-heading > div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.admin-ticket-options-grid .admin-staff-card-heading > div > small {
+    color: #8291a0;
+    font-size: 0.68rem;
+    line-height: 1.45;
 }
 
 .admin-policy-note-icon {
@@ -8732,6 +8823,7 @@ img, svg { display: block; max-width: 100%; }
     .admin-metric-grid,
     .admin-system-status { grid-template-columns: 1fr; }
     .admin-definition-grid { grid-template-columns: 1fr; }
+    .admin-priority-rules-grid { grid-template-columns: 1fr; }
     .admin-console-card { padding: 15px; }
     .admin-console-toolbar { align-items: stretch; }
     .admin-search-field,
@@ -8746,8 +8838,19 @@ img, svg { display: block; max-width: 100%; }
     .admin-staff-edit-form { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 900px) {
+    .admin-ticket-options-grid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 520px) {
     .admin-sla-grid { grid-template-columns: 1fr; }
+    .admin-sla-input-group { grid-template-columns: minmax(0, 1fr); }
+    .admin-sla-input-group input,
+    .admin-sla-input-group select { min-height: 42px; }
+    .admin-sla-actions { justify-content: stretch; }
+    .admin-sla-actions > button { width: 100%; }
+    .admin-ticket-option-form,
+    .admin-ticket-option-form--category { grid-template-columns: minmax(0, 1fr); }
     .admin-console-page { gap: 14px; }
     .admin-page-context { align-self: flex-start; }
     .admin-config-list > div { flex-direction: column; gap: 5px; }
@@ -9274,7 +9377,6 @@ img, svg { display: block; max-width: 100%; }
     }
 
     .public-topbar,
-    .crumb-wrap,
     .public-footer,
     .scene-shapes,
     .ticket-document-actions,

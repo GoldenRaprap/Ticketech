@@ -46,15 +46,24 @@
                 <input id="ticket-phone" name="phone" type="tel" value="{{ old('phone') }}" placeholder="e.g. 09171234567" autocomplete="tel">
             </label>
 
-            <label class="field-label" for="ticket-priority">
-                <span class="field-text">Priority:<span class="required-mark">*</span></span>
-                <select id="ticket-priority" name="priority" required>
-                    <option value="Urgent" @selected(old('priority', 'Low') === 'Urgent')>Urgent — Critical issue</option>
-                    <option value="High" @selected(old('priority', 'Low') === 'High')>High — Work stopped</option>
-                    <option value="Medium" @selected(old('priority', 'Low') === 'Medium')>Medium — Work affected</option>
-                    <option value="Low" @selected(old('priority', 'Low') === 'Low')>Low — General question</option>
+            <label class="field-label" for="ticket-department">
+                <span class="field-text">Department:<span class="required-mark">*</span></span>
+                <select id="ticket-department" name="department_id" required>
+                    <option value="">Select a department</option>
+                    @foreach ($departments as $department)
+                        <option value="{{ $department->id }}" @selected((string) old('department_id') === (string) $department->id)>{{ $department->name }}</option>
+                    @endforeach
                 </select>
-                <small class="field-hint">Urgent: critical issue; High: work stopped; Medium: work affected; Low: general question.</small>
+            </label>
+
+            <label class="field-label" for="ticket-category">
+                <span class="field-text">Category:</span>
+                <select id="ticket-category" name="category_id">
+                    <option value="">Select a category (optional)</option>
+                    @foreach ($categories as $category)
+                        <option value="{{ $category->id }}" @selected((string) old('category_id') === (string) $category->id)>{{ $category->name }}</option>
+                    @endforeach
+                </select>
             </label>
 
             <label class="field-label" for="ticket-subject">

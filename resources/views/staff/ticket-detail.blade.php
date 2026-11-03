@@ -42,6 +42,8 @@
                 <div class="ticket-detail-tags">
                     <span class="detail-tag"><small>Requester email</small><strong>{{ $ticket->requester_email }}</strong></span>
                     <span class="detail-tag"><small>Student or Employee ID</small><strong>{{ $ticket->student_id }}</strong></span>
+                    <span class="detail-tag"><small>Department</small><strong>{{ $ticket->department?->name ?? 'Not available' }}</strong></span>
+                    <span class="detail-tag"><small>Category</small><strong>{{ $ticket->category?->name ?? 'Not selected' }}</strong></span>
                     @if ($ticket->requester_phone)
                         <span class="detail-tag"><small>Phone number</small><strong>{{ $ticket->requester_phone }}</strong></span>
                     @endif
@@ -139,12 +141,19 @@
                                 <option value="{{ $status }}" @selected(old('status', $ticket->status) === $status)>{{ $status }}</option>
                             @endforeach
                         </select></label>
-                        <label class="workspace-field"><span>Priority</span><select name="priority" required>
-                            @foreach (['Urgent', 'High', 'Medium', 'Low'] as $priority)
-                                <option value="{{ $priority }}" @selected(old('priority', $ticket->priority) === $priority)>{{ $priority }}</option>
-                            @endforeach
-                        </select></label>
-                        <label class="workspace-field"><span>Assigned to</span><select name="assigned_to_user_id">
+                        <label class="workspace-field" data-priority-field>
+                            <span>Priority</span>
+                            <select name="priority" @disabled(! $ticket->assigned_to_user_id && ! old('assigned_to_user_id'))>
+                                @foreach (['Urgent', 'High', 'Medium', 'Low'] as $priority)
+                                    <option value="{{ $priority }}" @selected(old('priority', $ticket->priority) === $priority)>{{ $priority }}</option>
+                                @endforeach
+                            </select>
+                            @error('priority')<span class="form-field-error">{{ $message }}</span>@enderror
+                        </label>
+                        <p class="workspace-field" data-automatic-priority-note @if ($ticket->assigned_to_user_id || old('assigned_to_user_id')) hidden @endif>
+                            <span>Assign this ticket to enable priority changes.</span>
+                        </p>
+                        <label class="workspace-field"><span>Assigned to</span><select name="assigned_to_user_id" data-ticket-assignee>
                             <option value="">Unassigned</option>
                             @foreach ($staffUsers as $staffUser)
                                 <option value="{{ $staffUser->id }}" @selected((string) old('assigned_to_user_id', $ticket->assigned_to_user_id) === (string) $staffUser->id)>{{ $staffUser->displayName() }}</option>

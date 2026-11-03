@@ -10,19 +10,19 @@ class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_login_page_shows_staff_sign_in_breadcrumb(): void
+    public function test_login_page_has_no_header_sign_in_link_or_breadcrumb(): void
     {
         $this->get(route('login'))
             ->assertOk()
             ->assertSee('<div class="container public-topbar-inner">', false)
             ->assertSee('<a href="'.route('home').'">Go Back</a>', false)
-            ->assertSee('<a href="'.route('home').'">PCU Helpdesk</a>', false)
-            ->assertSee('<span aria-current="page">Staff Sign In</span>', false)
             ->assertSee('Philippine_Christian_University_logo.png')
             ->assertSee('<h1>Staff Sign In</h1>', false)
             ->assertSee(route('register'))
             ->assertSee('Register for staff access')
             ->assertSee('Sign in with your PCU staff account.')
+            ->assertDontSee('class="header-sign-in"', false)
+            ->assertDontSee('class="crumb-wrap"', false)
             ->assertDontSee('Staff sessions are shared across tabs');
     }
 
@@ -107,8 +107,9 @@ class AuthenticationTest extends TestCase
             ->assertSee('Pending reports');
         $this->actingAs($admin)->get(route('admin.sla-settings'))->assertOk()
             ->assertSee('admin-console-page', false)
-            ->assertSee('Service level targets')
-            ->assertSee('Save SLA targets');
+            ->assertSee('Ticket options')
+            ->assertSee('Save ticket options')
+            ->assertSee('Departments and categories');
         $this->actingAs($admin)->get(route('admin.audit-logs'))->assertOk()
             ->assertSee('admin-console-page', false)
             ->assertSee('System events')
@@ -118,7 +119,8 @@ class AuthenticationTest extends TestCase
             ->assertSee('Helpdesk identity');
         $this->actingAs($admin)->get(route('staff.dashboard'))->assertOk();
 
-        $this->get(route('admin.dashboard'))->assertDontSee('Categories');
+        $this->get(route('admin.dashboard'))
+            ->assertSee('Ticket Options');
     }
 
     public function test_staff_and_admin_can_sign_out_from_the_sidebar_account_control(): void

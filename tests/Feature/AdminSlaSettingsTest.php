@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Department;
 use App\Models\User;
+use App\Services\SlaSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -17,8 +19,10 @@ class AdminSlaSettingsTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.sla-settings'))
             ->assertOk()
-            ->assertSee('Save SLA targets')
+            ->assertSee('Save ticket options')
             ->assertSee('name="targets[urgent][first_response][value]"', false)
+            ->assertSee('name="priority_keywords[urgent]"', false)
+            ->assertSee('urgent, critical, emergency, outage')
             ->assertSee('value="1"', false)
             ->assertSee('Business hours')
             ->assertSee('Business days');
@@ -49,7 +53,7 @@ class AdminSlaSettingsTest extends TestCase
         $this->actingAs($admin)
             ->put(route('admin.sla-settings.update'), ['targets' => $targets])
             ->assertRedirect(route('admin.sla-settings'))
-            ->assertSessionHas('status', 'Service level targets updated.');
+            ->assertSessionHas('status', 'Ticket options updated.');
 
         $this->assertDatabaseHas('system_settings', [
             'setting' => 'sla.urgent.first_response.value',
@@ -100,6 +104,50 @@ class AdminSlaSettingsTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_update_automatic_priority_keywords(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $targets = app(SlaSettings::class)->targets();
+        $keywords = [
+            'urgent' => 'campus-wide outage',
+            'high' => 'cannot submit',
+            'medium' => 'slow response',
+            'low' => '',
+        ];
+
+        $this->actingAs($admin)
+            ->put(route('admin.sla-settings.update'), [
+                'targets' => $targets,
+                'priority_keywords' => $keywords,
+            ])
+            ->assertRedirect(route('admin.sla-settings'))
+            ->assertSessionHas('status', 'Ticket options updated.');
+
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket_priority.urgent.keywords',
+            'value' => 'campus-wide outage',
+        ]);
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket_priority.low.keywords',
+            'value' => '',
+        ]);
+
+        $department = Department::factory()->create();
+        $this->post(route('ticket.store'), [
+            'name' => 'Jamie Student',
+            'student_id' => 'PCU-2026-001',
+            'email' => 'jamie@example.edu',
+            'department_id' => $department->id,
+            'subject' => 'Campus-wide outage',
+            'message' => 'A general service problem.',
+        ])->assertRedirect(route('ticket.submitted'));
+
+        $this->assertDatabaseHas('tickets', [
+            'subject' => 'Campus-wide outage',
+            'priority' => 'Urgent',
+        ]);
+    }
+
     public function test_staff_cannot_update_sla_targets(): void
     {
         $staff = User::factory()->create(['role' => 'staff']);
@@ -110,6 +158,9 @@ class AdminSlaSettingsTest extends TestCase
 
         $this->assertDatabaseMissing('system_settings', [
             'setting' => 'sla.urgent.first_response.value',
+        ]);
+        $this->assertDatabaseMissing('system_settings', [
+            'setting' => 'ticket_priority.urgent.keywords',
         ]);
     }
 }

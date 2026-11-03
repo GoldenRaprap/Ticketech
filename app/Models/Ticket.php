@@ -15,6 +15,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'student_id',
     'requester_email',
     'requester_phone',
+    'department_id',
+    'category_id',
     'subject',
     'description',
     'priority',
@@ -46,6 +48,16 @@ class Ticket extends Model
     public function assignedTo(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to_user_id');
+    }
+
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
     }
 
     public function comments(): HasMany

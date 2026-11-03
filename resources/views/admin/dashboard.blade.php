@@ -52,7 +52,7 @@
                 </a>
                 <a class="admin-control-link" href="{{ route('admin.sla-settings') }}">
                     <span class="admin-control-icon">◷</span>
-                    <span><strong>SLA settings</strong><small>Review response targets</small></span>
+                    <span><strong>Ticket Options</strong><small>Set service targets and manage departments and categories</small></span>
                     <span class="admin-control-arrow">→</span>
                 </a>
                 <a class="admin-control-link" href="{{ route('admin.audit-logs') }}">

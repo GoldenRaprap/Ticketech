@@ -21,14 +21,6 @@
             </nav>
         </div>
     </header>
-    <div class="crumb-wrap">
-        <div class="container breadcrumb">
-            <a href="{{ route('home') }}">PCU Helpdesk</a>
-            <span>›</span>
-            <span aria-current="page">Staff access denied</span>
-        </div>
-    </div>
-
     <main class="password-page">
         <section class="password-main" aria-label="Staff registration decision">
             <div class="password-art-panel">

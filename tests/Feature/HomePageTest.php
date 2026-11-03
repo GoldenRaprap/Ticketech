@@ -22,6 +22,8 @@ class HomePageTest extends TestCase
             ->assertSee('Submit a Ticket')
             ->assertSee('View Your Tickets')
             ->assertSee('>Sign in</a>', false)
+            ->assertSee('class="header-sign-in"', false)
+            ->assertDontSee('class="crumb-wrap"', false)
             ->assertDontSee('>Submit a Ticket</a>', false)
             ->assertDontSee('>View Your Tickets</a>', false)
             ->assertDontSee('Staff and administrator sign in')
@@ -36,6 +38,21 @@ class HomePageTest extends TestCase
             ->assertSee('How can we help you today?')
             ->assertSee('Submit a Ticket')
             ->assertSee('View Your Tickets');
+    }
+
+    public function test_public_pages_do_not_show_header_sign_in_or_breadcrumb_banner(): void
+    {
+        foreach ([
+            route('ticket.create'),
+            route('ticket.check'),
+            route('knowledge-base'),
+        ] as $url) {
+            $this->get($url)
+                ->assertOk()
+                ->assertDontSee('class="header-sign-in"', false)
+                ->assertDontSee('class="crumb-wrap"', false)
+                ->assertDontSee('class="breadcrumb"', false);
+        }
     }
 
     public function test_homepage_shows_recent_published_knowledge_articles_below_helpdesk_actions(): void

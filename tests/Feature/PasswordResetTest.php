@@ -14,16 +14,15 @@ class PasswordResetTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_forgot_password_page_shows_staff_sign_in_breadcrumb(): void
+    public function test_forgot_password_page_has_no_header_sign_in_link_or_breadcrumb(): void
     {
         $this->get(route('password.request'))
             ->assertOk()
             ->assertSee('<div class="container public-topbar-inner">', false)
             ->assertSee('<a href="'.route('login').'">Go Back</a>', false)
-            ->assertSee('<a href="'.route('home').'">PCU Helpdesk</a>', false)
             ->assertSee('Philippine_Christian_University_logo.png')
-            ->assertSee('<a class="header-sign-in" href="'.route('login').'">Sign in</a>', false)
-            ->assertSee('<span aria-current="page">Forgot Password</span>', false)
+            ->assertDontSee('class="header-sign-in"', false)
+            ->assertDontSee('class="crumb-wrap"', false)
             ->assertSee('Back to Staff Sign In');
     }
 
@@ -72,8 +71,8 @@ class PasswordResetTest extends TestCase
 
         $this->get(route('password.reset', ['token' => $token, 'email' => $user->email]))
             ->assertOk()
-            ->assertSee('<a class="header-sign-in" href="'.route('login').'">Sign in</a>', false)
             ->assertSee('<a href="'.route('home').'">Go Back</a>', false)
+            ->assertDontSee('class="header-sign-in"', false)
             ->assertSee('Choose a new password');
 
         $this->post(route('password.update'), [

@@ -18,14 +18,6 @@
             </nav>
         </div>
     </header>
-    <div class="crumb-wrap">
-        <div class="container breadcrumb">
-            <a href="{{ route('home') }}">PCU Helpdesk</a>
-            <span>›</span>
-            <span aria-current="page">Verify email</span>
-        </div>
-    </div>
-
     <main class="password-page">
         <section class="password-main" aria-label="Verify your email address">
             <div class="password-art-panel">

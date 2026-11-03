@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\ClientConductWarning;
+use App\Models\Department;
 use App\Models\KnowledgeArticle;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
@@ -87,11 +88,42 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             'event' => 'status_changed',
             'description' => 'Status changed from New to Resolved.',
         ]);
+        $this->assertDatabaseHas('ticket_events', [
+            'ticket_id' => $ticket->id,
+            'event' => 'priority_changed',
+            'description' => 'Priority changed to Urgent.',
+        ]);
         $this->assertDatabaseHas('workspace_notifications', [
             'user_id' => $assignee->id,
             'ticket_id' => $ticket->id,
             'type' => 'assignment',
         ]);
+    }
+
+    public function test_staff_cannot_change_priority_until_a_ticket_is_assigned(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+        $ticket = $this->createTicket('ED-2026-000322', 'Unassigned ticket', null, 'High');
+
+        $this->actingAs($staff)
+            ->get(route('staff.ticket-detail', $ticket))
+            ->assertOk()
+            ->assertSee('data-priority-field', false)
+            ->assertSee('data-ticket-assignee', false)
+            ->assertSee('data-automatic-priority-note', false)
+            ->assertSee('name="priority" disabled', false)
+            ->assertSee('Assign this ticket to enable priority changes.');
+
+        $this->from(route('staff.ticket-detail', $ticket))
+            ->put(route('staff.ticket-update', $ticket), [
+                'status' => 'In Progress',
+                'priority' => 'Urgent',
+            ])
+            ->assertRedirect(route('staff.ticket-detail', $ticket))
+            ->assertSessionHasErrors('priority');
+
+        $this->assertSame('High', $ticket->fresh()->priority);
+        $this->assertSame('New', $ticket->fresh()->status);
     }
 
     public function test_ticket_assignment_options_only_include_approved_active_staff(): void
@@ -130,6 +162,8 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
         $this->get(route('staff.ticket-detail', $ticket))
             ->assertOk()
+            ->assertSee('data-priority-field', false)
+            ->assertSee('data-automatic-priority-note', false)
             ->assertViewHas('staffUsers', function ($staffUsers) use ($staff, $approvedStaff): bool {
                 $expectedIds = [$staff->id, $approvedStaff->id];
                 $actualIds = $staffUsers->modelKeys();
@@ -157,7 +191,6 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->from(route('staff.ticket-detail', $ticket))
             ->put(route('staff.ticket-update', $ticket), [
                 'status' => 'In Progress',
-                'priority' => 'High',
                 'assigned_to_user_id' => $deniedStaff->id,
             ])
             ->assertRedirect(route('staff.ticket-detail', $ticket))
@@ -192,7 +225,6 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->actingAs($staff)
             ->put(route('staff.ticket-update', $ticket), [
                 'status' => 'Resolved',
-                'priority' => 'High',
                 'assigned_to_user_id' => $assignee->id,
             ])
             ->assertRedirect(route('staff.ticket-detail', $ticket));
@@ -336,6 +368,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_admin_can_block_a_reported_client_email_from_new_submissions(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
+        $department = Department::factory()->create();
         $ticket = $this->createTicket('ED-2026-000321', 'Client block test');
         $report = $ticket->misuseReports()->create([
             'reporter_id' => User::factory()->create(['role' => 'staff'])->id,
@@ -359,6 +392,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
                 'name' => 'Jamie Student',
                 'student_id' => '2023******',
                 'email' => 'JAMIE@example.edu',
+                'department_id' => $department->id,
                 'subject' => 'Blocked submission',
                 'message' => 'This must be rejected.',
             ])
@@ -378,7 +412,6 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->actingAs($staff)
             ->put(route('staff.ticket-update', $ticket), [
                 'status' => 'Assigned',
-                'priority' => 'Low',
                 'assigned_to_user_id' => $staff->id,
             ])
             ->assertRedirect(route('staff.ticket-detail', $ticket));
@@ -436,7 +469,6 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->from(route('staff.ticket-detail', $ticket))
             ->put(route('staff.ticket-update', $ticket), [
                 'status' => 'In Progress',
-                'priority' => 'High',
                 'assigned_to_user_id' => $requester->id,
             ])
             ->assertRedirect(route('staff.ticket-detail', $ticket))
@@ -628,12 +660,8 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->actingAs($publicReader)->get(route('knowledge-base.show', $article->slug))
             ->assertOk()
             ->assertSee('class="page-wrap help-scene public-article-scene"', false)
-            ->assertSeeInOrder([
-                '<a href="'.route('home').'">PCU Helpdesk</a>',
-                '<a href="'.route('knowledge-base').'">Knowledge Base</a>',
-                '<span>Network</span>',
-                '<span aria-current="page">Connect to campus Wi-Fi</span>',
-            ], false)
+            ->assertDontSee('class="crumb-wrap"', false)
+            ->assertDontSee('class="breadcrumb"', false)
             ->assertDontSee('class="ticket-breadcrumb"', false)
             ->assertSee('Choose the campus network.');
 

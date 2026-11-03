@@ -14,20 +14,10 @@
                 <span>PCU Helpdesk</span>
             </a>
             <nav aria-label="Main navigation">
-                <a class="header-sign-in" href="{{ route('login') }}">Sign in</a>
                 <a href="{{ route('login') }}">Go Back</a>
             </nav>
         </div>
     </header>
-    <div class="crumb-wrap">
-        <div class="container breadcrumb">
-            <a href="{{ route('home') }}">PCU Helpdesk</a>
-            <span>›</span>
-            <a href="{{ route('login') }}">Staff Sign In</a>
-            <span>›</span>
-            <span aria-current="page">Forgot Password</span>
-        </div>
-    </div>
     <main class="password-page">
         <section class="password-main" aria-label="Password reset">
             <div class="password-art-panel">

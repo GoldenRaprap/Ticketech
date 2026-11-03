@@ -23,9 +23,15 @@ class UpdateStaffTicketRequest extends FormRequest
      */
     public function rules(): array
     {
+        $ticket = $this->route('ticket');
+        $assigneeId = $this->input('assigned_to_user_id', $ticket?->assigned_to_user_id);
+        $willBeAssigned = filled($assigneeId);
+
         return [
             'status' => ['required', Rule::in(['New', 'Assigned', 'In Progress', 'Waiting for User', 'On Hold', 'Resolved', 'Closed'])],
-            'priority' => ['required', Rule::in(['Urgent', 'High', 'Medium', 'Low'])],
+            'priority' => $willBeAssigned
+                ? ['sometimes', 'required', Rule::in(['Urgent', 'High', 'Medium', 'Low'])]
+                : ['prohibited'],
             'assigned_to_user_id' => [
                 'nullable',
                 Rule::exists('users', 'id')->where(fn ($query) => $query

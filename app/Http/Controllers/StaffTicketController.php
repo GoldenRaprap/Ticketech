@@ -83,6 +83,8 @@ class StaffTicketController extends Controller
     {
         $ticket->load([
             'assignedTo:id,name,email',
+            'department:id,name',
+            'category:id,name',
             'comments' => fn ($query) => $query->with(['author:id,name,role', 'attachments'])->oldest(),
             'attachments' => fn ($query) => $query->whereNull('comment_id'),
             'events' => fn ($query) => $query->with('actor:id,name')->oldest(),
@@ -136,7 +138,7 @@ class StaffTicketController extends Controller
                 ? ($validated['assigned_to_user_id'] !== null ? (int) $validated['assigned_to_user_id'] : null)
                 : $originalAssigneeId;
             $ticket->assigned_to_user_id = $assigneeId;
-            $ticket->priority = $validated['priority'];
+            $ticket->priority = $validated['priority'] ?? $ticket->priority;
             $ticket->status = $validated['status'];
 
             if ($assigneeId !== null && $originalAssigneeId !== $assigneeId) {

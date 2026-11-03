@@ -44,6 +44,37 @@ document.querySelectorAll('[data-auto-submit-on-change]').forEach((form) => {
 	});
 });
 
+document.querySelectorAll('[data-ticket-assignee]').forEach((assigneeSelect) => {
+	if (!(assigneeSelect instanceof HTMLSelectElement)) {
+		console.error('Ticket assignee control is not a select element.');
+		return;
+	}
+
+	const form = assigneeSelect.form;
+	const priorityField = form?.querySelector('[data-priority-field]');
+	const prioritySelect = priorityField?.querySelector('select[name="priority"]');
+	const automaticPriorityNote = form?.querySelector('[data-automatic-priority-note]');
+
+	if (
+		!(priorityField instanceof HTMLElement) ||
+		!(prioritySelect instanceof HTMLSelectElement) ||
+		!(automaticPriorityNote instanceof HTMLElement)
+	) {
+		console.error('Ticket assignment form is missing priority controls.');
+		return;
+	}
+
+	const updatePriorityControls = () => {
+		const isAssigned = assigneeSelect.value !== '';
+
+		prioritySelect.disabled = !isAssigned;
+		automaticPriorityNote.hidden = isAssigned;
+	};
+
+	assigneeSelect.addEventListener('change', updatePriorityControls);
+	updatePriorityControls();
+});
+
 document.querySelectorAll('.public-review-choices').forEach((choices) => {
 	const ratings = choices.querySelectorAll('input[name="rating"]');
 

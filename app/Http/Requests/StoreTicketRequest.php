@@ -28,7 +28,16 @@ class StoreTicketRequest extends FormRequest
             'student_id' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
-            'priority' => ['sometimes', Rule::in(['Urgent', 'High', 'Medium', 'Low'])],
+            'department_id' => [
+                'required',
+                'integer',
+                Rule::exists('departments', 'id')->where(fn ($query) => $query->where('is_active', true)),
+            ],
+            'category_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('categories', 'id')->where(fn ($query) => $query->where('is_active', true)),
+            ],
             'subject' => ['required', 'string', 'max:150'],
             'message' => ['required', 'string', 'max:500'],
             'attachment' => ['nullable', 'array', 'max:5'],

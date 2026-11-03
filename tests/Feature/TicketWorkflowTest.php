@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Category;
 use App\Models\ClientModeration;
+use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
 use App\Models\User;
@@ -18,6 +20,9 @@ class TicketWorkflowTest extends TestCase
 
     public function test_guests_can_open_ticket_submission_and_lookup_without_signing_in(): void
     {
+        $department = Department::factory()->create(['name' => 'Student Services']);
+        $category = Category::factory()->create(['name' => 'Portal access']);
+
         $this->get(route('ticket.create'))
             ->assertOk()
             ->assertSee('No account is needed.')
@@ -27,23 +32,24 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('example@pcu.edu.ph')
             ->assertSee('e.g. 09171234567')
             ->assertSee('Write like an email')
-            ->assertSee('Urgent — Critical issue')
-            ->assertSee('Low — General question')
-            ->assertSee('value="Low" selected', false)
+            ->assertDontSee('name="priority"', false)
+            ->assertDontSee('Urgent — Critical issue')
             ->assertSee('name="attachment[]"', false)
             ->assertSee('0</span> / 5 files selected', false)
             ->assertSee('Attach up to 5')
             ->assertSee('multiple', false)
-            ->assertDontSee('name="department_id"', false)
-            ->assertDontSee('name="category_id"', false);
+            ->assertSee('name="department_id"', false)
+            ->assertSee('name="category_id"', false)
+            ->assertSee('>Student Services</option>', false)
+            ->assertSee('>Portal access</option>', false);
 
         $this->get(route('ticket.check'))
             ->assertOk()
             ->assertSee('No account is needed.');
 
         $this->assertGuest();
-        $this->assertSame(false, Schema::hasColumn('tickets', 'department_id'));
-        $this->assertSame(false, Schema::hasColumn('tickets', 'category_id'));
+        $this->assertSame(true, Schema::hasColumn('tickets', 'department_id'));
+        $this->assertSame(true, Schema::hasColumn('tickets', 'category_id'));
     }
 
     public function test_guest_submission_creates_a_ticket_with_private_attachments(): void
@@ -51,14 +57,19 @@ class TicketWorkflowTest extends TestCase
         Storage::fake('private');
         config()->set('app.display_timezone', 'Asia/Manila');
         $this->travelTo('2026-10-27 10:00:00');
+        $department = Department::factory()->create();
+        $category = Category::factory()->create();
 
         $response = $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
             'student_id' => 'PCU-2026-001',
             'email' => 'jamie@example.edu',
             'phone' => '09171234567',
+            'department_id' => $department->id,
+            'category_id' => $category->id,
             'subject' => 'Cannot access Bluebook',
-            'message' => 'The course page returns an error.',
+            'message' => 'The course page returns an error during an urgent outage.',
+            'priority' => 'Urgent',
             'attachment' => [
                 UploadedFile::fake()->create('proof.pdf', 50, 'application/pdf'),
                 UploadedFile::fake()->create('screenshot.jpg', 50, 'image/jpeg'),
@@ -74,6 +85,8 @@ class TicketWorkflowTest extends TestCase
         $this->assertDatabaseHas('tickets', [
             'id' => $ticket->id,
             'requester_email' => 'jamie@example.edu',
+            'department_id' => $department->id,
+            'category_id' => $category->id,
             'priority' => 'Low',
             'status' => 'New',
         ]);
@@ -99,9 +112,11 @@ class TicketWorkflowTest extends TestCase
         ]);
         $downloadResponse->assertOk()
             ->assertHeader('Content-Disposition', 'attachment; filename="ticket-'.strtolower($ticket->ticket_number).'.html"')
+            ->assertDontSee('Priority')
+            ->assertDontSee($ticket->priority)
             ->assertSee('Cannot access Bluebook')
             ->assertSee('October 27, 2026 6:00 PM')
-            ->assertSee('The course page returns an error.')
+            ->assertSee('The course page returns an error during an urgent outage.')
             ->assertSee('Jamie Student');
 
         $printResponse = $this->post(route('ticket.download'), [
@@ -110,9 +125,11 @@ class TicketWorkflowTest extends TestCase
             'print' => '1',
         ]);
         $printResponse->assertOk()
+            ->assertDontSee('Priority')
+            ->assertDontSee($ticket->priority)
             ->assertSee('Cannot access Bluebook')
             ->assertSee('October 27, 2026 6:00 PM')
-            ->assertSee('The course page returns an error.')
+            ->assertSee('The course page returns an error during an urgent outage.')
             ->assertSee('Jamie Student')
             ->assertSee('window.print()');
         $this->assertFalse($printResponse->headers->has('Content-Disposition'));
@@ -139,6 +156,8 @@ class TicketWorkflowTest extends TestCase
             'ticket' => $ticket->ticket_number,
             'email' => 'jamie@example.edu',
         ])->assertOk()
+            ->assertDontSee('Priority')
+            ->assertDontSee($ticket->priority)
             ->assertSee($ticket->created_at->copy()->timezone('Asia/Manila')->format('F j, Y \a\t g:i A'))
             ->assertSee('name="print" value="1"', false)
             ->assertSee('Print ticket')
@@ -149,6 +168,8 @@ class TicketWorkflowTest extends TestCase
             'email' => 'jamie@example.edu',
         ]);
         $downloadResponse->assertOk()
+            ->assertDontSee('Priority')
+            ->assertDontSee($ticket->priority)
             ->assertSee('Visible support update.')
             ->assertDontSee('Internal note must not be downloaded.');
 
@@ -158,6 +179,8 @@ class TicketWorkflowTest extends TestCase
             'print' => '1',
         ]);
         $printResponse->assertOk()
+            ->assertDontSee('Priority')
+            ->assertDontSee($ticket->priority)
             ->assertSee('Visible support update.')
             ->assertDontSee('Internal note must not be downloaded.')
             ->assertSee('window.print()');
@@ -169,15 +192,44 @@ class TicketWorkflowTest extends TestCase
         ])->assertNotFound();
     }
 
+    public function test_client_can_see_the_actual_name_of_the_staff_member_assigned_to_their_ticket(): void
+    {
+        $staff = User::factory()->create([
+            'name' => 'Taylor Morgan',
+            'nickname' => 'Tay',
+            'role' => 'staff',
+        ]);
+        $ticket = $this->createTicket();
+        $ticket->update(['assigned_to_user_id' => $staff->id]);
+
+        $this->post(route('ticket.lookup'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ])->assertOk()
+            ->assertSee('Assigned staff member')
+            ->assertSee('Taylor Morgan')
+            ->assertDontSee('>Tay<', false);
+
+        $this->post(route('ticket.download'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ])->assertOk()
+            ->assertSee('Assigned staff member')
+            ->assertSee('Taylor Morgan')
+            ->assertDontSee('>Tay<', false);
+    }
+
     public function test_invalid_attachment_in_a_multiple_file_submission_is_reported_by_file_index(): void
     {
         Storage::fake('private');
+        $department = Department::factory()->create();
 
         $this->from(route('ticket.create'))
             ->post(route('ticket.store'), [
                 'name' => 'Jamie Student',
                 'student_id' => 'PCU-2026-001',
                 'email' => 'jamie@example.edu',
+                'department_id' => $department->id,
                 'subject' => 'Cannot access Bluebook',
                 'message' => 'The course page returns an error.',
                 'attachment' => [
@@ -197,12 +249,14 @@ class TicketWorkflowTest extends TestCase
     public function test_submission_rejects_more_than_five_attachments(): void
     {
         Storage::fake('private');
+        $department = Department::factory()->create();
 
         $this->from(route('ticket.create'))
             ->post(route('ticket.store'), [
                 'name' => 'Jamie Student',
                 'student_id' => 'PCU-2026-001',
                 'email' => 'jamie@example.edu',
+                'department_id' => $department->id,
                 'subject' => 'Cannot access Bluebook',
                 'message' => 'The course page returns an error.',
                 'attachment' => [
@@ -223,23 +277,53 @@ class TicketWorkflowTest extends TestCase
         Storage::disk('private')->assertDirectoryEmpty('ticket-attachments');
     }
 
-    public function test_guest_can_submit_a_ticket_with_urgent_priority(): void
+    public function test_guest_submission_uses_subject_priority_instead_of_requester_input(): void
     {
+        $department = Department::factory()->create();
         $response = $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
             'student_id' => 'PCU-2026-001',
             'email' => 'jamie@example.edu',
-            'subject' => 'Campus portal unavailable',
+            'department_id' => $department->id,
+            'subject' => 'Campus portal outage',
             'message' => 'The portal is unavailable for my class.',
-            'priority' => 'Urgent',
+            'priority' => 'Low',
         ]);
 
         $response->assertRedirect(route('ticket.submitted'));
         $this->assertDatabaseHas('tickets', [
             'requester_email' => 'jamie@example.edu',
-            'subject' => 'Campus portal unavailable',
+            'subject' => 'Campus portal outage',
             'priority' => 'Urgent',
+            'department_id' => $department->id,
+            'category_id' => null,
         ]);
+    }
+
+    public function test_subject_keyword_rules_assign_high_medium_and_fallback_low_priorities(): void
+    {
+        $department = Department::factory()->create();
+        $cases = [
+            ['subject' => 'System unavailable during staff login', 'priority' => 'High'],
+            ['subject' => 'Work affected by an access issue', 'priority' => 'Medium'],
+            ['subject' => 'Question about training materials', 'priority' => 'Low'],
+        ];
+
+        foreach ($cases as $index => $case) {
+            $this->post(route('ticket.store'), [
+                'name' => 'Jamie Student',
+                'student_id' => 'PCU-2026-001',
+                'email' => "jamie{$index}@example.edu",
+                'department_id' => $department->id,
+                'subject' => $case['subject'],
+                'message' => 'Please review this request.',
+            ])->assertRedirect(route('ticket.submitted'));
+
+            $this->assertDatabaseHas('tickets', [
+                'subject' => $case['subject'],
+                'priority' => $case['priority'],
+            ]);
+        }
     }
 
     public function test_invalid_ticket_submission_does_not_create_a_ticket(): void
@@ -247,13 +331,14 @@ class TicketWorkflowTest extends TestCase
         $response = $this->from(route('ticket.create'))->post(route('ticket.store'), []);
 
         $response->assertRedirect(route('ticket.create'));
-        $response->assertSessionHasErrors(['name', 'student_id', 'email', 'subject', 'message']);
+        $response->assertSessionHasErrors(['name', 'student_id', 'email', 'department_id', 'subject', 'message']);
         $this->assertDatabaseCount('tickets', 0);
     }
 
     public function test_blocked_client_email_cannot_submit_a_ticket_until_admin_clears_the_block(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
+        $department = Department::factory()->create();
         $moderation = ClientModeration::create([
             'email' => 'jamie@example.edu',
             'status' => 'blocked',
@@ -266,6 +351,7 @@ class TicketWorkflowTest extends TestCase
                 'name' => 'Jamie Student',
                 'student_id' => 'PCU-2026-001',
                 'email' => 'JAMIE@example.edu',
+                'department_id' => $department->id,
                 'subject' => 'Another test ticket',
                 'message' => 'This should not be accepted.',
             ])
@@ -282,6 +368,7 @@ class TicketWorkflowTest extends TestCase
             'name' => 'Jamie Student',
             'student_id' => 'PCU-2026-001',
             'email' => 'jamie@example.edu',
+            'department_id' => $department->id,
             'subject' => 'Legitimate support request',
             'message' => 'I need help accessing my account.',
         ])->assertRedirect(route('ticket.submitted'));

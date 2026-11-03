@@ -15,7 +15,9 @@
             </a>
             <nav class="public-nav" aria-label="Main navigation">
                 @guest
-                    <a class="header-sign-in" href="{{ route('login') }}" @if (request()->routeIs('login')) aria-current="page" @endif>Sign in</a>
+                    @if (request()->routeIs('home', 'helpdesk'))
+                        <a class="header-sign-in" href="{{ route('login') }}">Sign in</a>
+                    @endif
                 @endguest
                 @auth
                     @if (auth()->user()->isStaff())
@@ -29,23 +31,6 @@
             </nav>
         </div>
     </header>
-
-    <div class="crumb-wrap">
-        <div class="container breadcrumb">
-            <a href="{{ route('home') }}">PCU Helpdesk</a>
-            @if (request()->routeIs('knowledge-base.show'))
-                <span aria-hidden="true">›</span>
-                <a href="{{ route('knowledge-base') }}">Knowledge Base</a>
-                <span aria-hidden="true">›</span>
-                <span>{{ $article->category }}</span>
-                <span aria-hidden="true">›</span>
-                <span aria-current="page">@yield('title')</span>
-            @elseif (! request()->routeIs('home'))
-                <span>›</span>
-                <span aria-current="page">@yield('title')</span>
-            @endif
-        </div>
-    </div>
 
     @yield('content')
 

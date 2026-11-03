@@ -5,11 +5,14 @@ namespace App\Http\Controllers;
 use App\Http\Requests\LookupTicketRequest;
 use App\Http\Requests\StoreRequesterTicketReplyRequest;
 use App\Http\Requests\StoreTicketRequest;
+use App\Models\Category;
 use App\Models\ClientModeration;
+use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
 use App\Models\User;
 use App\Models\WorkspaceNotification;
+use App\Services\TicketPriorityClassifier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,10 +29,13 @@ class TicketController extends Controller
 {
     public function create(): View
     {
-        return view('helpdesk.create-ticket');
+        return view('helpdesk.create-ticket', [
+            'departments' => Department::query()->where('is_active', true)->orderBy('name')->get(),
+            'categories' => Category::query()->where('is_active', true)->orderBy('name')->get(),
+        ]);
     }
 
-    public function store(StoreTicketRequest $request): RedirectResponse
+    public function store(StoreTicketRequest $request, TicketPriorityClassifier $priorityClassifier): RedirectResponse
     {
         $validated = $request->validated();
         $uploads = $request->file('attachment', []) ?? [];
@@ -50,7 +56,7 @@ class TicketController extends Controller
                 ];
             }
 
-            $ticket = DB::transaction(function () use ($request, $validated, $storedAttachments, &$moderation): Ticket {
+            $ticket = DB::transaction(function () use ($request, $validated, $storedAttachments, $priorityClassifier, &$moderation): Ticket {
                 $moderation = ClientModeration::query()
                     ->where('email', Str::lower(trim($validated['email'])))
                     ->whereNull('cleared_at')
@@ -69,9 +75,11 @@ class TicketController extends Controller
                     'student_id' => $validated['student_id'],
                     'requester_email' => $validated['email'],
                     'requester_phone' => $validated['phone'] ?? null,
+                    'department_id' => $validated['department_id'],
+                    'category_id' => $validated['category_id'] ?? null,
                     'subject' => $validated['subject'],
                     'description' => $validated['message'],
-                    'priority' => $validated['priority'] ?? 'Low',
+                    'priority' => $priorityClassifier->classify($validated['subject']),
                     'status' => 'New',
                 ]);
 
@@ -392,6 +400,7 @@ class TicketController extends Controller
     {
         return Ticket::query()
             ->with([
+                'assignedTo',
                 'comments' => fn ($query) => $query->where('is_internal', false)->with('attachments')->oldest(),
                 'attachments' => fn ($query) => $query->whereNull('comment_id'),
             ])

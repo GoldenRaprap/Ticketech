@@ -77,9 +77,9 @@
                 <span class="sidebar-link-label">Client Moderation</span>
             </a>
 
-            <a class="sidebar-link {{ request()->routeIs('admin.sla-settings') ? 'active' : '' }}" href="{{ route('admin.sla-settings') }}" title="SLA Settings">
+            <a class="sidebar-link {{ request()->routeIs('admin.sla-settings*') ? 'active' : '' }}" href="{{ route('admin.sla-settings') }}" title="Ticket Options">
                 <span class="sidebar-icon" aria-hidden="true">◷</span>
-                <span class="sidebar-link-label">SLA Settings</span>
+                <span class="sidebar-link-label">Ticket Options</span>
             </a>
 
             <a class="sidebar-link {{ request()->routeIs('admin.audit-logs') ? 'active' : '' }}" href="{{ route('admin.audit-logs') }}" title="Audit Logs">

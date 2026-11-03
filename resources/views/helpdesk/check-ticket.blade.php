@@ -114,13 +114,15 @@
                         <dd><span class="ticket-view-status-badge ticket-view-status-badge--{{ \Illuminate\Support\Str::slug($ticket->status) }}">{{ $ticket->status }}</span></dd>
                     </div>
                     <div>
-                        <dt>Priority</dt>
-                        <dd><span class="ticket-view-priority ticket-view-priority--{{ \Illuminate\Support\Str::lower($ticket->priority) }}">{{ $ticket->priority }}</span></dd>
-                    </div>
-                    <div>
                         <dt>Ticket number</dt>
                         <dd>{{ $ticket->ticket_number }}</dd>
                     </div>
+                    @if ($ticket->assignedTo)
+                        <div>
+                            <dt>Assigned staff member</dt>
+                            <dd>{{ $ticket->assignedTo->name }}</dd>
+                        </div>
+                    @endif
                 </dl>
 
                 <section class="ticket-conversation" aria-labelledby="ticket-conversation-title">

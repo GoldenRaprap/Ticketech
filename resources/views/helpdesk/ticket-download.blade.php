@@ -36,7 +36,9 @@
         <div><dt>Phone</dt><dd>{{ $ticket->requester_phone ?: 'Not provided' }}</dd></div>
         <div><dt>Date submitted</dt><dd>{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('F j, Y g:i A') }}</dd></div>
         <div><dt>Status</dt><dd>{{ $ticket->status }}</dd></div>
-        <div><dt>Priority</dt><dd>{{ $ticket->priority }}</dd></div>
+        @if ($ticket->assignedTo)
+            <div><dt>Assigned staff member</dt><dd>{{ $ticket->assignedTo->name }}</dd></div>
+        @endif
     </dl>
 
     <h2>Conversation</h2>
