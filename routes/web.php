@@ -25,11 +25,13 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('redirect.workspace-users')->group(function () {
     Route::get('/', HomeController::class)->name('home');
     Route::get('/Helpdesk', HomeController::class)->name('helpdesk');
-    Route::get('/knowledge-base', [KnowledgeArticleController::class, 'publicIndex'])->name('knowledge-base');
-    Route::get('/knowledge-base/{article:slug}', [KnowledgeArticleController::class, 'publicShow'])->name('knowledge-base.show');
-    Route::post('/knowledge-base/{article:slug}/reviews', [KnowledgeArticleController::class, 'storeReview'])
-        ->middleware('throttle:5,1')
-        ->name('knowledge-base.reviews.store');
+    Route::middleware('knowledge-base-enabled')->group(function () {
+        Route::get('/knowledge-base', [KnowledgeArticleController::class, 'publicIndex'])->name('knowledge-base');
+        Route::get('/knowledge-base/{article:slug}', [KnowledgeArticleController::class, 'publicShow'])->name('knowledge-base.show');
+        Route::post('/knowledge-base/{article:slug}/reviews', [KnowledgeArticleController::class, 'storeReview'])
+            ->middleware('throttle:5,1')
+            ->name('knowledge-base.reviews.store');
+    });
 });
 
 Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
@@ -58,12 +60,25 @@ Route::post('/forgot-password', [PasswordResetController::class, 'sendLink'])->m
 Route::get('/reset-password/{token}', [PasswordResetController::class, 'edit'])->name('password.reset');
 Route::post('/reset-password', [PasswordResetController::class, 'update'])->middleware('throttle:5,1')->name('password.update');
 Route::get('/create-ticket', [TicketController::class, 'create'])->name('ticket.create');
-Route::post('/create-ticket', [TicketController::class, 'store'])->middleware('throttle:10,1')->name('ticket.store');
+Route::post('/create-ticket', [TicketController::class, 'store'])
+    ->middleware(['ticket-submission-open', 'throttle:10,1'])
+    ->name('ticket.store');
 Route::get('/ticket-submitted', [TicketController::class, 'submitted'])->name('ticket.submitted');
+Route::get('/ticket-email/confirm/{submission}/{token}', [TicketController::class, 'confirmPendingEmail'])
+    ->middleware(['signed', 'throttle:10,1'])
+    ->name('ticket.email.confirm');
+Route::post('/ticket-email/confirm/{submission}/{token}', [TicketController::class, 'completePendingSubmission'])
+    ->middleware(['signed', 'throttle:10,1'])
+    ->name('ticket.email.complete');
+Route::get('/ticket-email/verify/{ticket:ticket_number}/{token}', [TicketController::class, 'verifyEmail'])
+    ->middleware(['signed', 'throttle:10,1'])
+    ->name('ticket.email.verify');
 Route::get('/check-ticket', [TicketController::class, 'lookup'])->name('ticket.check');
 Route::post('/check-ticket', [TicketController::class, 'show'])->middleware('throttle:10,1')->name('ticket.lookup');
 Route::post('/check-ticket/download', [TicketController::class, 'downloadTicket'])->middleware('throttle:10,1')->name('ticket.download');
-Route::post('/check-ticket/reply', [TicketController::class, 'reply'])->middleware('throttle:10,1')->name('ticket.reply');
+Route::post('/check-ticket/reply', [TicketController::class, 'reply'])
+    ->middleware(['ticket-replies-enabled', 'throttle:10,1'])
+    ->name('ticket.reply');
 Route::post('/check-ticket/close', [TicketController::class, 'closeView'])->name('ticket.view.close');
 Route::post('/ticket-attachments/{attachment}/download', [TicketController::class, 'download'])->middleware('throttle:15,1')->name('ticket.attachments.download');
 Route::get('/ticket-attachments/{attachment}/preview', [TicketAttachmentPreviewController::class, 'requester'])->middleware('throttle:30,1')->name('ticket.attachments.preview');
@@ -97,6 +112,8 @@ Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])-
     Route::get('/users', [AdminUserController::class, 'index'])->name('users');
     Route::post('/users/{user}/approve', [AdminUserController::class, 'approve'])->name('users.approve');
     Route::post('/users/{user}/deny', [AdminUserController::class, 'deny'])->name('users.deny');
+    Route::delete('/users/{user}/denied-unverified-application', [AdminUserController::class, 'removeDeniedUnverifiedApplication'])
+        ->name('users.denied-unverified-application.destroy');
     Route::put('/users/{user}', [AdminUserController::class, 'update'])->name('users.update');
     Route::get('/knowledge-base', [KnowledgeArticleController::class, 'index'])->name('knowledge-base');
     Route::put('/knowledge-base/review-settings', [KnowledgeArticleController::class, 'updateReviewSettings'])->name('knowledge-base.review-settings');
@@ -107,11 +124,19 @@ Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])-
     Route::delete('/knowledge-base/{article}', [KnowledgeArticleController::class, 'destroy'])->name('knowledge-base.destroy');
     Route::get('/sla-settings', [AdminSlaSettingsController::class, 'index'])->name('sla-settings');
     Route::put('/sla-settings', [AdminSlaSettingsController::class, 'update'])->name('sla-settings.update');
+    Route::get('/reports/staff-performance/export', [StaffReportsController::class, 'exportStaffPerformance'])->name('reports.staff-performance.export');
     Route::post('/sla-settings/departments', [AdminDepartmentCategoryController::class, 'storeDepartment'])->name('sla-settings.departments.store');
     Route::patch('/sla-settings/departments/{department}/activation', [AdminDepartmentCategoryController::class, 'toggleDepartment'])->name('sla-settings.departments.toggle');
     Route::post('/sla-settings/categories', [AdminDepartmentCategoryController::class, 'storeCategory'])->name('sla-settings.categories.store');
     Route::patch('/sla-settings/categories/{category}/activation', [AdminDepartmentCategoryController::class, 'toggleCategory'])->name('sla-settings.categories.toggle');
+    Route::get('/audit-logs/export', [AdminAuditLogController::class, 'export'])->name('audit-logs.export');
     Route::get('/audit-logs', AdminAuditLogController::class)->name('audit-logs');
     Route::get('/system-settings', [AdminSystemSettingsController::class, 'index'])->name('system-settings');
     Route::put('/system-settings', [AdminSystemSettingsController::class, 'update'])->name('system-settings.update');
+    Route::put('/system-settings/ticket-submission', [AdminSystemSettingsController::class, 'updateTicketSubmission'])
+        ->name('system-settings.ticket-submission.update');
+    Route::put('/system-settings/knowledge-base', [AdminSystemSettingsController::class, 'updateKnowledgeBaseAvailability'])
+        ->name('system-settings.knowledge-base.update');
+    Route::put('/system-settings/ticket-replies', [AdminSystemSettingsController::class, 'updateTicketRepliesAvailability'])
+        ->name('system-settings.ticket-replies.update');
 });

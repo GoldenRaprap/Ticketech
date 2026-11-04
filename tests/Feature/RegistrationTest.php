@@ -5,6 +5,9 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
@@ -44,6 +47,48 @@ class RegistrationTest extends TestCase
         $this->assertNull($user->email_verified_at);
         $this->assertNotSame('secure-password-123', $user->password);
         $this->assertAuthenticatedAs($user);
+        Notification::assertSentTo($user, VerifyEmail::class);
+    }
+
+    public function test_registration_uses_configured_smtp_when_saved_default_mailer_is_empty(): void
+    {
+        Notification::fake();
+        DB::table('system_settings')->insert([
+            [
+                'setting' => 'mail.default',
+                'value' => '',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => 'mail.smtp.host',
+                'value' => 'smtp.example.test',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => 'mail.smtp.username',
+                'value' => 'helpdesk@example.test',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => 'mail.smtp.password',
+                'value' => Crypt::encryptString('configured-app-password'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->post(route('register.store'), [
+            'name' => 'Jamie Staff',
+            'email' => 'jamie.staff@pcu.edu.ph',
+            'password' => 'secure-password-123',
+            'password_confirmation' => 'secure-password-123',
+        ])->assertRedirect(route('verification.notice'));
+
+        $this->assertSame('smtp', config('mail.default'));
+        $user = User::query()->where('email', 'jamie.staff@pcu.edu.ph')->firstOrFail();
         Notification::assertSentTo($user, VerifyEmail::class);
     }
 
@@ -155,6 +200,91 @@ class RegistrationTest extends TestCase
             ->assertSee('Your request for staff access was not approved.');
         $this->get(route('staff.dashboard'))->assertRedirect(route('staff.application.denied'));
         $this->get(route('verification.notice'))->assertRedirect(route('staff.application.denied'));
+    }
+
+    public function test_admin_can_remove_denied_unverified_application_and_release_email_for_registration(): void
+    {
+        Notification::fake();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $deniedUser = $this->createPendingStaff([
+            'email' => 'unverified.staff@pcu.edu.ph',
+        ], unverified: true);
+        $deniedUser->staff_approval_status = 'denied';
+        $deniedUser->save();
+
+        $this->actingAs($admin)->get(route('admin.users'))
+            ->assertOk()
+            ->assertSee('Denied unverified applications')
+            ->assertSee($deniedUser->email)
+            ->assertSee('Remove application and release email')
+            ->assertSee('data-confirm-delete', false);
+
+        $this->delete(route('admin.users.denied-unverified-application.destroy', $deniedUser))
+            ->assertRedirect(route('admin.users'))
+            ->assertSessionHas(
+                'status',
+                'The denied unverified application was removed. Its email address can now be used to register again.',
+            );
+
+        $this->assertDatabaseMissing('users', ['id' => $deniedUser->id]);
+        $this->assertDatabaseHas('ticket_events', [
+            'actor_id' => $admin->id,
+            'event' => 'denied_unverified_staff_application_removed',
+            'subject_type' => 'User',
+            'subject_id' => (string) $deniedUser->id,
+            'subject_name' => $deniedUser->name,
+        ]);
+
+        Auth::logout();
+
+        $this->post(route('register.store'), [
+            'name' => 'Jamie Staff Again',
+            'email' => 'unverified.staff@pcu.edu.ph',
+            'password' => 'secure-password-123',
+            'password_confirmation' => 'secure-password-123',
+        ])->assertRedirect(route('verification.notice'));
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'unverified.staff@pcu.edu.ph',
+            'name' => 'Jamie Staff Again',
+            'staff_approval_status' => 'pending',
+        ]);
+    }
+
+    public function test_only_denied_unverified_staff_applications_can_be_removed(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $verifiedDeniedUser = $this->createPendingStaff();
+        $verifiedDeniedUser->staff_approval_status = 'denied';
+        $verifiedDeniedUser->save();
+        $pendingUnverifiedUser = $this->createPendingStaff(unverified: true);
+
+        $this->actingAs($admin)
+            ->delete(route('admin.users.denied-unverified-application.destroy', $verifiedDeniedUser))
+            ->assertNotFound();
+
+        $this->delete(route('admin.users.denied-unverified-application.destroy', $pendingUnverifiedUser))
+            ->assertNotFound();
+
+        $this->assertModelExists($verifiedDeniedUser);
+        $this->assertModelExists($pendingUnverifiedUser);
+    }
+
+    public function test_staff_cannot_remove_a_denied_unverified_application(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+        $deniedUser = $this->createPendingStaff(unverified: true);
+        $deniedUser->staff_approval_status = 'denied';
+        $deniedUser->save();
+
+        $this->delete(route('admin.users.denied-unverified-application.destroy', $deniedUser))
+            ->assertRedirect(route('login'));
+
+        $this->actingAs($staff)
+            ->delete(route('admin.users.denied-unverified-application.destroy', $deniedUser))
+            ->assertForbidden();
+
+        $this->assertModelExists($deniedUser);
     }
 
     public function test_staff_cannot_deny_another_staff_registration(): void

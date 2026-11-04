@@ -14,7 +14,7 @@
                 <span>PCU Helpdesk</span>
             </a>
             <nav aria-label="Main navigation">
-                <form action="{{ route('logout') }}" method="post">
+                <form action="{{ route('logout') }}" method="post" data-confirm-logout>
                     @csrf
                     <button class="header-sign-in" type="submit">Sign out</button>
                 </form>
@@ -44,7 +44,7 @@
                     <p>Your email address is verified. An administrator must approve your staff access before you can enter the workspace.</p>
                     <p>We’ll keep your account signed in. You can try again later or sign out below.</p>
 
-                    <form class="password-form" action="{{ route('logout') }}" method="post">
+                    <form class="password-form" action="{{ route('logout') }}" method="post" data-confirm-logout>
                         @csrf
                         <button type="submit">Sign out</button>
                         <a class="auth-back-link" href="{{ route('home') }}">Back to Helpdesk</a>

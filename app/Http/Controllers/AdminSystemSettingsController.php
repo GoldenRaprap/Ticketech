@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Services\AuditActivityLogger;
+use App\Services\PublicFeatureAvailability;
+use App\Services\TicketSubmissionSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -17,6 +19,7 @@ class AdminSystemSettingsController extends Controller
     {
         $settings = DB::table('system_settings')
             ->whereIn('setting', [
+                'mail.default',
                 'mail.from.address',
                 'mail.from.name',
                 'mail.smtp.host',
@@ -24,6 +27,12 @@ class AdminSystemSettingsController extends Controller
                 'mail.smtp.encryption',
                 'mail.smtp.username',
                 'mail.smtp.password',
+                'ticket.submission.enabled',
+                'ticket.submission.message',
+                PublicFeatureAvailability::KNOWLEDGE_BASE_ENABLED,
+                PublicFeatureAvailability::KNOWLEDGE_BASE_MESSAGE,
+                PublicFeatureAvailability::TICKET_REPLIES_ENABLED,
+                PublicFeatureAvailability::TICKET_REPLIES_MESSAGE,
             ])
             ->pluck('value', 'setting');
         $mailer = config('mail.default');
@@ -53,7 +62,127 @@ class AdminSystemSettingsController extends Controller
             'hasSmtpAppPassword' => $settings->has('mail.smtp.password')
                 || filled(config('mail.mailers.smtp.password')),
             'mailTransportStatus' => $mailTransportStatus,
+            'ticketSubmissionOpen' => $settings->get('ticket.submission.enabled', '1') === '1',
+            'ticketSubmissionMessage' => $settings->get(
+                'ticket.submission.message',
+                TicketSubmissionSettings::DEFAULT_CLOSED_MESSAGE,
+            ),
+            'knowledgeBaseEnabled' => $settings->get(PublicFeatureAvailability::KNOWLEDGE_BASE_ENABLED, '1') === '1',
+            'knowledgeBaseMessage' => $settings->get(
+                PublicFeatureAvailability::KNOWLEDGE_BASE_MESSAGE,
+                PublicFeatureAvailability::DEFAULT_KNOWLEDGE_BASE_MESSAGE,
+            ),
+            'ticketRepliesEnabled' => $settings->get(PublicFeatureAvailability::TICKET_REPLIES_ENABLED, '1') === '1',
+            'ticketRepliesMessage' => $settings->get(
+                PublicFeatureAvailability::TICKET_REPLIES_MESSAGE,
+                PublicFeatureAvailability::DEFAULT_TICKET_REPLIES_MESSAGE,
+            ),
         ]);
+    }
+
+    public function updateKnowledgeBaseAvailability(Request $request, AuditActivityLogger $auditLogger): RedirectResponse
+    {
+        return $this->updatePublicFeatureAvailability(
+            $request,
+            $auditLogger,
+            'knowledge_base_enabled',
+            'knowledge_base_message',
+            PublicFeatureAvailability::KNOWLEDGE_BASE_ENABLED,
+            PublicFeatureAvailability::KNOWLEDGE_BASE_MESSAGE,
+            'knowledge_base_availability_updated',
+            'Knowledge base',
+        );
+    }
+
+    public function updateTicketRepliesAvailability(Request $request, AuditActivityLogger $auditLogger): RedirectResponse
+    {
+        return $this->updatePublicFeatureAvailability(
+            $request,
+            $auditLogger,
+            'ticket_replies_enabled',
+            'ticket_replies_message',
+            PublicFeatureAvailability::TICKET_REPLIES_ENABLED,
+            PublicFeatureAvailability::TICKET_REPLIES_MESSAGE,
+            'ticket_replies_availability_updated',
+            'Ticket replies',
+        );
+    }
+
+    public function updateTicketSubmission(Request $request, AuditActivityLogger $auditLogger): RedirectResponse
+    {
+        $validated = $request->validate([
+            'submission_enabled' => ['required', 'boolean'],
+            'submission_message' => ['required', 'string', 'max:500'],
+        ]);
+
+        $isOpen = (bool) $validated['submission_enabled'];
+        $settings = [
+            'ticket.submission.enabled' => $isOpen ? '1' : '0',
+            'ticket.submission.message' => $validated['submission_message'],
+        ];
+
+        DB::transaction(function () use ($settings): void {
+            foreach ($settings as $setting => $value) {
+                DB::table('system_settings')->updateOrInsert(
+                    ['setting' => $setting],
+                    ['value' => $value, 'created_at' => now(), 'updated_at' => now()],
+                );
+            }
+        });
+
+        $auditLogger->record(
+            $request,
+            'ticket_submission_settings_updated',
+            $isOpen ? 'Reopened public ticket submission.' : 'Paused public ticket submission.',
+            properties: ['submission_enabled' => $isOpen],
+        );
+
+        return to_route('admin.system-settings')->with(
+            'status',
+            $isOpen ? 'Public ticket submission is open.' : 'Public ticket submission is paused.',
+        );
+    }
+
+    private function updatePublicFeatureAvailability(
+        Request $request,
+        AuditActivityLogger $auditLogger,
+        string $enabledField,
+        string $messageField,
+        string $enabledSetting,
+        string $messageSetting,
+        string $auditEvent,
+        string $featureName,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            $enabledField => ['required', 'boolean'],
+            $messageField => ['required', 'string', 'max:500'],
+        ]);
+        $isEnabled = (bool) $validated[$enabledField];
+        $settings = [
+            $enabledSetting => $isEnabled ? '1' : '0',
+            $messageSetting => $validated[$messageField],
+        ];
+
+        DB::transaction(function () use ($settings): void {
+            foreach ($settings as $setting => $value) {
+                DB::table('system_settings')->updateOrInsert(
+                    ['setting' => $setting],
+                    ['value' => $value, 'created_at' => now(), 'updated_at' => now()],
+                );
+            }
+        });
+
+        $auditLogger->record(
+            $request,
+            $auditEvent,
+            ($isEnabled ? 'Enabled ' : 'Disabled ').'public '.$featureName.'.',
+            properties: [$enabledField => $isEnabled],
+        );
+
+        return to_route('admin.system-settings')->with(
+            'status',
+            $featureName.($isEnabled ? ' is enabled.' : ' is disabled.'),
+        );
     }
 
     public function update(Request $request, AuditActivityLogger $auditLogger): RedirectResponse
@@ -77,6 +206,9 @@ class AdminSystemSettingsController extends Controller
 
         $validated = $validator->validated();
         $settings = [
+            'mail.default' => $this->hasSmtpPassword($validated, $request)
+                ? 'smtp'
+                : (config('mail.default_fallback') ?: 'log'),
             'mail.from.address' => $validated['from_address'],
             'mail.from.name' => $validated['from_name'],
             'mail.smtp.host' => $validated['smtp_host'],
@@ -106,6 +238,7 @@ class AdminSystemSettingsController extends Controller
         };
 
         config([
+            'mail.default' => $settings['mail.default'],
             'mail.from.address' => $validated['from_address'],
             'mail.from.name' => $validated['from_name'],
             'mail.mailers.smtp.host' => $validated['smtp_host'],
@@ -115,7 +248,7 @@ class AdminSystemSettingsController extends Controller
             'mail.mailers.smtp.password' => filled($validated['smtp_app_password'] ?? null)
                 ? $validated['smtp_app_password']
                 : ($request->boolean('clear_smtp_app_password')
-                    ? null
+                    ? config('mail.smtp_password_fallback')
                     : config('mail.mailers.smtp.password')),
             'mail.mailers.smtp.auto_tls' => $validated['smtp_encryption'] !== 'none',
         ]);
@@ -134,5 +267,16 @@ class AdminSystemSettingsController extends Controller
         );
 
         return to_route('admin.system-settings')->with('status', 'Email sender and SMTP settings updated.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function hasSmtpPassword(array $validated, Request $request): bool
+    {
+        return filled($validated['smtp_app_password'] ?? null)
+            || (! $request->boolean('clear_smtp_app_password')
+                && DB::table('system_settings')->where('setting', 'mail.smtp.password')->exists())
+            || filled(config('mail.smtp_password_fallback'));
     }
 }

@@ -14,7 +14,7 @@
                 <span>PCU Helpdesk</span>
             </a>
             <nav aria-label="Main navigation">
-                <form action="{{ route('logout') }}" method="post">
+                <form action="{{ route('logout') }}" method="post" data-confirm-logout>
                     @csrf
                     <button class="header-sign-in" type="submit">Sign out</button>
                 </form>
@@ -39,7 +39,7 @@
                     <p class="password-eyebrow">PCU STAFF PORTAL</p>
                     <h1>Staff access denied</h1>
                     <p>Your request for staff access was not approved. If you believe this was a mistake, contact a PCU administrator.</p>
-                    <form class="password-form" action="{{ route('logout') }}" method="post">
+                    <form class="password-form" action="{{ route('logout') }}" method="post" data-confirm-logout>
                         @csrf
                         <button type="submit">Sign out</button>
                     </form>

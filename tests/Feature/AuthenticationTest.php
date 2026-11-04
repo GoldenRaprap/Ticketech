@@ -156,6 +156,22 @@ class AuthenticationTest extends TestCase
         $this->actingAs($staff)->get('/admin/audit-logs')->assertForbidden();
     }
 
+    public function test_staff_cannot_export_admin_audit_logs(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+
+        $this->actingAs($staff)->get(route('admin.audit-logs.export'))->assertForbidden();
+    }
+
+    public function test_staff_cannot_export_individual_staff_performance(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+
+        $this->actingAs($staff)
+            ->get(route('admin.reports.staff-performance.export', ['staff_ids' => [$staff->id]]))
+            ->assertForbidden();
+    }
+
     public function test_staff_can_sign_in_to_staff_portal(): void
     {
         $staff = User::factory()->create([

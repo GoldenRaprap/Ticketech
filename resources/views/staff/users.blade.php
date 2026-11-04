@@ -62,6 +62,48 @@
         </section>
     @endif
 
+    @if ($deniedUnverifiedApplications->isNotEmpty())
+        <section class="admin-console-card">
+            <header class="admin-console-card-heading">
+                <div>
+                    <span class="admin-page-eyebrow">REJECTED REGISTRATIONS</span>
+                    <h2>Denied unverified applications</h2>
+                    <p>Remove a denied account that never verified its email to release the address for a new registration. Removal is permanent.</p>
+                </div>
+                <span class="admin-readonly-badge">{{ $deniedUnverifiedApplications->count() }} denied</span>
+            </header>
+
+            <div class="admin-staff-list">
+                @foreach ($deniedUnverifiedApplications as $application)
+                    <article class="admin-staff-card">
+                        <header class="admin-staff-card-heading">
+                            <div class="admin-user-cell">
+                                <span class="admin-user-avatar">{{ strtoupper(substr($application->name, 0, 1)) }}</span>
+                                <span><strong>{{ $application->name }}</strong><small>{{ $application->email }}</small></span>
+                            </div>
+                            <span class="admin-staff-status admin-staff-status--terminated">Denied · email unverified</span>
+                        </header>
+                        <div class="admin-staff-card-actions">
+                            <form
+                                action="{{ route('admin.users.denied-unverified-application.destroy', $application) }}"
+                                method="post"
+                                data-confirm-delete
+                                data-confirm-title="Remove denied application?"
+                                data-confirm-message="This permanently removes {{ $application->email }} from the system and allows that address to register again."
+                            >
+                                @csrf
+                                @method('delete')
+                                <button class="admin-console-button admin-console-button--danger" type="submit">
+                                    Remove application and release email
+                                </button>
+                            </form>
+                        </div>
+                    </article>
+                @endforeach
+            </div>
+        </section>
+    @endif
+
     <section class="admin-metric-grid" aria-label="Staff access summary">
         <article class="admin-metric-card">
             <span class="admin-metric-icon admin-metric-icon--blue" aria-hidden="true">◎</span>

@@ -22,7 +22,7 @@
 
     <section class="notification-summary">
         <span class="notification-summary-icon" aria-hidden="true">♧</span>
-        <div><strong>{{ $unreadCount }} unread {{ \Illuminate\Support\Str::plural('notification', $unreadCount) }}</strong><p>Notifications are generated from new tickets, assignments, replies, and client reports.</p></div>
+        <div><strong>{{ $unreadCount }} unread {{ \Illuminate\Support\Str::plural('notification', $unreadCount) }}</strong><p>Notifications include new tickets, assignments, replies, resolution warnings and breaches, and client reports.</p></div>
         <span class="notification-unread-count">{{ $notifications->total() }} total</span>
     </section>
 
@@ -42,7 +42,7 @@
             @forelse ($notifications as $notification)
                 <article class="notification-item {{ $notification->read_at ? '' : 'notification-item--unread' }}" @if ($notification->ticket) data-notification-row role="button" tabindex="0" aria-label="Open notification: {{ $notification->title }}" @endif>
                     <span class="notification-icon notification-icon--{{ $notification->type }}" aria-hidden="true">
-                        @if ($notification->type === 'assignment') ↗ @elseif ($notification->type === 'reply' || $notification->type === 'requester_reply') ↩ @elseif ($notification->type === 'new_ticket') ＋ @elseif ($notification->type === 'client_report') ⚑ @else ✓ @endif
+                        @if ($notification->type === 'assignment') ↗ @elseif ($notification->type === 'reply' || $notification->type === 'requester_reply') ↩ @elseif ($notification->type === 'new_ticket') ＋ @elseif ($notification->type === 'client_report') ⚑ @elseif ($notification->type === 'sla_warning' || $notification->type === 'sla_overdue') ◷ @else ✓ @endif
                     </span>
                     <div class="notification-copy">
                         <div class="notification-title-row"><h3>{{ $notification->title }}</h3>@unless ($notification->read_at)<span class="unread-label">New</span>@endunless</div>
@@ -59,7 +59,7 @@
                     @endif
                 </article>
             @empty
-                <div class="workspace-empty-state"><span class="workspace-empty-icon" aria-hidden="true">✓</span><strong>No notifications here</strong><p>New assignments, ticket replies, and client reports will appear here.</p></div>
+                <div class="workspace-empty-state"><span class="workspace-empty-icon" aria-hidden="true">✓</span><strong>No notifications here</strong><p>New assignments, ticket replies, resolution warnings and breaches, and client reports will appear here.</p></div>
             @endforelse
         </div>
         <footer class="table-footer"><span>Showing {{ $notifications->count() }} of {{ $notifications->total() }} notifications</span>{{ $notifications->links() }}</footer>

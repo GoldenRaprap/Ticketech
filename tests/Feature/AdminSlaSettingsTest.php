@@ -4,8 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\Department;
 use App\Models\User;
+use App\Notifications\TicketEmailVerification;
 use App\Services\SlaSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Notifications\AnonymousNotifiable;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class AdminSlaSettingsTest extends TestCase
@@ -133,6 +136,7 @@ class AdminSlaSettingsTest extends TestCase
         ]);
 
         $department = Department::factory()->create();
+        Notification::fake();
         $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
             'student_id' => 'PCU-2026-001',
@@ -141,6 +145,20 @@ class AdminSlaSettingsTest extends TestCase
             'subject' => 'Campus-wide outage',
             'message' => 'A general service problem.',
         ])->assertRedirect(route('ticket.submitted'));
+
+        $verificationUrl = null;
+        Notification::assertSentOnDemand(
+            TicketEmailVerification::class,
+            function (TicketEmailVerification $notification, array $channels, AnonymousNotifiable $notifiable) use (&$verificationUrl): bool {
+                $verificationUrl = $notification->verificationUrl;
+
+                return $channels === ['mail']
+                    && $notifiable->routeNotificationFor('mail') === 'jamie@example.edu';
+            },
+        );
+        $this->assertNotNull($verificationUrl);
+        $this->get($verificationUrl)->assertOk();
+        $this->post($verificationUrl)->assertRedirect(route('ticket.submitted'));
 
         $this->assertDatabaseHas('tickets', [
             'subject' => 'Campus-wide outage',

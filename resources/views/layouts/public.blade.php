@@ -23,7 +23,7 @@
                     @if (auth()->user()->isStaff())
                         <a href="{{ auth()->user()->isAdmin() ? route('admin.dashboard') : route('staff.dashboard') }}">{{ auth()->user()->isAdmin() ? 'Admin console' : 'Staff portal' }}</a>
                     @endif
-                    <form class="public-logout" action="{{ route('logout') }}" method="post">
+                    <form class="public-logout" action="{{ route('logout') }}" method="post" data-confirm-logout>
                         @csrf
                         <button type="submit">Log out</button>
                     </form>

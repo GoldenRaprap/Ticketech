@@ -6,6 +6,7 @@ use App\Http\Requests\StoreKnowledgeArticleRequest;
 use App\Http\Requests\UpdateKnowledgeArticleRequest;
 use App\Models\KnowledgeArticle;
 use App\Services\AuditActivityLogger;
+use App\Services\KnowledgeArticleContentFormatter;
 use App\Services\KnowledgeArticleReviewSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -48,20 +49,27 @@ class KnowledgeArticleController extends Controller
         ]);
     }
 
-    public function publicShow(KnowledgeArticle $article, KnowledgeArticleReviewSettings $reviewSettings): View
-    {
+    public function publicShow(
+        KnowledgeArticle $article,
+        KnowledgeArticleReviewSettings $reviewSettings,
+        KnowledgeArticleContentFormatter $contentFormatter,
+    ): View {
         abort_unless($article->is_published, 404);
 
-        $article->load('images')->loadCount('reviews');
+        $article->load('images');
+        $reviewStats = $article->reviews()
+            ->selectRaw('COUNT(*) as review_count, AVG(rating) as average_rating')
+            ->firstOrFail();
         $reviewThreshold = $reviewSettings->visibilityThreshold();
-        $reviewsVisible = $article->reviews_count >= $reviewThreshold;
-        $averageRating = $reviewsVisible ? round((float) $article->reviews()->avg('rating'), 1) : null;
+        $reviewsVisible = (int) $reviewStats->review_count >= $reviewThreshold;
+        $averageRating = $reviewsVisible ? round((float) $reviewStats->average_rating, 1) : null;
 
-        return view('helpdesk.knowledge-article', compact(
-            'article',
-            'averageRating',
-            'reviewsVisible',
-        ));
+        return view('helpdesk.knowledge-article', [
+            'article' => $article,
+            'articleContent' => $contentFormatter->format($article->body),
+            'averageRating' => $averageRating,
+            'reviewsVisible' => $reviewsVisible,
+        ]);
     }
 
     public function index(Request $request, KnowledgeArticleReviewSettings $reviewSettings): View
@@ -93,9 +101,14 @@ class KnowledgeArticleController extends Controller
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request, KnowledgeArticleContentFormatter $contentFormatter): View
     {
-        return view('admin.knowledge-article-form', ['article' => new KnowledgeArticle]);
+        $oldBody = $request->session()->getOldInput('body', '');
+
+        return view('admin.knowledge-article-form', [
+            'article' => new KnowledgeArticle,
+            'articleContent' => $contentFormatter->format(is_string($oldBody) ? $oldBody : ''),
+        ]);
     }
 
     public function updateReviewSettings(Request $request, AuditActivityLogger $auditLogger): RedirectResponse
@@ -119,8 +132,11 @@ class KnowledgeArticleController extends Controller
         return to_route('admin.knowledge-base')->with('status', 'Review visibility settings updated.');
     }
 
-    public function store(StoreKnowledgeArticleRequest $request, AuditActivityLogger $auditLogger): RedirectResponse
-    {
+    public function store(
+        StoreKnowledgeArticleRequest $request,
+        AuditActivityLogger $auditLogger,
+        KnowledgeArticleContentFormatter $contentFormatter,
+    ): RedirectResponse {
         $data = $request->validated();
         $uploadedImages = $data['images'] ?? [];
         unset($data['images']);
@@ -133,6 +149,7 @@ class KnowledgeArticleController extends Controller
                 $data,
                 $uploadedImages,
                 $isPublished,
+                $contentFormatter,
                 &$storedImagePaths,
             ): KnowledgeArticle {
                 $article = KnowledgeArticle::create([
@@ -141,7 +158,7 @@ class KnowledgeArticleController extends Controller
                     'slug' => $this->makeSlug($data['title']),
                     'category' => $data['category'],
                     'summary' => $data['summary'],
-                    'body' => $data['body'],
+                    'body' => $contentFormatter->format($data['body']),
                     'is_published' => $isPublished,
                     'published_at' => $isPublished ? now() : null,
                 ]);
@@ -172,15 +189,24 @@ class KnowledgeArticleController extends Controller
         return to_route('admin.knowledge-base.edit', $article)->with('status', 'Article created successfully.');
     }
 
-    public function edit(KnowledgeArticle $article): View
-    {
-        return view('admin.knowledge-article-form', compact('article'));
+    public function edit(
+        Request $request,
+        KnowledgeArticle $article,
+        KnowledgeArticleContentFormatter $contentFormatter,
+    ): View {
+        $oldBody = $request->session()->getOldInput('body', $article->body);
+
+        return view('admin.knowledge-article-form', [
+            'article' => $article,
+            'articleContent' => $contentFormatter->format(is_string($oldBody) ? $oldBody : ''),
+        ]);
     }
 
     public function update(
         UpdateKnowledgeArticleRequest $request,
         KnowledgeArticle $article,
         AuditActivityLogger $auditLogger,
+        KnowledgeArticleContentFormatter $contentFormatter,
     ): RedirectResponse {
         $previousDetails = [
             'title' => $article->title,
@@ -203,6 +229,7 @@ class KnowledgeArticleController extends Controller
                 $isPublished,
                 $uploadedImages,
                 $imagesToRemove,
+                $contentFormatter,
                 &$storedImagePaths,
                 &$removedImagePaths,
             ): void {
@@ -210,7 +237,7 @@ class KnowledgeArticleController extends Controller
                     'title' => $data['title'],
                     'category' => $data['category'],
                     'summary' => $data['summary'],
-                    'body' => $data['body'],
+                    'body' => $contentFormatter->format($data['body']),
                     'is_published' => $isPublished,
                     'published_at' => $isPublished ? ($article->published_at ?? now()) : null,
                 ]);

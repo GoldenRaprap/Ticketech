@@ -12,6 +12,10 @@
     </div>
 
     <div class="lookup-panel {{ $ticket ? 'lookup-panel--ticket-view' : '' }}">
+        @if (session('ticket_reply_unavailable') && ! $ticket)
+            <aside class="ticket-status-notice" role="status">{{ session('ticket_reply_unavailable') }}</aside>
+        @endif
+
         @if (! $ticket)
             <div class="ticket-lookup-intro">
                 <h2>Check your request</h2>
@@ -67,7 +71,6 @@
             @if (session('ticket_reply_error'))
                 <aside class="ticket-status-notice" role="alert">{{ session('ticket_reply_error') }}</aside>
             @endif
-
             @if ($ticket->status === 'Closed')
                 <aside class="ticket-status-notice" role="status">
                     <p><strong>This ticket is closed.</strong></p>
@@ -195,7 +198,7 @@
                     </aside>
                 @endif
 
-                @if ($ticket->status !== 'Closed')
+                @if ($ticket->status !== 'Closed' && $ticketRepliesEnabled)
                 <section class="ticket-reply-panel" aria-labelledby="client-ticket-reply-heading">
                     <div class="ticket-reply-panel-heading">
                         <span class="ticket-reply-icon" aria-hidden="true">↩</span>
@@ -241,6 +244,8 @@
                         </div>
                     </form>
                 </section>
+                @elseif ($ticket->status !== 'Closed')
+                    <aside class="ticket-status-notice" role="status">{{ $ticketRepliesMessage }}</aside>
                 @endif
 
             </section>

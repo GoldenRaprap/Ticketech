@@ -13,18 +13,19 @@
 
     <div class="lookup-panel ticket-panel">
         <h2>Submit a support request</h2>
-        <p class="form-intro">No account is needed. Share a few details and the right PCU support team will follow up by email.</p>
-        <p class="required-note">Required fields are marked with <span>*</span></p>
+        @if ($ticketSubmissionOpen)
+            <p class="form-intro">No account is needed. We will verify that you can receive email at the address you provide before creating your ticket.</p>
+            <p class="required-note">Required fields are marked with <span>*</span></p>
 
-        <form class="lookup-form ticket-form" action="{{ route('ticket.store') }}" method="post" enctype="multipart/form-data">
-            @csrf
-            @if ($errors->any())
-                <ul class="form-validation-errors" role="alert">
-                    @foreach ($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            @endif
+            <form class="lookup-form ticket-form" action="{{ route('ticket.store') }}" method="post" enctype="multipart/form-data">
+                @csrf
+                @if ($errors->any())
+                    <ul class="form-validation-errors" role="alert">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                @endif
 
             <label class="field-label" for="ticket-name">
                 <span class="field-text">Name:<span class="required-mark">*</span></span>
@@ -98,6 +99,13 @@
 
             <button type="submit" class="submit-ticket-button">Submit Ticket</button>
         </form>
+        @else
+            <div class="ticket-submission-closed" role="status">
+                <h3>Ticket submission is temporarily paused</h3>
+                <p>{{ $ticketSubmissionMessage }}</p>
+                <p>You can still <a href="{{ route('ticket.check') }}">check the status of an existing ticket</a>.</p>
+            </div>
+        @endif
     </div>
 </section>
 @endsection

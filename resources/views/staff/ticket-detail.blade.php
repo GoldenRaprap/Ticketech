@@ -40,7 +40,11 @@
                     </div>
                 @endif
                 <div class="ticket-detail-tags">
-                    <span class="detail-tag"><small>Requester email</small><strong>{{ $ticket->requester_email }}</strong></span>
+                    <span class="detail-tag">
+                        <small>Requester email</small>
+                        <strong>{{ $ticket->requester_email }}</strong>
+                        <small>{{ $ticket->requesterEmailVerificationPending() ? 'Email verification pending' : ($ticket->requester_email_verified_at ? 'Email verified' : 'Legacy ticket — verification not requested') }}</small>
+                    </span>
                     <span class="detail-tag"><small>Student or Employee ID</small><strong>{{ $ticket->student_id }}</strong></span>
                     <span class="detail-tag"><small>Department</small><strong>{{ $ticket->department?->name ?? 'Not available' }}</strong></span>
                     <span class="detail-tag"><small>Category</small><strong>{{ $ticket->category?->name ?? 'Not selected' }}</strong></span>

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Notifications\WorkspaceAlert;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,6 +10,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['user_id', 'ticket_id', 'actor_id', 'type', 'title', 'message', 'read_at'])]
 class WorkspaceNotification extends Model
 {
+    protected static function booted(): void
+    {
+        static::created(function (WorkspaceNotification $notification): void {
+            $notification->user->notify(new WorkspaceAlert($notification));
+        });
+    }
+
     protected function casts(): array
     {
         return ['read_at' => 'datetime'];

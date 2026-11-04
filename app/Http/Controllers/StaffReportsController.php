@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Ticket;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Common\Entity\Style\Border;
@@ -45,6 +47,14 @@ class StaffReportsController extends Controller
             'periodRangeLabel' => $this->formatPeriodRange($periodStart, $periodEnd),
             'trendBuckets' => $trendBuckets,
             'staffWorkload' => $staffWorkload,
+            'staffMembers' => $request->user()->isAdmin()
+                ? User::query()
+                    ->where('role', 'staff')
+                    ->where('employment_status', 'active')
+                    ->where('staff_approval_status', 'approved')
+                    ->orderBy('name')
+                    ->get(['id', 'name', 'nickname', 'email'])
+                : collect(),
             'priorityCounts' => (clone $baseQuery)
                 ->selectRaw('priority, COUNT(*) as total')
                 ->groupBy('priority')
@@ -305,6 +315,227 @@ class StaffReportsController extends Controller
             } finally {
                 if (is_file($path) && ! unlink($path)) {
                     throw new RuntimeException('Unable to remove the temporary report export file.');
+                }
+            }
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    public function exportStaffPerformance(Request $request): StreamedResponse
+    {
+        $filters = $this->validatedFilters($request);
+        $validatedStaff = $request->validate([
+            'staff_ids' => ['required', 'array', 'min:1'],
+            'staff_ids.*' => [
+                'required',
+                'integer',
+                'distinct',
+                Rule::exists('users', 'id')
+                    ->where('role', 'staff')
+                    ->where('employment_status', 'active')
+                    ->where('staff_approval_status', 'approved'),
+            ],
+        ]);
+        $period = $filters['period'] ?? 'weekly';
+        [$periodStart, $periodEnd] = $this->periodRange($filters, $period);
+        $staffMembers = User::query()
+            ->where('role', 'staff')
+            ->where('employment_status', 'active')
+            ->where('staff_approval_status', 'approved')
+            ->whereKey($validatedStaff['staff_ids'])
+            ->orderBy('name')
+            ->get(['id', 'name', 'nickname', 'email']);
+        $staffStats = [];
+
+        foreach ($staffMembers as $staffMember) {
+            $staffStats[$staffMember->id] = [
+                'ticket_count' => 0,
+                'new_count' => 0,
+                'assigned_count' => 0,
+                'in_progress_count' => 0,
+                'resolved_count' => 0,
+                'closed_count' => 0,
+                'resolution_minutes' => 0.0,
+                'resolution_count' => 0,
+            ];
+        }
+
+        $ticketQuery = Ticket::query()
+            ->whereBetween('tickets.created_at', [$periodStart, $periodEnd])
+            ->whereIn('assigned_to_user_id', $staffMembers->modelKeys())
+            ->select([
+                'id',
+                'ticket_number',
+                'subject',
+                'assigned_to_user_id',
+                'priority',
+                'status',
+                'created_at',
+                'resolved_at',
+            ]);
+
+        foreach ((clone $ticketQuery)->lazyById(500) as $ticket) {
+            $stats = &$staffStats[$ticket->assigned_to_user_id];
+            $stats['ticket_count']++;
+
+            match ($ticket->status) {
+                'New' => $stats['new_count']++,
+                'Assigned' => $stats['assigned_count']++,
+                'In Progress' => $stats['in_progress_count']++,
+                'Resolved' => $stats['resolved_count']++,
+                'Closed' => $stats['closed_count']++,
+                default => null,
+            };
+
+            if (in_array($ticket->status, ['Resolved', 'Closed'], true) && $ticket->resolved_at !== null) {
+                $stats['resolution_minutes'] += $ticket->created_at->diffInMinutes($ticket->resolved_at);
+                $stats['resolution_count']++;
+            }
+
+            unset($stats);
+        }
+
+        $ticketCount = array_sum(array_column($staffStats, 'ticket_count'));
+        $filename = sprintf(
+            'ticketech-staff-performance-%s-%s-to-%s.xlsx',
+            $period,
+            $periodStart->format('Y-m-d'),
+            $periodEnd->format('Y-m-d'),
+        );
+
+        return response()->streamDownload(function () use (
+            $period,
+            $periodStart,
+            $periodEnd,
+            $staffMembers,
+            $staffStats,
+            $ticketCount,
+            $ticketQuery,
+        ): void {
+            $path = tempnam(sys_get_temp_dir(), 'ticketech-staff-performance-');
+
+            if ($path === false) {
+                throw new RuntimeException('Unable to create the staff performance export file.');
+            }
+
+            try {
+                $writer = new Writer(new Options);
+                $writer->openToFile($path);
+
+                try {
+                    $summarySheet = $writer->getCurrentSheet();
+                    $summarySheet->setName('Staff Summary');
+                    $summarySheet->setColumnWidth(26, 1);
+                    $summarySheet->setColumnWidth(34, 2);
+                    $summarySheet->setColumnWidth(17, 3, 7);
+                    $summarySheet->setColumnWidth(20, 8, 9);
+                    $summarySheet->setSheetView((new SheetView)->setShowGridLines(false)->setFreezeRow(4));
+                    $summarySheet->setAutoFilter(new AutoFilter(0, 4, 8, $staffMembers->count() + 4));
+                    $headerStyle = (new Style)
+                        ->setFontBold()
+                        ->setFontColor(Color::toARGB('18324B'))
+                        ->setBackgroundColor(Color::toARGB('DCEAF7'))
+                        ->setShouldWrapText();
+                    $titleStyle = (new Style)
+                        ->setFontBold()
+                        ->setFontSize(16)
+                        ->setFontColor(Color::toARGB('18324B'));
+                    $subtitleStyle = (new Style)->setFontColor(Color::toARGB('40566D'));
+                    $percentStyle = (new Style)->setFormat('0.0%');
+                    $numberStyle = (new Style)->setFormat('0.0');
+
+                    $writer->addRow(Row::fromValues(['STAFF PERFORMANCE SUMMARY'], $titleStyle));
+                    $writer->addRow(Row::fromValues([
+                        strtoupper($period).' REPORT  |  '.$periodStart->format('M j, Y').' - '.$periodEnd->format('M j, Y'),
+                    ], $subtitleStyle));
+                    $writer->addRow(Row::fromValues());
+                    $writer->addRow(Row::fromValues([
+                        'Staff member',
+                        'Email',
+                        'Tickets assigned',
+                        'New',
+                        'Assigned',
+                        'In Progress',
+                        'Resolved / closed',
+                        'Resolution rate',
+                        'Avg resolution (hours)',
+                    ], $headerStyle));
+
+                    foreach ($staffMembers as $staffMember) {
+                        $stats = $staffStats[$staffMember->id];
+                        $completedCount = $stats['resolved_count'] + $stats['closed_count'];
+                        $resolutionRate = $stats['ticket_count'] === 0
+                            ? 0
+                            : $completedCount / $stats['ticket_count'];
+                        $averageResolutionHours = $stats['resolution_count'] === 0
+                            ? null
+                            : round($stats['resolution_minutes'] / $stats['resolution_count'] / 60, 1);
+
+                        $writer->addRow(Row::fromValuesWithStyles([
+                            $this->spreadsheetSafeValue($staffMember->displayName()),
+                            $this->spreadsheetSafeValue($staffMember->email),
+                            $stats['ticket_count'],
+                            $stats['new_count'],
+                            $stats['assigned_count'],
+                            $stats['in_progress_count'],
+                            $completedCount,
+                            $resolutionRate,
+                            $averageResolutionHours,
+                        ], null, [7 => $percentStyle, 8 => $numberStyle]));
+                    }
+
+                    $ticketSheet = $writer->addNewSheetAndMakeItCurrent();
+                    $ticketSheet->setName('Ticket Details');
+                    $ticketSheet->setColumnWidth(21, 1);
+                    $ticketSheet->setColumnWidth(42, 2);
+                    $ticketSheet->setColumnWidth(26, 3);
+                    $ticketSheet->setColumnWidth(34, 4);
+                    $ticketSheet->setColumnWidth(15, 5, 6);
+                    $ticketSheet->setColumnWidth(23, 7, 8);
+                    $ticketSheet->setColumnWidth(24, 9);
+                    $ticketSheet->setSheetView((new SheetView)->setShowGridLines(false)->setFreezeRow(1));
+                    $ticketSheet->setAutoFilter(new AutoFilter(0, 1, 8, max(1, $ticketCount + 1)));
+                    $writer->addRow(Row::fromValues([
+                        'Ticket number',
+                        'Subject',
+                        'Staff member',
+                        'Staff email',
+                        'Priority',
+                        'Status',
+                        'Created at',
+                        'Resolved at',
+                        'Resolution time (hours)',
+                    ], $headerStyle));
+
+                    foreach ((clone $ticketQuery)->with('assignedTo:id,name,nickname,email')->lazyById(500) as $ticket) {
+                        $durationHours = in_array($ticket->status, ['Resolved', 'Closed'], true)
+                            && $ticket->resolved_at !== null
+                            ? round($ticket->created_at->diffInMinutes($ticket->resolved_at) / 60, 1)
+                            : null;
+
+                        $writer->addRow(Row::fromValues([
+                            $this->spreadsheetSafeValue($ticket->ticket_number),
+                            $this->spreadsheetSafeValue($ticket->subject),
+                            $this->spreadsheetSafeValue($ticket->assignedTo?->displayName()),
+                            $this->spreadsheetSafeValue($ticket->assignedTo?->email),
+                            $this->spreadsheetSafeValue($ticket->priority),
+                            $this->spreadsheetSafeValue($ticket->status),
+                            $ticket->created_at?->toDateTimeString() ?? '',
+                            $ticket->resolved_at?->toDateTimeString() ?? '',
+                            $durationHours,
+                        ]));
+                    }
+                } finally {
+                    $writer->close();
+                }
+
+                if (readfile($path) === false) {
+                    throw new RuntimeException('Unable to read the staff performance export file.');
+                }
+            } finally {
+                if (is_file($path) && ! unlink($path)) {
+                    throw new RuntimeException('Unable to remove the temporary staff performance export file.');
                 }
             }
         }, $filename, [
@@ -574,25 +805,26 @@ class StaffReportsController extends Controller
     ): void {
         $writer->addRow(Row::fromValues([$title, '', '', ''], $sectionStyle));
         $writer->addRow(Row::fromValues(
-            ['Category', 'Tickets', 'Share', 'Volume'],
+            ['Category', 'Tickets', 'Share', 'Volume (each block = 5%)'],
             (new Style)
                 ->setFontBold()
                 ->setFontColor(Color::toARGB('40566D'))
                 ->setBackgroundColor(Color::toARGB('E8EFF6')),
         ));
 
-        $maximumCount = max(1, (int) $counts->max());
-
         foreach ($counts as $category => $count) {
             $count = (int) $count;
-            $barLength = $count === 0 ? 0 : max(1, (int) round($count / $maximumCount * 20));
             $share = $totalTicketCount === 0 ? 0 : $count / $totalTicketCount;
+            $barLength = $count === 0 || $totalTicketCount === 0
+                ? 0
+                : max(1, (int) round($share * 20));
+            $bar = str_repeat('■', $barLength).str_repeat('□', 20 - $barLength);
 
             $writer->addRow(Row::fromValuesWithStyles([
                 $this->spreadsheetSafeValue((string) $category),
                 $count,
                 $share,
-                str_repeat('■', $barLength),
+                $bar,
             ], null, [
                 0 => $categoryStyle,
                 1 => $countStyle,

@@ -44,9 +44,9 @@
                     <form class="password-form" action="{{ route('verification.send') }}" method="post">
                         @csrf
                         <button type="submit">Resend verification email</button>
-                        <a class="auth-back-link" href="{{ route('logout') }}" onclick="event.preventDefault(); document.getElementById('verification-logout-form').submit();">Sign out</a>
+                        <a class="auth-back-link" href="{{ route('logout') }}" onclick="event.preventDefault(); document.getElementById('verification-logout-form').requestSubmit();">Sign out</a>
                     </form>
-                    <form id="verification-logout-form" action="{{ route('logout') }}" method="post" hidden>
+                    <form id="verification-logout-form" action="{{ route('logout') }}" method="post" data-confirm-logout hidden>
                         @csrf
                     </form>
                 </div>

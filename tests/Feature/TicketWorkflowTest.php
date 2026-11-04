@@ -8,8 +8,11 @@ use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
 use App\Models\User;
+use App\Notifications\TicketEmailVerification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Notifications\AnonymousNotifiable;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -60,6 +63,7 @@ class TicketWorkflowTest extends TestCase
         $department = Department::factory()->create();
         $category = Category::factory()->create();
 
+        Notification::fake();
         $response = $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
             'student_id' => 'PCU-2026-001',
@@ -80,6 +84,7 @@ class TicketWorkflowTest extends TestCase
         ]);
 
         $response->assertRedirect(route('ticket.submitted'));
+        $this->confirmPendingEmail();
         $ticket = Ticket::with('attachments')->firstOrFail();
         $this->assertMatchesRegularExpression('/^ED-\d{4}-\d{6}$/', $ticket->ticket_number);
         $this->assertDatabaseHas('tickets', [
@@ -280,6 +285,7 @@ class TicketWorkflowTest extends TestCase
     public function test_guest_submission_uses_subject_priority_instead_of_requester_input(): void
     {
         $department = Department::factory()->create();
+        Notification::fake();
         $response = $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
             'student_id' => 'PCU-2026-001',
@@ -291,6 +297,7 @@ class TicketWorkflowTest extends TestCase
         ]);
 
         $response->assertRedirect(route('ticket.submitted'));
+        $this->confirmPendingEmail();
         $this->assertDatabaseHas('tickets', [
             'requester_email' => 'jamie@example.edu',
             'subject' => 'Campus portal outage',
@@ -310,6 +317,7 @@ class TicketWorkflowTest extends TestCase
         ];
 
         foreach ($cases as $index => $case) {
+            Notification::fake();
             $this->post(route('ticket.store'), [
                 'name' => 'Jamie Student',
                 'student_id' => 'PCU-2026-001',
@@ -318,6 +326,7 @@ class TicketWorkflowTest extends TestCase
                 'subject' => $case['subject'],
                 'message' => 'Please review this request.',
             ])->assertRedirect(route('ticket.submitted'));
+            $this->confirmPendingEmail();
 
             $this->assertDatabaseHas('tickets', [
                 'subject' => $case['subject'],
@@ -364,6 +373,7 @@ class TicketWorkflowTest extends TestCase
             ->patch(route('admin.moderation.clear', $moderation))
             ->assertRedirect(route('admin.moderation'));
 
+        Notification::fake();
         $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
             'student_id' => 'PCU-2026-001',
@@ -372,6 +382,7 @@ class TicketWorkflowTest extends TestCase
             'subject' => 'Legitimate support request',
             'message' => 'I need help accessing my account.',
         ])->assertRedirect(route('ticket.submitted'));
+        $this->confirmPendingEmail();
 
         $this->assertDatabaseCount('tickets', 1);
     }
@@ -858,5 +869,24 @@ class TicketWorkflowTest extends TestCase
             'priority' => 'High',
             'status' => 'In Progress',
         ]);
+    }
+
+    private function confirmPendingEmail(): void
+    {
+        $verificationUrl = null;
+
+        Notification::assertSentOnDemand(
+            TicketEmailVerification::class,
+            function (TicketEmailVerification $notification, array $channels, AnonymousNotifiable $notifiable) use (&$verificationUrl): bool {
+                $verificationUrl = $notification->verificationUrl;
+
+                return $channels === ['mail']
+                    && $notifiable->routeNotificationFor('mail') !== null;
+            },
+        );
+
+        $this->assertNotNull($verificationUrl);
+        $this->get($verificationUrl)->assertOk();
+        $this->post($verificationUrl)->assertRedirect(route('ticket.submitted'));
     }
 }

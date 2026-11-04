@@ -100,6 +100,31 @@ class HomePageTest extends TestCase
             ], false);
     }
 
+    public function test_published_articles_without_images_show_branded_covers_on_public_cards(): void
+    {
+        KnowledgeArticle::create([
+            'title' => 'Password reset guide',
+            'slug' => 'password-reset-guide',
+            'category' => 'Accounts',
+            'summary' => 'Reset your PCU account password.',
+            'body' => 'Follow the password reset steps.',
+            'is_published' => true,
+            'published_at' => now(),
+        ]);
+
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee('public-article-card-placeholder', false)
+            ->assertSee('PCU HELP CENTER')
+            ->assertSee('Accounts');
+
+        $this->get(route('knowledge-base'))
+            ->assertOk()
+            ->assertSee('public-article-card-placeholder', false)
+            ->assertSee('PCU HELP CENTER')
+            ->assertSee('Accounts');
+    }
+
     public function test_requester_only_sees_their_own_recent_tickets(): void
     {
         $requester = User::factory()->create();

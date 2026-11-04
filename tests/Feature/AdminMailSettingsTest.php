@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Services\SystemMailSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
 use Tests\TestCase;
 
 class AdminMailSettingsTest extends TestCase
@@ -63,6 +65,82 @@ class AdminMailSettingsTest extends TestCase
             ->assertSee('Credentials needed');
     }
 
+    public function test_existing_smtp_credentials_activate_delivery_without_a_mailer_setting(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        DB::table('system_settings')->insert([
+            [
+                'setting' => 'mail.smtp.host',
+                'value' => 'smtp.example.test',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => 'mail.smtp.username',
+                'value' => 'helpdesk@example.test',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => 'mail.smtp.password',
+                'value' => Crypt::encryptString('existing-app-password'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->actingAs($admin)->get(route('admin.dashboard'))->assertOk();
+
+        $this->assertSame('smtp', config('mail.default'));
+    }
+
+    public function test_empty_saved_default_mailer_uses_configured_smtp_credentials(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        DB::table('system_settings')->insert([
+            [
+                'setting' => 'mail.default',
+                'value' => '',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => 'mail.smtp.host',
+                'value' => 'smtp.example.test',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => 'mail.smtp.username',
+                'value' => 'helpdesk@example.test',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => 'mail.smtp.password',
+                'value' => Crypt::encryptString('existing-app-password'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->actingAs($admin)->get(route('admin.dashboard'))->assertOk();
+
+        $this->assertSame('smtp', config('mail.default'));
+    }
+
+    public function test_empty_smtp_url_does_not_override_the_smtp_transport(): void
+    {
+        config()->set('mail.default', 'smtp');
+        config()->set('mail.mailers.smtp.url', '');
+
+        app(SystemMailSettings::class)->apply();
+
+        $transport = app('mail.manager')->mailer()->getSymfonyTransport();
+
+        $this->assertInstanceOf(EsmtpTransport::class, $transport);
+    }
+
     public function test_admin_can_update_persistent_sender_details_used_by_later_requests(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
@@ -78,6 +156,10 @@ class AdminMailSettingsTest extends TestCase
         ])->assertRedirect(route('admin.system-settings'))
             ->assertSessionHas('status');
 
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'mail.default',
+            'value' => 'smtp',
+        ]);
         $this->assertDatabaseHas('system_settings', [
             'setting' => 'mail.from.address',
             'value' => 'helpdesk@pcu.edu.ph',
@@ -118,6 +200,7 @@ class AdminMailSettingsTest extends TestCase
         $this->assertSame('helpdesk@pcu.edu.ph', config('mail.mailers.smtp.username'));
         $this->assertSame('smtp-app-password-secret', config('mail.mailers.smtp.password'));
         $this->assertTrue(config('mail.mailers.smtp.auto_tls'));
+        $this->assertSame('smtp', config('mail.default'));
     }
 
     public function test_admin_mail_settings_reject_invalid_sender_email(): void
@@ -226,6 +309,10 @@ class AdminMailSettingsTest extends TestCase
 
         $this->assertDatabaseMissing('system_settings', [
             'setting' => 'mail.smtp.password',
+        ]);
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'mail.default',
+            'value' => config('mail.default_fallback'),
         ]);
     }
 }

@@ -24,7 +24,34 @@
                 <label class="article-form-field"><span>Category <b>*</b></span><input name="category" value="{{ old('category', $article->category) }}" maxlength="80" required placeholder="e.g. Network"></label>
             </div>
             <label class="article-form-field"><span>Short summary <b>*</b></span><textarea name="summary" rows="3" maxlength="500" required placeholder="Briefly describe what this article helps with.">{{ old('summary', $article->summary) }}</textarea><small>Displayed in the article list.</small></label>
-            <label class="article-form-field"><span>Article content <b>*</b></span><textarea name="body" rows="14" maxlength="30000" required placeholder="Write the full instructions or answer here.">{{ old('body', $article->body) }}</textarea><small>Plain text is supported. Separate paragraphs with a blank line.</small></label>
+            <div class="article-form-field article-content-field">
+                <span id="article-content-label">Article content <b>*</b></span>
+                <div class="article-content-toolbar" role="toolbar" aria-label="Article formatting">
+                    <button type="button" data-editor-command="bold" aria-label="Bold" title="Bold"><strong>B</strong></button>
+                    <button type="button" data-editor-command="italic" aria-label="Italic" title="Italic"><em>I</em></button>
+                    <button type="button" data-editor-command="underline" aria-label="Underline" title="Underline"><u>U</u></button>
+                    <button type="button" data-editor-command="strikeThrough" aria-label="Strikethrough" title="Strikethrough"><s>S</s></button>
+                    <span class="article-content-toolbar-divider" aria-hidden="true"></span>
+                    <button type="button" data-editor-command="formatBlock" data-editor-value="h1" aria-label="Heading 1" title="Heading 1">H1</button>
+                    <button type="button" data-editor-command="formatBlock" data-editor-value="h2" aria-label="Heading 2" title="Heading 2">H2</button>
+                    <button type="button" data-editor-command="formatBlock" data-editor-value="p" aria-label="Paragraph" title="Paragraph">P</button>
+                    <button type="button" data-editor-command="formatBlock" data-editor-value="pre" aria-label="Code block" title="Code block">&lt;/&gt;</button>
+                    <span class="article-content-toolbar-divider" aria-hidden="true"></span>
+                    <button type="button" data-editor-command="insertUnorderedList" aria-label="Bulleted list" title="Bulleted list">• List</button>
+                    <button type="button" data-editor-command="insertOrderedList" aria-label="Numbered list" title="Numbered list">1. List</button>
+                    <button type="button" data-editor-command="formatBlock" data-editor-value="blockquote" aria-label="Quote" title="Quote">Quote</button>
+                    <button type="button" data-editor-command="insertHorizontalRule" aria-label="Horizontal divider" title="Horizontal divider">Divider</button>
+                    <span class="article-content-toolbar-divider" aria-hidden="true"></span>
+                    <button type="button" data-editor-link aria-label="Insert link" title="Insert link">Link</button>
+                    <button type="button" data-editor-command="undo" aria-label="Undo" title="Undo">Undo</button>
+                    <button type="button" data-editor-command="redo" aria-label="Redo" title="Redo">Redo</button>
+                    <button type="button" data-editor-command="removeFormat" aria-label="Clear formatting" title="Clear formatting">Clear</button>
+                </div>
+                <div class="article-content-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="article-content-label" aria-required="true" data-article-content-editor data-placeholder="Write the full instructions or answer here.">{{-- Safe, allow-listed article markup is supplied by the controller. --}}{!! $articleContent !!}</div>
+                <textarea class="article-content-value" name="body" tabindex="-1" aria-hidden="true" data-article-content-value></textarea>
+                <small>Use the toolbar to format headings, lists, emphasis, links, and quotes.</small>
+                <small class="article-content-error" data-article-content-error hidden>Article content is required.</small>
+            </div>
 
             <section class="article-image-panel" aria-labelledby="article-images-heading">
                 <div class="article-image-panel-heading">

@@ -14,11 +14,7 @@
     <div class="public-article-grid">
         @forelse ($articles as $article)
             <article class="public-article-card">
-                @if ($article->images->isNotEmpty())
-                    <a class="public-article-card-image" href="{{ route('knowledge-base.show', $article->slug) }}" tabindex="-1" aria-hidden="true">
-                        <img src="{{ $article->images->first()->url() }}" alt="" loading="lazy">
-                    </a>
-                @endif
+                @include('helpdesk.partials.article-card-visual', ['article' => $article])
                 <div class="public-article-card-copy">
                     <span class="public-article-category">{{ $article->category }}</span>
                     <h2><a href="{{ route('knowledge-base.show', $article->slug) }}">{{ $article->title }}</a></h2>

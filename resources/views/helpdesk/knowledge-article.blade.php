@@ -15,7 +15,7 @@
         <h1>{{ $article->title }}</h1>
         <p class="public-article-summary">{{ $article->summary }}</p>
         <div class="public-article-byline">PCU Helpdesk · Updated {{ $article->published_at?->format('F j, Y') }}</div>
-        <div class="public-article-body">{{ $article->body }}</div>
+        <div class="public-article-body">{!! $articleContent !!}</div>
         @if ($article->images->isNotEmpty())
             <section class="public-article-images" aria-label="Article images">
                 @foreach ($article->images as $image)

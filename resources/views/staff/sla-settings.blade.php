@@ -14,7 +14,7 @@
 
     <section class="admin-policy-note">
         <span class="admin-policy-note-icon" aria-hidden="true">i</span>
-        <div><strong>Targets are configurable references</strong><p>Saved values are shown here for staff guidance. The system currently records calendar elapsed time but does not calculate SLA deadlines or breaches.</p></div>
+        <div><strong>Resolution targets drive ticket alerts</strong><p>Resolution deadlines use an 8-hour weekday clock from 9 a.m. to 5 p.m. in the app display timezone. A warning is sent at 80% of the target and a separate alert is sent if it becomes overdue. The clock pauses while a ticket is Waiting for User or On Hold. Public holidays are not excluded. First-response targets remain guidance only.</p></div>
         <span class="admin-readonly-badge">Editable</span>
     </section>
 
@@ -98,12 +98,12 @@
 
     <section class="admin-console-card">
         <header class="admin-console-card-heading">
-            <div><span class="admin-page-eyebrow">HOW TO INTERPRET</span><h2>Service target definitions</h2><p>These settings define target guidance and are not currently used to calculate ticket deadlines or breaches.</p></div>
+            <div><span class="admin-page-eyebrow">HOW TO INTERPRET</span><h2>Service target definitions</h2><p>Resolution values calculate warning and due times. One business day is eight business hours; weekends and time outside the 9 a.m.–5 p.m. schedule do not count.</p></div>
         </header>
         <div class="admin-definition-grid">
-            <article><span class="admin-definition-number">01</span><div><strong>First response</strong><p>The target time for a staff member to make an initial response to the requester.</p></div></article>
-            <article><span class="admin-definition-number">02</span><div><strong>Resolution</strong><p>The target time for resolving the reported issue. Reopened tickets may need a new resolution target.</p></div></article>
-            <article><span class="admin-definition-number">03</span><div><strong>Coverage</strong><p>Targets can be set in business hours or business days; ticket timing displays calendar elapsed time.</p></div></article>
+            <article><span class="admin-definition-number">01</span><div><strong>First response</strong><p>The target time for a staff member to make an initial response. These values are currently guidance only.</p></div></article>
+            <article><span class="admin-definition-number">02</span><div><strong>Resolution</strong><p>The target time for resolving the issue. Tickets approaching 80% of this target and overdue tickets alert the assignee and admins.</p></div></article>
+            <article><span class="admin-definition-number">03</span><div><strong>Paused states</strong><p>Waiting for User and On Hold pause the resolution clock. Reopened tickets begin a fresh resolution target.</p></div></article>
         </div>
     </section>
 

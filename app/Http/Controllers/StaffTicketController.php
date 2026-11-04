@@ -9,10 +9,13 @@ use App\Models\TicketAttachment;
 use App\Models\TicketEvent;
 use App\Models\User;
 use App\Models\WorkspaceNotification;
+use App\Notifications\TicketRequesterUpdate;
+use App\Services\TicketResolutionSla;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -22,7 +25,7 @@ use Throwable;
 
 class StaffTicketController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, TicketResolutionSla $resolutionSla): View
     {
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
@@ -42,6 +45,8 @@ class StaffTicketController extends Controller
             ],
         ]);
 
+        $resolutionSla->initializeMissingDeadlines();
+
         $tickets = Ticket::query()
             ->with('assignedTo:id,name')
             ->when($filters['search'] ?? null, function ($query, string $search): void {
@@ -59,7 +64,14 @@ class StaffTicketController extends Controller
                 isset($filters['assignee']) && $filters['assignee'] !== '' && $filters['assignee'] !== 'unassigned',
                 fn ($query) => $query->where('assigned_to_user_id', $filters['assignee']),
             )
-            ->latest()
+            ->orderByRaw("CASE WHEN status IN ('New', 'Assigned', 'In Progress') THEN 0 WHEN status IN ('Waiting for User', 'On Hold') THEN 1 WHEN status IN ('Resolved', 'Closed') THEN 2 ELSE 3 END")
+            ->orderByRaw(
+                "CASE WHEN status IN ('New', 'Assigned', 'In Progress') THEN CASE WHEN resolution_due_at <= ? THEN 0 WHEN resolution_warning_at <= ? THEN 1 ELSE 2 END ELSE 0 END",
+                [now(), now()],
+            )
+            ->orderByRaw("CASE priority WHEN 'Urgent' THEN 0 WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 WHEN 'Low' THEN 3 ELSE 4 END")
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->paginate(15)
             ->withQueryString();
 
@@ -126,25 +138,49 @@ class StaffTicketController extends Controller
         ]);
     }
 
-    public function update(UpdateStaffTicketRequest $request, Ticket $ticket): RedirectResponse
-    {
+    public function update(
+        UpdateStaffTicketRequest $request,
+        Ticket $ticket,
+        TicketResolutionSla $resolutionSla,
+    ): RedirectResponse {
         $validated = $request->validated();
         $originalAssigneeId = $ticket->assigned_to_user_id;
         $previousStatus = $ticket->status;
         $previousPriority = $ticket->priority;
+        $wasSlaPaused = in_array($previousStatus, ['Waiting for User', 'On Hold'], true);
 
-        DB::transaction(function () use ($request, $ticket, $validated, $originalAssigneeId, $previousStatus, $previousPriority): void {
+        DB::transaction(function () use (
+            $request,
+            $ticket,
+            $validated,
+            $originalAssigneeId,
+            $previousStatus,
+            $previousPriority,
+            $wasSlaPaused,
+            $resolutionSla,
+        ): void {
             $assigneeId = array_key_exists('assigned_to_user_id', $validated)
                 ? ($validated['assigned_to_user_id'] !== null ? (int) $validated['assigned_to_user_id'] : null)
                 : $originalAssigneeId;
             $ticket->assigned_to_user_id = $assigneeId;
             $ticket->priority = $validated['priority'] ?? $ticket->priority;
             $ticket->status = $validated['status'];
+            $isSlaPaused = in_array($ticket->status, ['Waiting for User', 'On Hold'], true);
 
             if ($assigneeId !== null && $originalAssigneeId !== $assigneeId) {
                 $ticket->assigned_at = now();
                 $ticket->first_assigned_at ??= $ticket->assigned_at;
             }
+
+            if (! $wasSlaPaused && $isSlaPaused) {
+                $ticket->sla_paused_at = now();
+            } elseif ($wasSlaPaused && ! $isSlaPaused && $ticket->sla_paused_at !== null) {
+                $ticket->sla_paused_minutes += $resolutionSla->businessMinutesBetween($ticket->sla_paused_at, now());
+                $ticket->sla_paused_at = null;
+            }
+
+            $isReopening = in_array($previousStatus, ['Resolved', 'Closed'], true)
+                && ! in_array($ticket->status, ['Resolved', 'Closed'], true);
 
             if (in_array($ticket->status, ['Resolved', 'Closed'], true)) {
                 if (! in_array($previousStatus, ['Resolved', 'Closed'], true) || $ticket->resolved_at === null) {
@@ -179,6 +215,21 @@ class StaffTicketController extends Controller
                 ]);
             }
 
+            if ($isReopening) {
+                $ticket->sla_paused_minutes = 0;
+                $ticket->sla_paused_at = $isSlaPaused ? now() : null;
+            }
+
+            if (
+                $isReopening
+                || $previousPriority !== $ticket->priority
+                || ($wasSlaPaused && ! $isSlaPaused)
+                || $ticket->resolution_due_at === null
+            ) {
+                $resolutionSla->refresh($ticket);
+                $ticket->save();
+            }
+
             if ($originalAssigneeId !== $assigneeId) {
                 $assignee = $assigneeId ? User::find($assigneeId) : null;
                 TicketEvent::create([
@@ -200,6 +251,16 @@ class StaffTicketController extends Controller
                 }
             }
         });
+
+        if ($previousStatus !== $ticket->status && $ticket->canEmailRequester()) {
+            Notification::route('mail', $ticket->requester_email)->notify(new TicketRequesterUpdate(
+                $ticket->requester_name,
+                $ticket->ticket_number,
+                $ticket->subject,
+                "The status of your support ticket changed from {$previousStatus} to {$ticket->status}.",
+                'Your support ticket status changed',
+            ));
+        }
 
         return to_route('staff.ticket-detail', $ticket)->with('status', 'Ticket updated successfully.');
     }
@@ -264,6 +325,16 @@ class StaffTicketController extends Controller
                         'title' => 'New ticket reply',
                         'message' => "{$ticket->ticket_number} · {$ticket->subject}",
                     ]);
+                }
+
+                if (! $isInternal && $ticket->canEmailRequester()) {
+                    Notification::route('mail', $ticket->requester_email)->notify(new TicketRequesterUpdate(
+                        $ticket->requester_name,
+                        $ticket->ticket_number,
+                        $ticket->subject,
+                        $validated['body'],
+                        'A reply was added to your support ticket',
+                    ));
                 }
             });
         } catch (Throwable $exception) {

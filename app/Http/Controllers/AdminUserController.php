@@ -46,6 +46,12 @@ class AdminUserController extends Controller
                 ->where('staff_approval_status', 'pending')
                 ->orderBy('created_at')
                 ->get(),
+            'deniedUnverifiedApplications' => User::query()
+                ->where('role', 'staff')
+                ->where('staff_approval_status', 'denied')
+                ->whereNull('email_verified_at')
+                ->orderBy('created_at')
+                ->get(),
             'filters' => $filters,
             'activeCount' => (clone $staff)->where('employment_status', 'active')->count(),
             'retiredCount' => (clone $staff)->where('employment_status', 'retired')->count(),
@@ -102,6 +108,35 @@ class AdminUserController extends Controller
         );
 
         return to_route('admin.users')->with('status', $user->name.' has been denied staff access.');
+    }
+
+    public function removeDeniedUnverifiedApplication(
+        Request $request,
+        User $user,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
+        abort_unless(
+            $user->role === 'staff'
+                && $user->staff_approval_status === 'denied'
+                && ! $user->hasVerifiedEmail(),
+            404,
+        );
+
+        DB::transaction(function () use ($request, $user, $auditLogger): void {
+            $auditLogger->record(
+                $request,
+                'denied_unverified_staff_application_removed',
+                "Removed denied unverified staff application for {$user->name} to release its email address.",
+                $user,
+            );
+
+            $user->delete();
+        });
+
+        return to_route('admin.users')->with(
+            'status',
+            'The denied unverified application was removed. Its email address can now be used to register again.',
+        );
     }
 
     public function update(Request $request, User $user, AuditActivityLogger $auditLogger): RedirectResponse

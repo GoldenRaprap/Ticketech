@@ -24,6 +24,202 @@ document.querySelectorAll('[data-ticket-row]').forEach((row) => {
 	});
 });
 
+document.querySelectorAll('.admin-ticket-submission-switch').forEach((toggle) => {
+	toggle.addEventListener('click', (event) => event.stopPropagation());
+});
+
+const createConfirmationDialog = () => {
+	const dialog = document.createElement('dialog');
+	dialog.className = 'app-confirmation-dialog';
+	dialog.setAttribute('aria-labelledby', 'app-confirmation-title');
+	dialog.setAttribute('aria-describedby', 'app-confirmation-message');
+	dialog.innerHTML = `
+		<div class="app-confirmation-heading">
+			<span class="app-confirmation-icon" aria-hidden="true">
+				<svg viewBox="0 0 24 24" fill="none">
+					<path d="M12 8v4m0 4h.01M10.3 3.9 2.8 17a2 2 0 0 0 1.74 3h14.92a2 2 0 0 0 1.74-3l-7.46-13.1a2 2 0 0 0-3.48 0Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+			</span>
+			<span class="app-confirmation-eyebrow">PCU HELPDESK</span>
+		</div>
+		<div class="app-confirmation-copy">
+			<h2 id="app-confirmation-title"></h2>
+			<p id="app-confirmation-message"></p>
+		</div>
+		<div class="app-confirmation-actions">
+			<button class="app-confirmation-button app-confirmation-button--cancel" type="button" data-confirm-cancel>Cancel</button>
+			<button class="app-confirmation-button app-confirmation-button--confirm" type="button" data-confirm-accept></button>
+		</div>
+	`;
+
+	document.body.append(dialog);
+
+	const title = dialog.querySelector('#app-confirmation-title');
+	const message = dialog.querySelector('#app-confirmation-message');
+	const cancelButton = dialog.querySelector('[data-confirm-cancel]');
+	const acceptButton = dialog.querySelector('[data-confirm-accept]');
+
+	if (
+		!(title instanceof HTMLElement) ||
+		!(message instanceof HTMLElement) ||
+		!(cancelButton instanceof HTMLButtonElement) ||
+		!(acceptButton instanceof HTMLButtonElement)
+	) {
+		throw new Error('Confirmation dialog is missing required content or actions.');
+	}
+
+	let resolveConfirmation = null;
+	let previouslyFocusedElement = null;
+
+	const closeDialog = (confirmed) => {
+		if (!dialog.open) {
+			return;
+		}
+
+		dialog.dataset.confirmed = String(confirmed);
+		dialog.close();
+	};
+
+	dialog.addEventListener('close', () => {
+		const confirmed = dialog.dataset.confirmed === 'true';
+		delete dialog.dataset.confirmed;
+		resolveConfirmation?.(confirmed);
+		resolveConfirmation = null;
+
+		if (previouslyFocusedElement instanceof HTMLElement && previouslyFocusedElement.isConnected) {
+			previouslyFocusedElement.focus();
+		}
+	});
+
+	dialog.addEventListener('click', (event) => {
+		if (event.target === dialog) {
+			closeDialog(false);
+		}
+	});
+
+	cancelButton.addEventListener('click', () => closeDialog(false));
+	acceptButton.addEventListener('click', () => closeDialog(true));
+
+	return ({ titleText, messageText, confirmText, isDangerous = true }) => {
+		if (dialog.open || resolveConfirmation) {
+			return Promise.resolve(false);
+		}
+
+		title.textContent = titleText;
+		message.textContent = messageText;
+		acceptButton.textContent = confirmText;
+		acceptButton.classList.toggle('app-confirmation-button--danger', isDangerous);
+		previouslyFocusedElement = document.activeElement;
+		resolveConfirmation = null;
+
+		return new Promise((resolve) => {
+			resolveConfirmation = resolve;
+			dialog.showModal();
+			cancelButton.focus();
+		});
+	};
+};
+
+const requestConfirmation = createConfirmationDialog();
+
+document.querySelectorAll('[data-public-feature-toggle]').forEach((toggle) => {
+	if (!(toggle instanceof HTMLInputElement)) {
+		console.error('Public feature availability control is not an input.');
+		return;
+	}
+
+	const details = toggle.closest('details');
+	const form = toggle.form;
+	const state = details?.querySelector('[data-public-feature-state]');
+	const description = details?.querySelector('[data-public-feature-description]');
+
+	if (!(form instanceof HTMLFormElement) || !(state instanceof HTMLElement) || !(description instanceof HTMLElement)) {
+		console.error('Public feature availability control is missing its form, status, or description.');
+		return;
+	}
+
+	const updateFeatureAvailability = () => {
+		state.textContent = toggle.checked ? 'Enabled' : 'Disabled';
+		state.classList.toggle('admin-access-state--inactive', !toggle.checked);
+		description.textContent = toggle.checked
+			? toggle.dataset.enabledDescription || ''
+			: toggle.dataset.disabledDescription || '';
+	};
+
+	toggle.addEventListener('change', () => {
+		const isEnabled = toggle.checked;
+
+		const saveAvailability = () => {
+			updateFeatureAvailability();
+			form.requestSubmit();
+		};
+
+		if (!isEnabled) {
+			void requestConfirmation({
+				titleText: toggle.dataset.disableTitle || 'Disable this feature?',
+				messageText: toggle.dataset.disableConfirmation || 'Are you sure you want to disable this feature?',
+				confirmText: 'Disable feature',
+			}).then((confirmed) => {
+				if (!confirmed) {
+					toggle.checked = true;
+
+					return;
+				}
+
+				toggle.checked = false;
+				saveAvailability();
+			});
+
+			return;
+		}
+
+		saveAvailability();
+	});
+});
+
+document.querySelectorAll('[data-confirm-logout]').forEach((form) => {
+	if (!(form instanceof HTMLFormElement)) {
+		console.error('Logout confirmation target is not a form.');
+		return;
+	}
+
+	form.addEventListener('submit', (event) => {
+		event.preventDefault();
+
+		void requestConfirmation({
+			titleText: 'Log out of Ticketech?',
+			messageText: 'Are you sure you want to end your session?',
+			confirmText: 'Log out',
+			isDangerous: false,
+		}).then((confirmed) => {
+			if (confirmed) {
+				HTMLFormElement.prototype.submit.call(form);
+			}
+		});
+	});
+});
+
+document.querySelectorAll('[data-confirm-delete]').forEach((form) => {
+	if (!(form instanceof HTMLFormElement)) {
+		console.error('Delete confirmation target is not a form.');
+		return;
+	}
+
+	form.addEventListener('submit', (event) => {
+		event.preventDefault();
+
+		void requestConfirmation({
+			titleText: form.dataset.confirmTitle || 'Remove this record?',
+			messageText: form.dataset.confirmMessage || 'This action cannot be undone.',
+			confirmText: 'Remove permanently',
+		}).then((confirmed) => {
+			if (confirmed) {
+				HTMLFormElement.prototype.submit.call(form);
+			}
+		});
+	});
+});
+
 document.querySelectorAll('[data-auto-submit-on-change]').forEach((form) => {
 	if (!(form instanceof HTMLFormElement)) {
 		console.error('Auto-submit filter is not a form.');
@@ -31,7 +227,10 @@ document.querySelectorAll('[data-auto-submit-on-change]').forEach((form) => {
 	}
 
 	form.addEventListener('change', (event) => {
-		if (event.target instanceof HTMLSelectElement) {
+		if (
+			event.target instanceof HTMLSelectElement ||
+			(event.target instanceof HTMLInputElement && event.target.type === 'date')
+		) {
 			form.requestSubmit();
 		}
 	});
@@ -88,6 +287,75 @@ document.querySelectorAll('.public-review-choices').forEach((choices) => {
 
 	ratings.forEach((rating) => rating.addEventListener('change', updateLitStars));
 	updateLitStars();
+});
+
+document.querySelectorAll('[data-article-content-editor]').forEach((editor) => {
+	if (!(editor instanceof HTMLElement)) {
+		console.error('Article content editor is not an HTML element.');
+		return;
+	}
+
+	const form = editor.closest('form');
+	const contentInput = form?.querySelector('[data-article-content-value]');
+	const toolbar = form?.querySelector('[role="toolbar"]');
+	const errorMessage = form?.querySelector('[data-article-content-error]');
+
+	if (
+		!(form instanceof HTMLFormElement)
+		|| !(contentInput instanceof HTMLTextAreaElement)
+		|| !(toolbar instanceof HTMLElement)
+		|| !(errorMessage instanceof HTMLElement)
+	) {
+		console.error('Article content editor is missing its form controls.');
+		return;
+	}
+
+	toolbar.querySelectorAll('[data-editor-command], [data-editor-link]').forEach((button) => {
+		button.addEventListener('mousedown', (event) => event.preventDefault());
+		button.addEventListener('click', () => {
+			editor.focus();
+
+			if (button.hasAttribute('data-editor-link')) {
+				const url = window.prompt('Enter a link URL');
+
+				if (url) {
+					document.execCommand('createLink', false, url);
+				}
+
+				return;
+			}
+
+			const command = button.dataset.editorCommand;
+
+			if (!command) {
+				console.error('Article formatting control is missing its command.');
+				return;
+			}
+
+			const commandValue = button.dataset.editorValue;
+			const value = command === 'formatBlock' && commandValue
+				? `<${commandValue}>`
+				: commandValue;
+
+			document.execCommand(command, false, value || undefined);
+		});
+	});
+
+	editor.addEventListener('input', () => {
+		editor.removeAttribute('aria-invalid');
+		errorMessage.hidden = true;
+	});
+
+	form.addEventListener('submit', (event) => {
+		contentInput.value = editor.innerHTML;
+
+		if (!editor.textContent?.trim()) {
+			event.preventDefault();
+			editor.setAttribute('aria-invalid', 'true');
+			errorMessage.hidden = false;
+			editor.focus();
+		}
+	});
 });
 
 document.querySelectorAll('[data-report-period-form]').forEach((form) => {

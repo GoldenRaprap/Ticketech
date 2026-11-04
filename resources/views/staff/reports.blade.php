@@ -53,6 +53,23 @@
         <div class="report-filter-actions">
             <button class="workspace-button workspace-button--export" type="submit" formaction="{{ route('staff.reports.export') }}">Export Excel (.xlsx) <span aria-hidden="true">↓</span></button>
         </div>
+        @if (auth()->user()->isAdmin())
+            <details class="report-staff-export" @if ($errors->has('staff_ids') || $errors->has('staff_ids.*')) open @endif>
+                <summary>Individual staff performance export</summary>
+                <p>Select one or more staff members. The workbook includes per-staff progress and resolution metrics, plus ticket details for this reporting period.</p>
+                <div class="report-staff-export-options">
+                    @foreach ($staffMembers as $staffMember)
+                        <label>
+                            <input type="checkbox" name="staff_ids[]" value="{{ $staffMember->id }}" @checked(is_array(old('staff_ids')) && in_array((string) $staffMember->id, old('staff_ids'), true))>
+                            <span>{{ $staffMember->displayName() }}</span>
+                        </label>
+                    @endforeach
+                </div>
+                <div class="report-staff-export-actions">
+                    <button class="workspace-button workspace-button--export" type="submit" formaction="{{ route('admin.reports.staff-performance.export') }}">Export staff performance (.xlsx) <span aria-hidden="true">↓</span></button>
+                </div>
+            </details>
+        @endif
     </form>
 
     <section class="report-metrics" aria-label="Helpdesk performance summary">

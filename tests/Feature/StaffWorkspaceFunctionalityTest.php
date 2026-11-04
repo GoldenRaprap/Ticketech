@@ -7,6 +7,7 @@ use App\Models\Department;
 use App\Models\KnowledgeArticle;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
+use App\Models\TicketEvent;
 use App\Models\User;
 use App\Models\WorkspaceNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -641,6 +642,16 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertSee('Knowledge Base');
 
         $this->actingAs($admin)
+            ->get(route('admin.knowledge-base.create'))
+            ->assertOk()
+            ->assertSee('data-article-content-editor', false)
+            ->assertSee('aria-label="Bold"', false)
+            ->assertSee('aria-label="Italic"', false)
+            ->assertSee('aria-label="Heading 1"', false)
+            ->assertSee('aria-label="Heading 2"', false)
+            ->assertSee('aria-label="Bulleted list"', false);
+
+        $this->actingAs($admin)
             ->post(route('admin.knowledge-base.store'), $articleData)
             ->assertSessionHasNoErrors();
 
@@ -675,10 +686,10 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
         $article->refresh();
         $this->assertSame('updated-campus-wi-fi-guide', $article->slug);
-        $this->assertSame('Use your campus account to connect.', $article->body);
+        $this->assertSame('<p>Use your campus account to connect.</p>', $article->body);
         $this->actingAs($publicReader)->get(route('knowledge-base.show', $article->slug))
             ->assertOk()
-            ->assertSee($article->body);
+            ->assertSee('Use your campus account to connect.');
 
         $draft = KnowledgeArticle::create([
             'title' => 'Internal setup procedure',
@@ -699,6 +710,43 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->delete(route('admin.knowledge-base.destroy', $article))
             ->assertRedirect(route('admin.knowledge-base'));
         $this->assertModelMissing($article);
+    }
+
+    public function test_formatted_article_content_is_rendered_and_unsafe_markup_is_removed(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $body = '<h1>Getting started</h1><p><b>Bold</b> <strong>Important</strong> <em>details</em></p><ul><li>First step</li></ul><a href="javascript:alert(1)" onclick="alert(1)">Unsafe link</a><script>alert(1)</script>';
+
+        $this->actingAs($admin)
+            ->post(route('admin.knowledge-base.store'), [
+                'title' => 'Formatted guide',
+                'category' => 'Accounts',
+                'summary' => 'A guide with formatted content.',
+                'body' => $body,
+                'is_published' => '1',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $article = KnowledgeArticle::query()->firstOrFail();
+        $this->assertStringContainsString('<h1>Getting started</h1>', $article->body);
+        $this->assertStringContainsString('<b>Bold</b>', $article->body);
+        $this->assertStringContainsString('<strong>Important</strong>', $article->body);
+        $this->assertStringContainsString('<em>details</em>', $article->body);
+        $this->assertStringContainsString('<ul><li>First step</li></ul>', $article->body);
+        $this->assertStringNotContainsString('javascript:', $article->body);
+        $this->assertStringNotContainsString('onclick', $article->body);
+        $this->assertStringNotContainsString('<script', $article->body);
+
+        $publicReader = User::factory()->create(['role' => 'requester']);
+
+        $this->actingAs($publicReader)->get(route('knowledge-base.show', $article->slug))
+            ->assertOk()
+            ->assertSee('<h1>Getting started</h1>', false)
+            ->assertSee('<b>Bold</b>', false)
+            ->assertSee('<strong>Important</strong>', false)
+            ->assertSee('Unsafe link')
+            ->assertDontSee('javascript:alert(1)')
+            ->assertDontSee('alert(1)');
     }
 
     public function test_admin_can_upload_and_remove_article_image_attachments(): void
@@ -909,6 +957,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertSee('Incoming vs. resolved')
             ->assertSee('data-report-period-form', false)
             ->assertSee('Export Excel (.xlsx)')
+            ->assertDontSee('Individual staff performance export')
             ->assertDontSee('Apply period')
             ->assertSee('Urgent');
     }
@@ -979,6 +1028,186 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->assertStringContainsString($lastMonthTicket->ticket_number, $ticketsSheet);
         $this->assertStringNotContainsString($previousMonthTicket->ticket_number, $ticketsSheet);
         $this->assertStringNotContainsString($nextMonthTicket->ticket_number, $ticketsSheet);
+    }
+
+    public function test_report_export_volume_bars_match_each_category_share_of_all_tickets(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $staff = User::factory()->create(['role' => 'staff']);
+
+        $this->createTicket('ED-2026-000351', 'High ticket one', null, 'High');
+        $this->createTicket('ED-2026-000352', 'High ticket two', null, 'High');
+        $this->createTicket('ED-2026-000353', 'High ticket three', null, 'High');
+        $this->createTicket('ED-2026-000354', 'Medium ticket', null, 'Medium', 'In Progress');
+        $this->createTicket('ED-2026-000355', 'Resolved low ticket', null, 'Low', 'Resolved');
+        $this->createTicket('ED-2026-000356', 'Closed low ticket', null, 'Low', 'Closed');
+
+        $workbook = $this->actingAs($staff)
+            ->get(route('staff.reports.export', [
+                'period' => 'monthly',
+                'reference_date' => '2026-03-15',
+            ]))
+            ->assertOk()
+            ->streamedContent();
+        $summarySheet = $this->readXlsxEntry($workbook, 'xl/worksheets/sheet1.xml');
+        $document = new \DOMDocument;
+        $this->assertTrue($document->loadXML($summarySheet));
+        $xpath = new \DOMXPath($document);
+        $xpath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+
+        $this->assertSame(
+            'Volume (each block = 5%)',
+            $xpath->query('//x:c[@r="D12"]/x:is/x:t')->item(0)?->textContent,
+        );
+
+        foreach ([
+            'D13' => '■■■■■■■■■■□□□□□□□□□□',
+            'D14' => '■■■■■■■□□□□□□□□□□□□□',
+            'D15' => '■■■□□□□□□□□□□□□□□□□□',
+            'D19' => '■■■□□□□□□□□□□□□□□□□□',
+            'D20' => '■■■□□□□□□□□□□□□□□□□□',
+            'D21' => '■■■■■■■■■■□□□□□□□□□□',
+            'D22' => '■■■□□□□□□□□□□□□□□□□□',
+        ] as $cellReference => $expectedBar) {
+            $this->assertSame(
+                $expectedBar,
+                $xpath->query('//x:c[@r="'.$cellReference.'"]/x:is/x:t')->item(0)?->textContent,
+            );
+        }
+    }
+
+    public function test_admin_can_export_selected_staff_progress_and_resolution_for_a_report_period(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $admin = User::factory()->create(['role' => 'admin']);
+        $firstStaff = User::factory()->create([
+            'name' => 'Avery Staff',
+            'email' => 'avery@example.edu',
+            'role' => 'staff',
+        ]);
+        $secondStaff = User::factory()->create([
+            'name' => 'Blair Staff',
+            'email' => 'blair@example.edu',
+            'role' => 'staff',
+        ]);
+        $inactiveStaff = User::factory()->create([
+            'name' => 'Inactive Staff',
+            'role' => 'staff',
+            'employment_status' => 'inactive',
+        ]);
+        $pendingStaff = User::factory()->create([
+            'name' => 'Pending Staff',
+            'role' => 'staff',
+            'staff_approval_status' => 'pending',
+        ]);
+        $unselectedStaff = User::factory()->create(['role' => 'staff']);
+
+        $this->createTicket('ED-2026-000361', 'Avery new ticket', $firstStaff->id, 'Low', 'New');
+        $this->createTicket('ED-2026-000362', 'Avery progress ticket', $firstStaff->id, 'Medium', 'In Progress');
+        $firstResolvedTicket = $this->createTicket('ED-2026-000363', 'Avery resolved ticket', $firstStaff->id, 'High', 'Resolved');
+        $firstClosedTicket = $this->createTicket('ED-2026-000364', 'Avery closed ticket', $firstStaff->id, 'High', 'Closed');
+        $secondResolvedTicket = $this->createTicket('ED-2026-000365', 'Blair resolved ticket', $secondStaff->id, 'Medium', 'Resolved');
+        $this->createTicket('ED-2026-000366', 'Blair new ticket', $secondStaff->id, 'Low', 'New');
+        $unselectedTicket = $this->createTicket('ED-2026-000367', 'Unselected staff ticket', $unselectedStaff->id, 'Low', 'Resolved');
+        $firstResolvedTicket->forceFill([
+            'created_at' => Carbon::parse('2026-03-01 08:00:00'),
+            'resolved_at' => Carbon::parse('2026-03-01 09:00:00'),
+        ])->save();
+        $firstClosedTicket->forceFill([
+            'created_at' => Carbon::parse('2026-03-01 08:00:00'),
+            'resolved_at' => Carbon::parse('2026-03-01 11:00:00'),
+        ])->save();
+        $secondResolvedTicket->forceFill([
+            'created_at' => Carbon::parse('2026-03-02 08:00:00'),
+            'resolved_at' => Carbon::parse('2026-03-02 12:00:00'),
+        ])->save();
+
+        $filters = [
+            'period' => 'monthly',
+            'reference_date' => '2026-03-15',
+        ];
+        $this->actingAs($admin)
+            ->get(route('staff.reports', $filters))
+            ->assertOk()
+            ->assertSee('Individual staff performance export')
+            ->assertSee('name="staff_ids[]"', false)
+            ->assertSee($firstStaff->name)
+            ->assertSee($secondStaff->name)
+            ->assertDontSee($inactiveStaff->name)
+            ->assertDontSee($pendingStaff->name);
+
+        $response = $this->get(route('admin.reports.staff-performance.export', [
+            ...$filters,
+            'staff_ids' => [$firstStaff->id, $secondStaff->id],
+        ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $workbook = $response->streamedContent();
+        $workbookXml = $this->readXlsxEntry($workbook, 'xl/workbook.xml');
+        $summarySheet = $this->readXlsxEntry($workbook, 'xl/worksheets/sheet1.xml');
+        $ticketSheet = $this->readXlsxEntry($workbook, 'xl/worksheets/sheet2.xml');
+        $summaryXml = new \DOMDocument;
+        $ticketXml = new \DOMDocument;
+        $summaryDocument = new \DOMDocument;
+        $this->assertTrue($summaryXml->loadXML($workbookXml));
+        $this->assertTrue($ticketXml->loadXML($ticketSheet));
+        $this->assertTrue($summaryDocument->loadXML($summarySheet));
+        $xpath = new \DOMXPath($summaryDocument);
+        $xpath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+        $ticketDocument = new \DOMDocument;
+        $this->assertTrue($ticketDocument->loadXML($ticketSheet));
+        $ticketXPath = new \DOMXPath($ticketDocument);
+        $ticketXPath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+
+        $this->assertStringContainsString('name="Staff Summary"', $workbookXml);
+        $this->assertStringContainsString('name="Ticket Details"', $workbookXml);
+        $this->assertStringContainsString('autoFilter ref="A4:I6"', $summarySheet);
+        $this->assertStringContainsString('autoFilter ref="A1:I7"', $ticketSheet);
+        $this->assertSame('0.5', $xpath->query('//x:c[@r="H5"]/x:v')->item(0)?->textContent);
+        $this->assertSame('2', $xpath->query('//x:c[@r="I5"]/x:v')->item(0)?->textContent);
+        $this->assertSame('0.5', $xpath->query('//x:c[@r="H6"]/x:v')->item(0)?->textContent);
+        $this->assertSame('4', $xpath->query('//x:c[@r="I6"]/x:v')->item(0)?->textContent);
+        $this->assertStringContainsString('ED-2026-000363', $ticketSheet);
+        $this->assertStringContainsString('ED-2026-000365', $ticketSheet);
+        $this->assertStringNotContainsString($unselectedTicket->ticket_number, $ticketSheet);
+        $this->assertSame('1', $ticketXPath->query('//x:c[@r="I4"]/x:v')->item(0)?->textContent);
+        $this->assertSame('3', $ticketXPath->query('//x:c[@r="I5"]/x:v')->item(0)?->textContent);
+        $this->assertSame('4', $ticketXPath->query('//x:c[@r="I6"]/x:v')->item(0)?->textContent);
+    }
+
+    public function test_admin_staff_performance_export_rejects_non_staff_selections(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $requester = User::factory()->create(['role' => 'requester']);
+
+        $this->actingAs($admin)
+            ->from(route('staff.reports'))
+            ->get(route('admin.reports.staff-performance.export', [
+                'staff_ids' => [$requester->id],
+            ]))
+            ->assertRedirect(route('staff.reports'))
+            ->assertSessionHasErrors('staff_ids.0');
+    }
+
+    public function test_admin_staff_performance_export_rejects_inactive_or_unapproved_staff(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $inactiveStaff = User::factory()->create([
+            'role' => 'staff',
+            'employment_status' => 'inactive',
+        ]);
+        $pendingStaff = User::factory()->create([
+            'role' => 'staff',
+            'staff_approval_status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('staff.reports'))
+            ->get(route('admin.reports.staff-performance.export', [
+                'staff_ids' => [$inactiveStaff->id, $pendingStaff->id],
+            ]))
+            ->assertRedirect(route('staff.reports'))
+            ->assertSessionHasErrors(['staff_ids.0', 'staff_ids.1']);
     }
 
     public function test_yearly_reports_use_the_selected_calendar_year(): void
@@ -1140,11 +1369,95 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertSee($ticket->ticket_number)
             ->assertSee('Status changed from New to In Progress.')
             ->assertSee($staff->name)
+            ->assertDontSee('Apply filters')
+            ->assertSee('admin-console-button--export', false)
             ->assertSee('<option value="'.$staff->id.'" selected>Tay</option>', false)
             ->assertSee(route('staff.ticket-detail', $ticket), false)
+            ->assertSee(str_replace('&', '&amp;', route('admin.audit-logs.export', [
+                'search' => 'In Progress',
+                'actor' => $staff->id,
+            ])), false)
             ->assertDontSee($otherTicket->ticket_number)
             ->assertDontSee('Priority changed to Urgent.')
             ->assertViewHas('events', fn ($events): bool => $events->total() === 1 && $events->first()->id === $event->id);
+    }
+
+    public function test_admin_can_export_all_matching_audit_events_to_excel(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $actor = User::factory()->create(['name' => 'Taylor Morgan', 'role' => 'staff']);
+        $otherActor = User::factory()->create(['name' => 'Jordan Lee', 'role' => 'staff']);
+        $ticket = $this->createTicket('ED-2026-000381', 'Audit export target');
+        TicketEvent::create([
+            'ticket_id' => $ticket->id,
+            'actor_id' => $actor->id,
+            'actor_name' => $actor->name,
+            'event' => 'sensitive_change',
+            'description' => '=HYPERLINK("https://example.com", "click") Export marker',
+            'request_method' => 'PATCH',
+            'route_name' => 'admin.users.update',
+            'subject_type' => 'User',
+            'subject_id' => '42',
+            'subject_name' => 'Export target',
+            'ip_address' => '192.0.2.10',
+            'user_agent' => 'Test browser',
+            'properties' => ['before' => ['role' => 'staff'], 'after' => ['role' => 'admin']],
+            'created_at' => '2026-11-04 10:00:00',
+            'updated_at' => '2026-11-04 10:00:00',
+        ]);
+        TicketEvent::create([
+            'actor_id' => $actor->id,
+            'actor_name' => $actor->name,
+            'event' => 'other_change',
+            'description' => 'Different audit event',
+            'created_at' => '2026-11-04 10:01:00',
+            'updated_at' => '2026-11-04 10:01:00',
+        ]);
+        TicketEvent::create([
+            'actor_id' => $otherActor->id,
+            'actor_name' => $otherActor->name,
+            'event' => 'sensitive_change',
+            'description' => 'Export marker for another user',
+            'created_at' => '2026-11-04 10:02:00',
+            'updated_at' => '2026-11-04 10:02:00',
+        ]);
+
+        $response = $this->actingAs($admin)
+            ->get(route('admin.audit-logs.export', [
+                'search' => 'Export marker',
+                'date' => '2026-11-04',
+                'actor' => $actor->id,
+            ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        $this->assertStringContainsString(
+            'ticketech-audit-logs-',
+            $response->baseResponse->headers->get('content-disposition'),
+        );
+        $workbook = $response->streamedContent();
+        $workbookXml = $this->readXlsxEntry($workbook, 'xl/workbook.xml');
+        $sheet = $this->readXlsxEntry($workbook, 'xl/worksheets/sheet1.xml');
+        $styles = $this->readXlsxEntry($workbook, 'xl/styles.xml');
+        $sheetText = html_entity_decode(
+            $sheet,
+            ENT_QUOTES | ENT_XML1,
+            'UTF-8',
+        );
+
+        $this->assertStringStartsWith("PK\x03\x04", $workbook);
+        $this->assertStringContainsString('name="Audit Logs"', $workbookXml);
+        $this->assertStringContainsString('autoFilter ref="A1:J2"', $sheet);
+        $this->assertMatchesRegularExpression('~<col[^>]*min="10"[^>]*width="72"[^>]*>~', $sheet);
+        $this->assertStringContainsString('Date and time', $sheetText);
+        $this->assertStringContainsString('Audit Details', $sheetText);
+        $this->assertStringContainsString('rgb="FFD9EAF7"', $styles);
+        $this->assertStringContainsString('rgb="FF1F4E79"', $styles);
+        $this->assertStringContainsString($ticket->ticket_number, $sheetText);
+        $this->assertStringContainsString("'=HYPERLINK", $sheetText);
+        $this->assertStringContainsString('Before: {"role":"staff"}', $sheetText);
+        $this->assertStringNotContainsString('Different audit event', $sheetText);
+        $this->assertStringNotContainsString('another user', $sheetText);
     }
 
     public function test_staff_can_read_only_their_own_notifications(): void

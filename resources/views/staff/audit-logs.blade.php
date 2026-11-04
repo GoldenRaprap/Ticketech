@@ -37,7 +37,7 @@
                     @endforeach
                 </select>
             </label>
-            <button class="admin-console-button" type="submit">Apply filters</button>
+            <a class="admin-console-button admin-console-button--export" href="{{ route('admin.audit-logs.export', $filters) }}">Export Excel (.xlsx)</a>
             @if ($filters !== [])
                 <a class="admin-console-clear" href="{{ route('admin.audit-logs') }}">Clear</a>
             @endif

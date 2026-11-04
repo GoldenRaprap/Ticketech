@@ -14,7 +14,9 @@ return [
     |
     */
 
-    'default' => env('MAIL_MAILER', 'log'),
+    'default' => env('MAIL_MAILER') ?: 'log',
+    'default_fallback' => env('MAIL_MAILER') ?: 'log',
+    'smtp_password_fallback' => env('MAIL_PASSWORD'),
 
     /*
     |--------------------------------------------------------------------------
@@ -44,7 +46,7 @@ return [
                 'ssl' => 'smtps',
                 default => env('MAIL_SCHEME'),
             },
-            'url' => env('MAIL_URL'),
+            'url' => env('MAIL_URL') ?: null,
             'host' => env('MAIL_HOST', '127.0.0.1'),
             'port' => env('MAIL_PORT', 2525),
             'username' => env('MAIL_USERNAME'),

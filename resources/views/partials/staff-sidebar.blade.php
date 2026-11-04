@@ -115,7 +115,7 @@
                     <small>{{ auth()->user()->isAdmin() ? 'Admin Account' : 'Staff Account' }}</small>
                 </span>
             </a>
-            <form class="sidebar-logout" action="{{ route('logout') }}" method="post">
+            <form class="sidebar-logout" action="{{ route('logout') }}" method="post" data-confirm-logout>
                 @csrf
                 <button type="submit" aria-label="Sign out" title="Sign out">
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

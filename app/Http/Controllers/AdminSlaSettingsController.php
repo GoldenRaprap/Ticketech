@@ -7,6 +7,7 @@ use App\Models\Department;
 use App\Services\AuditActivityLogger;
 use App\Services\SlaSettings;
 use App\Services\TicketPriorityClassifier;
+use App\Services\TicketResolutionSla;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -27,6 +28,7 @@ class AdminSlaSettingsController extends Controller
         Request $request,
         SlaSettings $slaSettings,
         TicketPriorityClassifier $priorityClassifier,
+        TicketResolutionSla $resolutionSla,
         AuditActivityLogger $auditLogger,
     ): RedirectResponse {
         $rules = [
@@ -45,6 +47,7 @@ class AdminSlaSettingsController extends Controller
 
         $validated = $request->validate($rules);
         $slaSettings->update($validated['targets']);
+        $resolutionSla->refreshOpenTickets();
         $priorityKeywords = $validated['priority_keywords'] ?? null;
 
         if ($priorityKeywords !== null) {

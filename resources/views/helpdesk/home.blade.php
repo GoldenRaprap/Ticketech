@@ -72,6 +72,7 @@
         @endif
     </div>
 
+    @if ($knowledgeBaseEnabled)
     <section class="home-knowledge-panel" aria-labelledby="home-knowledge-heading">
         <div class="home-knowledge-section">
             <header class="home-knowledge-heading">
@@ -83,11 +84,7 @@
             <div class="public-article-grid home-knowledge-grid">
                 @forelse ($featuredArticles as $article)
                     <article class="public-article-card">
-                        @if ($article->images->isNotEmpty())
-                            <a class="public-article-card-image" href="{{ route('knowledge-base.show', $article->slug) }}" tabindex="-1" aria-hidden="true">
-                                <img src="{{ $article->images->first()->url() }}" alt="" loading="lazy">
-                            </a>
-                        @endif
+                        @include('helpdesk.partials.article-card-visual', ['article' => $article])
                         <div class="public-article-card-copy">
                             <span class="public-article-category">{{ $article->category }}</span>
                             <h3><a href="{{ route('knowledge-base.show', $article->slug) }}">{{ $article->title }}</a></h3>
@@ -106,5 +103,10 @@
             <a class="home-knowledge-all" href="{{ route('knowledge-base') }}">Browse all articles <span aria-hidden="true">→</span></a>
         </div>
     </section>
+    @else
+    <section class="home-knowledge-panel home-knowledge-unavailable" aria-label="Knowledge base">
+        <p class="ticket-status-notice" role="status">{{ $knowledgeBaseMessage }}</p>
+    </section>
+    @endif
 </section>
 @endsection

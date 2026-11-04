@@ -2,7 +2,10 @@
 
 use App\Http\Middleware\ApplySystemMailSettings;
 use App\Http\Middleware\EnsureAdmin;
+use App\Http\Middleware\EnsureKnowledgeBaseIsEnabled;
 use App\Http\Middleware\EnsureStaff;
+use App\Http\Middleware\EnsureTicketRepliesAreEnabled;
+use App\Http\Middleware\EnsureTicketSubmissionIsOpen;
 use App\Http\Middleware\RecordStaffActivity;
 use App\Http\Middleware\RedirectWorkspaceUsers;
 use Illuminate\Foundation\Application;
@@ -23,6 +26,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => EnsureAdmin::class,
             'redirect.workspace-users' => RedirectWorkspaceUsers::class,
             'audit.activity' => RecordStaffActivity::class,
+            'ticket-submission-open' => EnsureTicketSubmissionIsOpen::class,
+            'knowledge-base-enabled' => EnsureKnowledgeBaseIsEnabled::class,
+            'ticket-replies-enabled' => EnsureTicketRepliesAreEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

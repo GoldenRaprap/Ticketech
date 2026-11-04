@@ -49,7 +49,7 @@
         </form>
         <div class="ticket-table-scroll">
             <table class="workspace-table">
-                <thead><tr><th scope="col">Ticket</th><th scope="col">Requester</th><th scope="col">Priority</th><th scope="col">Assignee</th><th scope="col">Status</th><th scope="col">Created</th></tr></thead>
+                <thead><tr><th scope="col">Ticket</th><th scope="col">Requester</th><th scope="col">Priority</th><th scope="col">Assignee</th><th scope="col">Status</th><th scope="col">Resolution target</th><th scope="col">Created</th></tr></thead>
                 <tbody>
                     @forelse ($tickets as $ticket)
                         <tr data-ticket-row data-ticket-url="{{ route('staff.ticket-detail', $ticket) }}" tabindex="0" aria-label="Open ticket {{ $ticket->ticket_number }}: {{ $ticket->subject }}">
@@ -58,10 +58,25 @@
                             <td><span class="priority-pill priority-pill--{{ strtolower($ticket->priority) }}">{{ $ticket->priority }}</span></td>
                             <td>{{ $ticket->assignedTo?->name ?? 'Unassigned' }}</td>
                             <td><span class="status-pill status-pill--{{ strtolower(str_replace(' ', '-', $ticket->status)) }}">{{ $ticket->status }}</span></td>
+                            <td>
+                                @if (in_array($ticket->status, ['Resolved', 'Closed'], true))
+                                    <span>Completed</span>
+                                @elseif (in_array($ticket->status, ['Waiting for User', 'On Hold'], true))
+                                    <span>Paused</span>
+                                @elseif ($ticket->resolution_due_at && $ticket->resolution_due_at->lessThanOrEqualTo(now()))
+                                    <span class="priority-pill priority-pill--urgent">Overdue</span>
+                                @elseif ($ticket->resolution_warning_at && $ticket->resolution_warning_at->lessThanOrEqualTo(now()))
+                                    <span class="priority-pill priority-pill--high">Due soon</span>
+                                @elseif ($ticket->resolution_due_at)
+                                    <time datetime="{{ $ticket->resolution_due_at->toIso8601String() }}">{{ $ticket->resolution_due_at->copy()->timezone(config('app.display_timezone'))->format('M j, g:i A') }}</time>
+                                @else
+                                    <span>Not calculated</span>
+                                @endif
+                            </td>
                             <td><time datetime="{{ $ticket->created_at->toDateString() }}">{{ $ticket->created_at->format('M j, Y') }}</time></td>
                         </tr>
                     @empty
-                        <tr><td colspan="6"><div class="workspace-empty-state workspace-empty-state--compact"><strong>No matching tickets</strong><p>Try another search term or clear your filters.</p></div></td></tr>
+                        <tr><td colspan="7"><div class="workspace-empty-state workspace-empty-state--compact"><strong>No matching tickets</strong><p>Try another search term or clear your filters.</p></div></td></tr>
                     @endforelse
                 </tbody>
             </table>
