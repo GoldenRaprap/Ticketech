@@ -76,18 +76,33 @@
                 <div>
                     <span class="admin-page-eyebrow">AUTOMATIC PRIORITY</span>
                     <h2 id="priority-rules-heading">Subject keyword rules</h2>
-                    <p>New tickets are classified from the subject only. Add comma- or line-separated words and phrases. The system checks configured rules from Urgent through Low; tickets with no match default to Low.</p>
+                    <p>New tickets are classified from the subject only. Add one word or phrase at a time, then expand a priority to review or remove keywords. The system checks configured rules from Urgent through Low; tickets with no match default to Low.</p>
                 </div>
             </header>
             <div class="admin-priority-rules-grid">
                 @foreach (['urgent' => 'Urgent', 'high' => 'High', 'medium' => 'Medium', 'low' => 'Low'] as $key => $label)
-                    <label class="admin-priority-rule-field" for="priority-keywords-{{ $key }}">
-                        <span>{{ $label }} priority keywords</span>
-                        <textarea id="priority-keywords-{{ $key }}" name="priority_keywords[{{ $key }}]" rows="3" maxlength="2000" placeholder="Separate keywords with commas or new lines">{{ old("priority_keywords.{$key}", $priorityKeywords[$key]) }}</textarea>
+                    <div class="admin-priority-rule-field" data-priority-keyword-editor>
+                        <span class="admin-priority-rule-label" id="priority-keywords-label-{{ $key }}">{{ $label }} priority keywords</span>
+                        <details class="admin-priority-keyword-details">
+                            <summary aria-labelledby="priority-keywords-label-{{ $key }}">
+                                <span>Manage keywords</span>
+                                <span class="admin-priority-keyword-count" data-keyword-count aria-live="polite"></span>
+                            </summary>
+                            <div class="admin-priority-keyword-content">
+                                <ul class="admin-priority-keyword-list" data-keyword-list aria-label="{{ $label }} priority keyword list"></ul>
+                                <div class="admin-priority-keyword-add">
+                                    <label class="visually-hidden" for="priority-keyword-input-{{ $key }}">Keyword or phrase to add to {{ strtolower($label) }} priority</label>
+                                    <input id="priority-keyword-input-{{ $key }}" type="text" maxlength="2000" autocomplete="off" placeholder="Type one keyword or phrase" data-keyword-input>
+                                    <button class="admin-console-button" type="button" data-add-keyword>Add keyword</button>
+                                </div>
+                                <small class="admin-priority-keyword-feedback" data-keyword-feedback aria-live="polite"></small>
+                            </div>
+                        </details>
+                        <input type="hidden" name="priority_keywords[{{ $key }}]" value="{{ old("priority_keywords.{$key}", $priorityKeywords[$key]) }}" data-keyword-value>
                         @error("priority_keywords.{$key}")
                             <small class="admin-sla-error">{{ $message }}</small>
                         @enderror
-                    </label>
+                    </div>
                 @endforeach
             </div>
         </section>

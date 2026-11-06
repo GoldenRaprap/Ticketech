@@ -115,6 +115,7 @@ Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])-
     Route::delete('/users/{user}/denied-unverified-application', [AdminUserController::class, 'removeDeniedUnverifiedApplication'])
         ->name('users.denied-unverified-application.destroy');
     Route::put('/users/{user}', [AdminUserController::class, 'update'])->name('users.update');
+    Route::patch('/users/{user}/role', [AdminUserController::class, 'updateRole'])->name('users.role.update');
     Route::get('/knowledge-base', [KnowledgeArticleController::class, 'index'])->name('knowledge-base');
     Route::put('/knowledge-base/review-settings', [KnowledgeArticleController::class, 'updateReviewSettings'])->name('knowledge-base.review-settings');
     Route::get('/knowledge-base/create', [KnowledgeArticleController::class, 'create'])->name('knowledge-base.create');

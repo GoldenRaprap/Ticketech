@@ -113,13 +113,14 @@ class AdminStaffManagementTest extends TestCase
             ->assertOk()
             ->assertSee('<details class="admin-pending-empty">', false)
             ->assertDontSee('<details class="admin-pending-empty" open>', false)
-            ->assertSeeInOrder(['Manage staff access', 'Pending staff approvals', 'No pending staff applications']);
+            ->assertSeeInOrder(['Manage staff and admin access', 'Pending staff approvals', 'No pending staff applications']);
     }
 
-    public function test_admin_user_directory_lists_real_staff_and_filters_by_employment_status(): void
+    public function test_admin_user_directory_lists_staff_and_administrators_and_filters_by_employment_status(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
         $activeStaff = User::factory()->create(['name' => 'Active Staff', 'role' => 'staff']);
+        $anotherAdmin = User::factory()->create(['name' => 'Another Admin', 'role' => 'admin']);
         $retiredStaff = User::factory()->create([
             'name' => 'Retired Staff',
             'role' => 'staff',
@@ -130,8 +131,141 @@ class AdminStaffManagementTest extends TestCase
             ->assertOk()
             ->assertSee($retiredStaff->name)
             ->assertDontSee($activeStaff->name)
-            ->assertDontSee('Add a staff member')
-            ->assertSee('Terminated');
+            ->assertDontSee($anotherAdmin->name);
+
+        $this->get(route('admin.users'))
+            ->assertOk()
+            ->assertSee($anotherAdmin->name)
+            ->assertSee('Promote to administrator')
+            ->assertSee('Change to staff');
+    }
+
+    public function test_admin_can_promote_active_staff_and_demote_them_while_another_admin_remains(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $staff = User::factory()->create(['role' => 'staff']);
+
+        $this->actingAs($admin)->patch(route('admin.users.role.update', $staff), [
+            'role' => 'admin',
+        ])->assertRedirect(route('admin.users'))
+            ->assertSessionHas('status', $staff->name.' is now an administrator.');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $staff->id,
+            'role' => 'admin',
+        ]);
+        $this->assertDatabaseHas('ticket_events', [
+            'actor_id' => $admin->id,
+            'subject_type' => 'User',
+            'subject_id' => (string) $staff->id,
+            'event' => 'user_role_updated',
+        ]);
+
+        $staff->refresh();
+        $this->actingAs($staff)->get(route('admin.dashboard'))->assertOk();
+
+        $this->actingAs($admin)->patch(route('admin.users.role.update', $staff), [
+            'role' => 'staff',
+        ])->assertRedirect(route('admin.users'))
+            ->assertSessionHas('status', $staff->name.' is now a staff member.');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $staff->id,
+            'role' => 'staff',
+        ]);
+    }
+
+    public function test_admin_cannot_change_own_role_and_can_demote_another_admin(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->patch(route('admin.users.role.update', $admin), [
+            'role' => 'staff',
+        ])->assertRedirect(route('admin.users'))
+            ->assertSessionHas('warning', 'You cannot change your own administrator role.');
+
+        $anotherAdmin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->patch(route('admin.users.role.update', $anotherAdmin), [
+            'role' => 'staff',
+        ])->assertRedirect(route('admin.users'))
+            ->assertSessionHas('status', $anotherAdmin->name.' is now a staff member.');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $anotherAdmin->id,
+            'role' => 'staff',
+        ]);
+        $this->assertDatabaseHas('users', [
+            'id' => $admin->id,
+            'role' => 'admin',
+        ]);
+    }
+
+    public function test_only_active_approved_staff_can_be_promoted(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $retiredStaff = User::factory()->create([
+            'role' => 'staff',
+            'employment_status' => 'retired',
+        ]);
+
+        $this->actingAs($admin)->patch(route('admin.users.role.update', $retiredStaff), [
+            'role' => 'admin',
+        ])->assertNotFound();
+
+        $this->assertDatabaseHas('users', [
+            'id' => $retiredStaff->id,
+            'role' => 'staff',
+        ]);
+
+        $pendingStaff = User::factory()->create([
+            'role' => 'staff',
+            'staff_approval_status' => 'pending',
+        ]);
+
+        $this->patch(route('admin.users.role.update', $pendingStaff), [
+            'role' => 'admin',
+        ])->assertNotFound();
+
+        $this->assertDatabaseHas('users', [
+            'id' => $pendingStaff->id,
+            'role' => 'staff',
+            'staff_approval_status' => 'pending',
+        ]);
+    }
+
+    public function test_non_admins_cannot_change_user_roles(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+        $anotherStaff = User::factory()->create(['role' => 'staff']);
+
+        $this->patch(route('admin.users.role.update', $anotherStaff), [
+            'role' => 'admin',
+        ])->assertRedirect(route('login'));
+
+        $this->actingAs($staff)->patch(route('admin.users.role.update', $anotherStaff), [
+            'role' => 'admin',
+        ])->assertForbidden();
+
+        $this->assertDatabaseHas('users', [
+            'id' => $anotherStaff->id,
+            'role' => 'staff',
+        ]);
+    }
+
+    public function test_role_changes_reject_roles_outside_staff_and_admin(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $staff = User::factory()->create(['role' => 'staff']);
+
+        $this->actingAs($admin)->patch(route('admin.users.role.update', $staff), [
+            'role' => 'requester',
+        ])->assertSessionHasErrors(['role']);
+
+        $this->assertDatabaseHas('users', [
+            'id' => $staff->id,
+            'role' => 'staff',
+        ]);
     }
 
     public function test_deactivated_staff_cannot_sign_in_or_request_a_password_reset(): void

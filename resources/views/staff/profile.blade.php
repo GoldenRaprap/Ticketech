@@ -45,7 +45,7 @@
     <div class="profile-content-grid">
         <section class="workspace-card profile-information-card">
             <div class="workspace-card-heading">
-                <div><span class="workspace-eyebrow">Personal details</span><h2>Account information</h2><p>Update your full name, nickname, and email.</p></div>
+                <div><span class="workspace-eyebrow">Personal details</span><h2>Account information</h2><p>Update your full name and nickname.</p></div>
             </div>
             @if ($errors->any())
                 <div class="workspace-alert workspace-alert--error" role="alert"><strong>Unable to update profile:</strong><ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
@@ -62,10 +62,10 @@
                 </div>
                 <label class="profile-edit-field" for="profile-name"><span><span class="profile-detail-icon" aria-hidden="true">♙</span>Full name</span><input id="profile-name" name="name" value="{{ old('name', $user->name) }}" autocomplete="name" maxlength="255" required></label>
                 <label class="profile-edit-field" for="profile-nickname"><span><span class="profile-detail-icon" aria-hidden="true">✦</span>Nickname</span><input id="profile-nickname" name="nickname" value="{{ old('nickname', $user->nickname) }}" autocomplete="nickname" maxlength="80" placeholder="Optional"></label>
-                <label class="profile-edit-field" for="profile-email"><span><span class="profile-detail-icon" aria-hidden="true">@</span>Email address</span><input id="profile-email" name="email" type="email" value="{{ old('email', $user->email) }}" autocomplete="email" maxlength="255" required></label>
+                <label class="profile-edit-field" for="profile-email"><span><span class="profile-detail-icon" aria-hidden="true">@</span>Email address</span><input id="profile-email" type="email" value="{{ $user->email }}" autocomplete="email" readonly aria-describedby="profile-email-help"></label>
                 <div class="profile-detail-row"><dt><span class="profile-detail-icon" aria-hidden="true">▤</span>Account role</dt><dd><span class="profile-detail-role">{{ $roleLabel }}</span></dd></div>
                 <div class="profile-detail-row"><dt><span class="profile-detail-icon" aria-hidden="true">◷</span>Account created</dt><dd>{{ $user->created_at->format('F j, Y') }}</dd></div>
-                <p class="profile-information-note"><span aria-hidden="true">ⓘ</span> If you change your email address, use the new address for future sign-ins.</p>
+                <p class="profile-information-note" id="profile-email-help"><span aria-hidden="true">ⓘ</span> Your email address is read-only. Contact an administrator if it needs to be changed.</p>
                 <div class="profile-form-actions"><button class="workspace-button workspace-button--primary" type="submit">Save profile changes</button></div>
             </form>
         </section>

@@ -7,16 +7,20 @@ use Illuminate\Support\Facades\Schema;
 
 class TicketSubmissionSettings
 {
+    public const ENABLED_SETTING = 'ticket.submission.enabled';
+
+    public const MESSAGE_SETTING = 'ticket.submission.message';
+
     public const DEFAULT_CLOSED_MESSAGE = 'Ticket submissions are temporarily unavailable during maintenance. Please try again later.';
 
     public function isOpen(): bool
     {
-        return $this->setting('ticket.submission.enabled', '1') === '1';
+        return $this->setting(self::ENABLED_SETTING, '1') === '1';
     }
 
     public function closedMessage(): string
     {
-        return $this->setting('ticket.submission.message', self::DEFAULT_CLOSED_MESSAGE);
+        return $this->setting(self::MESSAGE_SETTING, self::DEFAULT_CLOSED_MESSAGE);
     }
 
     private function setting(string $key, string $default): string

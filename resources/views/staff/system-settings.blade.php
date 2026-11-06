@@ -30,6 +30,14 @@
                 </header>
                 <p>Configure the SMTP connection here. The app password is encrypted before it is saved and is never displayed after saving.</p>
 
+                @if (filled($mailDeliveryFailureMessage))
+                    <div class="workspace-alert workspace-alert--error" role="alert">
+                        <strong>Automatic email delivery needs attention.</strong>
+                        <p>{{ $mailDeliveryFailureMessage }}</p>
+                        <p>Ticket submissions and replies are paused. After correcting the mail settings and confirming delivery works, re-enable them in Helpdesk availability below.</p>
+                    </div>
+                @endif
+
                 @if ($errors->any())
                     <div class="workspace-alert workspace-alert--error" role="alert">
                         <strong>Unable to update email settings:</strong>
@@ -83,19 +91,6 @@
                     @endif
                     <button class="admin-console-button" type="submit">Save email and SMTP settings</button>
                 </form>
-            </section>
-
-            <section class="admin-console-card">
-                <header class="admin-console-card-heading">
-                    <div><span class="admin-page-eyebrow">ORGANIZATION</span><h2>Helpdesk identity</h2><p>These details identify the service to PCU students and employees.</p></div>
-                    <span class="admin-readonly-badge">Read only</span>
-                </header>
-                <dl class="admin-config-list">
-                    <div><dt>System name</dt><dd>Ticketech</dd></div>
-                    <div><dt>Service description</dt><dd>EdTech Helpdesk Support and Ticketing System</dd></div>
-                    <div><dt>Support team</dt><dd>PCU IT Support</dd></div>
-                    <div><dt>Time zone</dt><dd>Asia/Manila (UTC+08:00)</dd></div>
-                </dl>
             </section>
 
             <section class="admin-console-card">
@@ -209,6 +204,18 @@
         </div>
 
         <aside class="admin-settings-aside">
+            <section class="admin-console-card admin-identity-card">
+                <header class="admin-console-card-heading">
+                    <div><span class="admin-page-eyebrow">ORGANIZATION</span><h2>Helpdesk identity</h2><p>These details identify the service to PCU students and employees.</p></div>
+                    <span class="admin-readonly-badge">Read only</span>
+                </header>
+                <dl class="admin-config-list">
+                    <div><dt>System name</dt><dd>Ticketech</dd></div>
+                    <div><dt>Service description</dt><dd>EdTech Helpdesk Support and Ticketing System</dd></div>
+                    <div><dt>Support team</dt><dd>PCU IT Support</dd></div>
+                    <div><dt>Time zone</dt><dd>Asia/Manila (UTC+08:00)</dd></div>
+                </dl>
+            </section>
             <section class="admin-console-card admin-security-card">
                 <span class="admin-page-eyebrow">ACCESS CONTROL</span>
                 <h2>Role boundaries</h2>

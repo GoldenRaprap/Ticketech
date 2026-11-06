@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\AuditActivityLogger;
 use App\Services\PublicFeatureAvailability;
+use App\Services\TicketEmailAvailability;
 use App\Services\TicketSubmissionSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -33,6 +34,8 @@ class AdminSystemSettingsController extends Controller
                 PublicFeatureAvailability::KNOWLEDGE_BASE_MESSAGE,
                 PublicFeatureAvailability::TICKET_REPLIES_ENABLED,
                 PublicFeatureAvailability::TICKET_REPLIES_MESSAGE,
+                TicketEmailAvailability::DELIVERY_STATUS_SETTING,
+                TicketEmailAvailability::DELIVERY_MESSAGE_SETTING,
             ])
             ->pluck('value', 'setting');
         $mailer = config('mail.default');
@@ -42,15 +45,18 @@ class AdminSystemSettingsController extends Controller
             'mail.smtp.encryption',
             $smtpScheme === 'smtps' || (int) $smtpPort === 465 ? 'ssl' : 'tls',
         );
-        $mailTransportStatus = match ($mailer) {
-            'log', 'array' => 'Not sending',
-            'smtp' => filled($settings->get('mail.smtp.host', config('mail.mailers.smtp.host')))
-                && filled($settings->get('mail.smtp.username', config('mail.mailers.smtp.username')))
-                && (filled($settings->get('mail.smtp.password')) || filled(config('mail.mailers.smtp.password')))
-                ? 'Configured'
-                : 'Credentials needed',
-            default => 'Configured',
-        };
+        $mailTransportStatus = $settings->get(TicketEmailAvailability::DELIVERY_STATUS_SETTING)
+            === TicketEmailAvailability::DELIVERY_UNAVAILABLE_STATUS
+                ? 'Needs attention'
+                : match ($mailer) {
+                    'log', 'array' => 'Not sending',
+                    'smtp' => filled($settings->get('mail.smtp.host', config('mail.mailers.smtp.host')))
+                        && filled($settings->get('mail.smtp.username', config('mail.mailers.smtp.username')))
+                        && (filled($settings->get('mail.smtp.password')) || filled(config('mail.mailers.smtp.password')))
+                        ? 'Configured'
+                        : 'Credentials needed',
+                    default => 'Configured',
+                };
 
         return view('staff.system-settings', [
             'fromAddress' => $settings->get('mail.from.address', config('mail.from.address')),
@@ -62,6 +68,7 @@ class AdminSystemSettingsController extends Controller
             'hasSmtpAppPassword' => $settings->has('mail.smtp.password')
                 || filled(config('mail.mailers.smtp.password')),
             'mailTransportStatus' => $mailTransportStatus,
+            'mailDeliveryFailureMessage' => $settings->get(TicketEmailAvailability::DELIVERY_MESSAGE_SETTING),
             'ticketSubmissionOpen' => $settings->get('ticket.submission.enabled', '1') === '1',
             'ticketSubmissionMessage' => $settings->get(
                 'ticket.submission.message',
@@ -185,8 +192,11 @@ class AdminSystemSettingsController extends Controller
         );
     }
 
-    public function update(Request $request, AuditActivityLogger $auditLogger): RedirectResponse
-    {
+    public function update(
+        Request $request,
+        AuditActivityLogger $auditLogger,
+        TicketEmailAvailability $ticketEmailAvailability,
+    ): RedirectResponse {
         $validator = Validator::make($request->all(), [
             'from_address' => ['required', 'email', 'max:255'],
             'from_name' => ['required', 'string', 'max:255'],
@@ -231,6 +241,10 @@ class AdminSystemSettingsController extends Controller
                 );
             }
         });
+
+        if (filled($validated['smtp_app_password'] ?? null)) {
+            $ticketEmailAvailability->clearDeliveryFailureAfterCredentialReplacement();
+        }
 
         $scheme = match ($validated['smtp_encryption']) {
             'ssl' => 'smtps',

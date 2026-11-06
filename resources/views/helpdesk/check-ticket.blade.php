@@ -71,10 +71,10 @@
             @if (session('ticket_reply_error'))
                 <aside class="ticket-status-notice" role="alert">{{ session('ticket_reply_error') }}</aside>
             @endif
-            @if ($ticket->status === 'Closed')
+            @if (in_array($ticket->status, ['Resolved', 'Closed'], true))
                 <aside class="ticket-status-notice" role="status">
-                    <p><strong>This ticket is closed.</strong></p>
-                    <p>Closed tickets no longer accept replies or attachments. If the problem persists, please <a href="{{ route('ticket.create') }}">submit a new ticket</a>.</p>
+                    <p><strong>This ticket is {{ strtolower($ticket->status) }}.</strong></p>
+                    <p>{{ $ticket->status }} tickets no longer accept replies or attachments. If you still need help, please <a href="{{ route('ticket.create') }}">submit a new ticket</a>.</p>
                 </aside>
             @endif
 
@@ -111,22 +111,27 @@
                     <p class="ticket-view-created">Submitted {{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('F j, Y \a\t g:i A') }}</p>
                 </header>
 
-                <dl class="ticket-view-summary">
-                    <div class="ticket-view-status">
-                        <dt>Current status</dt>
-                        <dd><span class="ticket-view-status-badge ticket-view-status-badge--{{ \Illuminate\Support\Str::slug($ticket->status) }}">{{ $ticket->status }}</span></dd>
-                    </div>
-                    <div>
-                        <dt>Ticket number</dt>
-                        <dd>{{ $ticket->ticket_number }}</dd>
-                    </div>
-                    @if ($ticket->assignedTo)
-                        <div>
-                            <dt>Assigned staff member</dt>
-                            <dd>{{ $ticket->assignedTo->name }}</dd>
-                        </div>
-                    @endif
-                </dl>
+                <div class="ticket-view-summary">
+                    @foreach ($ticketDocument['detail_groups'] as $group)
+                        <section class="ticket-summary-group" aria-label="{{ $group['title'] }}">
+                            <h2>{{ $group['title'] }}</h2>
+                            <dl class="ticket-summary-list">
+                                @foreach ($group['details'] as $detail)
+                                    <div>
+                                        <dt>{{ $detail['label'] }}</dt>
+                                        <dd>
+                                            @if ($detail['label'] === 'Current status')
+                                                <span class="ticket-view-status-badge ticket-view-status-badge--{{ \Illuminate\Support\Str::slug($detail['value']) }}">{{ $detail['value'] }}</span>
+                                            @else
+                                                {{ $detail['value'] }}
+                                            @endif
+                                        </dd>
+                                    </div>
+                                @endforeach
+                            </dl>
+                        </section>
+                    @endforeach
+                </div>
 
                 <section class="ticket-conversation" aria-labelledby="ticket-conversation-title">
                     <div class="ticket-conversation-heading">
@@ -191,14 +196,7 @@
                 </section>
                 @include('partials.image-preview-dialog')
 
-                @if ($ticket->status === 'Resolved')
-                    <aside class="ticket-status-notice" role="status">
-                        <p><strong>This ticket is currently marked: {{ $ticket->status }}.</strong></p>
-                        <p>Only reply if the issue is still happening or comes up again. Your reply will reopen this ticket so PCU IT Support can assist further.</p>
-                    </aside>
-                @endif
-
-                @if ($ticket->status !== 'Closed' && $ticketRepliesEnabled)
+                @if (! in_array($ticket->status, ['Resolved', 'Closed'], true) && $ticketRepliesEnabled)
                 <section class="ticket-reply-panel" aria-labelledby="client-ticket-reply-heading">
                     <div class="ticket-reply-panel-heading">
                         <span class="ticket-reply-icon" aria-hidden="true">↩</span>
@@ -244,7 +242,7 @@
                         </div>
                     </form>
                 </section>
-                @elseif ($ticket->status !== 'Closed')
+                @elseif (! in_array($ticket->status, ['Resolved', 'Closed'], true))
                     <aside class="ticket-status-notice" role="status">{{ $ticketRepliesMessage }}</aside>
                 @endif
 

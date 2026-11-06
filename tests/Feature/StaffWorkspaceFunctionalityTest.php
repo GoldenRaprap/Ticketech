@@ -1519,10 +1519,13 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertRedirect(route('staff.ticket-detail', $ticket));
     }
 
-    public function test_staff_can_update_profile_and_email_must_be_unique(): void
+    public function test_staff_can_update_profile_without_changing_their_email(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
-        User::factory()->create(['email' => 'already-used@pcu.edu.ph']);
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'email' => 'taylor.original@pcu.edu.ph',
+        ]);
+        $emailVerifiedAt = $staff->email_verified_at;
 
         $this->actingAs($staff)
             ->put(route('staff.profile.update'), [
@@ -1534,18 +1537,47 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->assertDatabaseHas('users', [
             'id' => $staff->id,
             'name' => 'Taylor Updated',
-            'email' => 'taylor.updated@pcu.edu.ph',
-            'email_verified_at' => null,
+            'email' => 'taylor.original@pcu.edu.ph',
         ]);
 
+        $this->assertSame(
+            $emailVerifiedAt?->getTimestamp(),
+            $staff->fresh()->email_verified_at?->getTimestamp(),
+        );
+
         $this->actingAs($staff->fresh())
-            ->from(route('staff.profile'))
+            ->get(route('staff.profile'))
+            ->assertOk()
+            ->assertSee('id="profile-email" type="email"', false)
+            ->assertSee('value="taylor.original@pcu.edu.ph"', false)
+            ->assertSee('readonly', false)
+            ->assertDontSee('name="email"', false)
+            ->assertSee('Contact an administrator if it needs to be changed.');
+    }
+
+    public function test_admin_cannot_change_their_email_from_the_profile(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'email' => 'admin.original@pcu.edu.ph',
+        ]);
+        $emailVerifiedAt = $admin->email_verified_at;
+
+        $this->actingAs($admin)
             ->put(route('staff.profile.update'), [
-                'name' => 'Taylor Updated',
-                'email' => 'already-used@pcu.edu.ph',
+                'name' => $admin->name,
+                'email' => 'admin.changed@pcu.edu.ph',
             ])
-            ->assertRedirect(route('staff.profile'))
-            ->assertSessionHasErrors('email');
+            ->assertRedirect(route('staff.profile'));
+
+        $this->assertDatabaseHas('users', [
+            'id' => $admin->id,
+            'email' => 'admin.original@pcu.edu.ph',
+        ]);
+        $this->assertSame(
+            $emailVerifiedAt?->getTimestamp(),
+            $admin->fresh()->email_verified_at?->getTimestamp(),
+        );
     }
 
     public function test_staff_can_save_a_nickname_while_preserving_their_full_name(): void

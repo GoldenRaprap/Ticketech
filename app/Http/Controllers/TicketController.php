@@ -16,6 +16,7 @@ use App\Models\WorkspaceNotification;
 use App\Notifications\TicketEmailVerification;
 use App\Notifications\TicketRequesterUpdate;
 use App\Services\PublicFeatureAvailability;
+use App\Services\RequesterTicketDocument;
 use App\Services\TicketPdf;
 use App\Services\TicketPriorityClassifier;
 use App\Services\TicketResolutionSla;
@@ -387,8 +388,11 @@ class TicketController extends Controller
         }
     }
 
-    public function lookup(Request $request, PublicFeatureAvailability $availability): View
-    {
+    public function lookup(
+        Request $request,
+        PublicFeatureAvailability $availability,
+        RequesterTicketDocument $ticketDocument,
+    ): View {
         $lookupContext = $request->session()->get('ticket_lookup_context');
         $ticket = null;
 
@@ -406,6 +410,7 @@ class TicketController extends Controller
 
         return view('helpdesk.check-ticket', [
             'ticket' => $ticket,
+            'ticketDocument' => $ticket ? $ticketDocument->forRequester($ticket) : null,
             'lookupAttempted' => $request->session()->get('ticket_lookup_failed', false),
             'rememberedEmail' => $request->session()->get('ticket_lookup_email', ''),
             'lookupTicketNumber' => $ticket ? $lookupContext['ticket'] : '',
@@ -428,8 +433,11 @@ class TicketController extends Controller
             ->with('ticket_view_closed', 'Ticket view closed. Your ticket details are hidden from this browser.');
     }
 
-    public function show(LookupTicketRequest $request, PublicFeatureAvailability $availability): View
-    {
+    public function show(
+        LookupTicketRequest $request,
+        PublicFeatureAvailability $availability,
+        RequesterTicketDocument $ticketDocument,
+    ): View {
         $validated = $request->validated();
         $lookupEmail = $validated['email'];
         $rememberedEmail = $request->boolean('remember_email') ? $lookupEmail : '';
@@ -454,6 +462,7 @@ class TicketController extends Controller
 
         return view('helpdesk.check-ticket', [
             'ticket' => $ticket,
+            'ticketDocument' => $ticket ? $ticketDocument->forRequester($ticket) : null,
             'lookupAttempted' => true,
             'rememberedEmail' => $rememberedEmail,
             'lookupTicketNumber' => $validated['ticket'],
@@ -490,7 +499,7 @@ class TicketController extends Controller
         $storedAttachments = [];
 
         try {
-            $ticketWasReopened = DB::transaction(function () use (
+            $ticketWasResumed = DB::transaction(function () use (
                 $ticket,
                 $validated,
                 $uploads,
@@ -499,7 +508,7 @@ class TicketController extends Controller
             ): ?bool {
                 $lockedTicket = Ticket::query()->lockForUpdate()->findOrFail($ticket->getKey());
 
-                if ($lockedTicket->status === 'Closed') {
+                if (in_array($lockedTicket->status, ['Resolved', 'Closed'], true)) {
                     return null;
                 }
 
@@ -517,18 +526,12 @@ class TicketController extends Controller
                 }
 
                 $previousStatus = $lockedTicket->status;
-                $ticketWasReopened = $previousStatus === 'Resolved';
                 $ticketWasResumed = $previousStatus === 'Waiting for User';
 
-                if ($ticketWasReopened || $ticketWasResumed) {
+                if ($ticketWasResumed) {
                     $lockedTicket->status = 'In Progress';
 
-                    if ($ticketWasReopened) {
-                        $lockedTicket->resolved_at = null;
-                        $lockedTicket->last_reopened_at = now();
-                        $lockedTicket->sla_paused_minutes = 0;
-                        $lockedTicket->sla_paused_at = null;
-                    } elseif ($lockedTicket->sla_paused_at !== null) {
+                    if ($lockedTicket->sla_paused_at !== null) {
                         $lockedTicket->sla_paused_minutes += $resolutionSla->businessMinutesBetween(
                             $lockedTicket->sla_paused_at,
                             now(),
@@ -541,9 +544,7 @@ class TicketController extends Controller
 
                     $lockedTicket->events()->create([
                         'event' => 'status_changed',
-                        'description' => $ticketWasReopened
-                            ? "Ticket reopened after a requester reply ({$previousStatus} → In Progress)."
-                            : "Ticket resumed after a requester reply ({$previousStatus} → In Progress).",
+                        'description' => "Ticket resumed after a requester reply ({$previousStatus} → In Progress).",
                     ]);
                 }
 
@@ -592,7 +593,7 @@ class TicketController extends Controller
                     'A reply was added to your support ticket',
                 ));
 
-                return $ticketWasReopened;
+                return $ticketWasResumed;
             });
         } catch (Throwable $exception) {
             foreach ($storedAttachments as $storedAttachment) {
@@ -602,13 +603,13 @@ class TicketController extends Controller
             throw $exception;
         }
 
-        if ($ticketWasReopened === null) {
+        if ($ticketWasResumed === null) {
             $request->session()->put('ticket_lookup_context', [
                 'ticket' => $ticket->ticket_number,
                 'email' => $validated['email'],
             ]);
 
-            return to_route('ticket.check')->with('ticket_reply_error', 'This ticket is closed and can no longer accept replies or attachments.');
+            return to_route('ticket.check')->with('ticket_reply_error', 'Resolved or closed tickets can no longer accept replies or attachments.');
         }
 
         $request->session()->put('ticket_lookup_context', [
@@ -617,15 +618,17 @@ class TicketController extends Controller
         ]);
         $request->session()->forget('ticket_lookup_failed');
 
-        $message = $ticketWasReopened
-            ? 'Your reply has been sent and the ticket has been reopened for staff follow-up.'
+        $message = $ticketWasResumed
+            ? 'Your reply has been sent and the ticket has resumed for staff follow-up.'
             : 'Your reply has been sent to the helpdesk.';
 
         return to_route('ticket.check')->with('ticket_reply_status', $message);
     }
 
-    public function downloadTicket(LookupTicketRequest $request): Response
-    {
+    public function downloadTicket(
+        LookupTicketRequest $request,
+        RequesterTicketDocument $ticketDocument,
+    ): Response {
         $validated = $request->validated();
         $ticket = $this->findRequesterTicket($validated['ticket'], $validated['email']);
 
@@ -633,7 +636,7 @@ class TicketController extends Controller
 
         $response = response()
             ->view('helpdesk.ticket-download', [
-                'ticket' => $ticket,
+                'document' => $ticketDocument->forRequester($ticket),
                 'autoPrint' => $request->boolean('print'),
             ])
             ->header('Content-Type', 'text/html; charset=UTF-8');

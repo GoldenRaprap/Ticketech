@@ -74,8 +74,13 @@ class TicketEmailVerificationTest extends TestCase
                 $pdfContent = $mail->rawAttachments[0]['data'];
                 $this->assertStringStartsWith('%PDF-1.4', $pdfContent);
                 $this->assertStringEndsWith('%%EOF', $pdfContent);
-                $this->assertStringContainsString('Status: New', $pdfContent);
-                $this->assertStringContainsString('Subject: Cannot access \\(Bluebook\\)', $pdfContent);
+                $this->assertStringContainsString('(Current status) Tj', $pdfContent);
+                $this->assertStringContainsString('(New) Tj', $pdfContent);
+                $this->assertStringContainsString('Cannot access \\(Bluebook\\)', $pdfContent);
+                $this->assertStringContainsString('TICKET DETAILS', $pdfContent);
+                $this->assertStringContainsString('CLIENT INFORMATION', $pdfContent);
+                $this->assertStringContainsString('TICKET CONVERSATION', $pdfContent);
+                $this->assertStringNotContainsString('Priority:', $pdfContent);
                 $this->assertSame(1, preg_match('/startxref\n(\d+)\n%%EOF$/', $pdfContent, $crossReferenceMatch));
                 $this->assertSame('xref', substr($pdfContent, (int) $crossReferenceMatch[1], 4));
 

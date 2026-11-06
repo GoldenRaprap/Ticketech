@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Exceptions\SystemMailSettingsUnavailable;
+use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Encryption\MissingAppKeyException;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -28,9 +31,18 @@ class SystemMailSettings
             ])
             ->pluck('value', 'setting');
         $encryption = $settings->get('mail.smtp.encryption');
-        $smtpPassword = $settings->has('mail.smtp.password')
-            ? Crypt::decryptString($settings->get('mail.smtp.password'))
-            : config('mail.smtp_password_fallback');
+        $smtpPassword = config('mail.smtp_password_fallback');
+
+        if ($settings->has('mail.smtp.password')) {
+            try {
+                $smtpPassword = Crypt::decryptString($settings->get('mail.smtp.password'));
+            } catch (DecryptException|MissingAppKeyException $exception) {
+                throw new SystemMailSettingsUnavailable(
+                    SystemMailSettingsUnavailable::KEY_UNAVAILABLE_MESSAGE,
+                    $exception,
+                );
+            }
+        }
 
         $mailConfig = [
             'mail.from.address' => $settings->get('mail.from.address', config('mail.from.address')),
@@ -82,5 +94,22 @@ class SystemMailSettings
         config($mailConfig);
 
         Mail::purge('smtp');
+
+        if (! app()->environment('testing')) {
+            $defaultMailer = config('mail.default');
+
+            if (in_array($defaultMailer, ['log', 'array'], true)) {
+                throw new SystemMailSettingsUnavailable(SystemMailSettingsUnavailable::EMAIL_NOT_CONFIGURED_MESSAGE);
+            }
+
+            if (
+                $defaultMailer === 'smtp'
+                && (! filled(config('mail.mailers.smtp.host'))
+                    || ! filled(config('mail.mailers.smtp.username'))
+                    || ! filled(config('mail.mailers.smtp.password')))
+            ) {
+                throw new SystemMailSettingsUnavailable(SystemMailSettingsUnavailable::EMAIL_NOT_CONFIGURED_MESSAGE);
+            }
+        }
     }
 }

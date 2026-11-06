@@ -1,3 +1,94 @@
+document.querySelectorAll('[data-priority-keyword-editor]').forEach((editor) => {
+	const keywordValue = editor.querySelector('[data-keyword-value]');
+	const keywordList = editor.querySelector('[data-keyword-list]');
+	const keywordInput = editor.querySelector('[data-keyword-input]');
+	const addKeywordButton = editor.querySelector('[data-add-keyword]');
+	const keywordCount = editor.querySelector('[data-keyword-count]');
+	const feedback = editor.querySelector('[data-keyword-feedback]');
+
+	if (
+		!(keywordValue instanceof HTMLInputElement) ||
+		!(keywordList instanceof HTMLUListElement) ||
+		!(keywordInput instanceof HTMLInputElement) ||
+		!(addKeywordButton instanceof HTMLButtonElement) ||
+		!(keywordCount instanceof HTMLElement) ||
+		!(feedback instanceof HTMLElement)
+	) {
+		throw new Error('Priority keyword editor is missing required controls.');
+	}
+
+	const keywords = keywordValue.value
+		.split(/[\r\n,]+/)
+		.map((keyword) => keyword.trim())
+		.filter(Boolean);
+
+	const updateKeywordValue = () => {
+		keywordValue.value = keywords.join(', ');
+		keywordCount.textContent = `${keywords.length} ${keywords.length === 1 ? 'keyword' : 'keywords'}`;
+		keywordList.replaceChildren();
+
+		keywords.forEach((keyword, index) => {
+			const item = document.createElement('li');
+			item.className = 'admin-priority-keyword-chip';
+
+			const text = document.createElement('span');
+			text.textContent = keyword;
+
+			const removeButton = document.createElement('button');
+			removeButton.type = 'button';
+			removeButton.className = 'admin-priority-keyword-remove';
+			removeButton.setAttribute('aria-label', `Remove keyword ${keyword}`);
+			removeButton.textContent = '×';
+			removeButton.addEventListener('click', () => {
+				keywords.splice(index, 1);
+				feedback.textContent = '';
+				updateKeywordValue();
+			});
+
+			item.append(text, removeButton);
+			keywordList.append(item);
+		});
+	};
+
+	const addKeyword = () => {
+		const keyword = keywordInput.value.trim();
+
+		if (!keyword) {
+			feedback.textContent = 'Enter a keyword or phrase first.';
+			keywordInput.focus();
+			return;
+		}
+
+		if (keywords.some((existingKeyword) => existingKeyword.toLowerCase() === keyword.toLowerCase())) {
+			feedback.textContent = 'That keyword is already in this list.';
+			keywordInput.focus();
+			return;
+		}
+
+		if ([...keywords, keyword].join(', ').length > 2000) {
+			feedback.textContent = 'Keywords must stay within 2,000 characters.';
+			keywordInput.focus();
+			return;
+		}
+
+		keywords.push(keyword);
+		keywordInput.value = '';
+		feedback.textContent = '';
+		updateKeywordValue();
+		keywordInput.focus();
+	};
+
+	addKeywordButton.addEventListener('click', addKeyword);
+	keywordInput.addEventListener('keydown', (event) => {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			addKeyword();
+		}
+	});
+
+	updateKeywordValue();
+});
+
 document.querySelectorAll('[data-ticket-row]').forEach((row) => {
 	const ticketUrl = row.dataset.ticketUrl;
 

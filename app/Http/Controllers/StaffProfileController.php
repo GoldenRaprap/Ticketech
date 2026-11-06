@@ -26,14 +26,8 @@ class StaffProfileController extends Controller
             'email' => $user->email,
             'email_verified' => $user->hasVerifiedEmail(),
         ];
-        $emailChanged = $user->email !== $request->validated('email');
         $user->name = $request->validated('name');
         $user->nickname = $request->validated('nickname');
-        $user->email = $request->validated('email');
-
-        if ($emailChanged) {
-            $user->email_verified_at = null;
-        }
 
         if ($request->hasFile('avatar')) {
             $profilePhotoPath = $request->file('avatar')->store('profile-photos', 'public');

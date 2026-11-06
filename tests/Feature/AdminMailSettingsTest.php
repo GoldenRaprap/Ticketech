@@ -3,10 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Notifications\TicketEmailVerification;
 use App\Services\SystemMailSettings;
+use App\Services\TicketEmailAvailability;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
 use Tests\TestCase;
 
@@ -50,6 +53,7 @@ class AdminMailSettingsTest extends TestCase
             ->assertSee('name="smtp_app_password"', false)
             ->assertSee('smtp.example.test')
             ->assertSee('smtp-user@example.com')
+            ->assertSeeInOrder(['Helpdesk identity', 'System name', 'Role boundaries'])
             ->assertDontSee('smtp-secret');
     }
 
@@ -129,6 +133,88 @@ class AdminMailSettingsTest extends TestCase
         $this->assertSame('smtp', config('mail.default'));
     }
 
+    public function test_invalid_saved_smtp_password_pauses_ticket_email_features_and_keeps_admin_access(): void
+    {
+        DB::table('system_settings')->insert([
+            'setting' => 'mail.smtp.password',
+            'value' => 'invalid-encrypted-password',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->get(route('home'))
+            ->assertOk();
+
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket.submission.enabled',
+            'value' => '0',
+        ]);
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket.replies.enabled',
+            'value' => '0',
+        ]);
+
+        $this->get(route('ticket.create'))
+            ->assertOk()
+            ->assertSee(TicketEmailAvailability::SUBMISSION_UNAVAILABLE_MESSAGE);
+        $this->from(route('ticket.check'))->post(route('ticket.reply'), [])
+            ->assertRedirect(route('ticket.check'))
+            ->assertSessionHas('ticket_reply_unavailable', TicketEmailAvailability::REPLIES_UNAVAILABLE_MESSAGE);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->get(route('admin.system-settings'))
+            ->assertOk()
+            ->assertSee('Automatic email delivery needs attention')
+            ->assertSee('Restore the original APP_KEY')
+            ->assertSee('.env')
+            ->assertSee('Do not generate a new key')
+            ->assertSee('re-enable them in Helpdesk availability below');
+    }
+
+    public function test_failed_ticket_verification_email_pauses_ticket_email_features(): void
+    {
+        $notification = new TicketEmailVerification(
+            'Jamie Student',
+            'https://example.test/verify',
+            'November 5, 2026 10:00 AM',
+        );
+
+        $notification->failed(new RuntimeException('SMTP transport is unavailable.'));
+
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => TicketEmailAvailability::DELIVERY_STATUS_SETTING,
+            'value' => TicketEmailAvailability::DELIVERY_UNAVAILABLE_STATUS,
+        ]);
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket.submission.enabled',
+            'value' => '0',
+        ]);
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket.replies.enabled',
+            'value' => '0',
+        ]);
+    }
+
+    public function test_unconfigured_mailer_pauses_ticket_email_features_outside_testing(): void
+    {
+        $this->app['env'] = 'local';
+        config()->set('mail.default', 'log');
+
+        $this->get(route('ticket.create'))
+            ->assertOk()
+            ->assertSee(TicketEmailAvailability::SUBMISSION_UNAVAILABLE_MESSAGE);
+
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => TicketEmailAvailability::DELIVERY_STATUS_SETTING,
+            'value' => TicketEmailAvailability::DELIVERY_UNAVAILABLE_STATUS,
+        ]);
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket.submission.enabled',
+            'value' => '0',
+        ]);
+    }
+
     public function test_empty_smtp_url_does_not_override_the_smtp_transport(): void
     {
         config()->set('mail.default', 'smtp');
@@ -144,6 +230,20 @@ class AdminMailSettingsTest extends TestCase
     public function test_admin_can_update_persistent_sender_details_used_by_later_requests(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
+        DB::table('system_settings')->insert([
+            [
+                'setting' => TicketEmailAvailability::DELIVERY_STATUS_SETTING,
+                'value' => TicketEmailAvailability::DELIVERY_UNAVAILABLE_STATUS,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => TicketEmailAvailability::DELIVERY_MESSAGE_SETTING,
+                'value' => 'Email delivery needs attention.',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
 
         $this->actingAs($admin)->put(route('admin.system-settings.update'), [
             'from_address' => 'helpdesk@pcu.edu.ph',
@@ -179,6 +279,9 @@ class AdminMailSettingsTest extends TestCase
         $this->assertDatabaseHas('system_settings', [
             'setting' => 'mail.smtp.username',
             'value' => 'helpdesk@pcu.edu.ph',
+        ]);
+        $this->assertDatabaseMissing('system_settings', [
+            'setting' => TicketEmailAvailability::DELIVERY_STATUS_SETTING,
         ]);
         $this->assertDatabaseMissing('system_settings', [
             'setting' => 'mail.smtp.password',

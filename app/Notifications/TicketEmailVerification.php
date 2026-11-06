@@ -2,11 +2,15 @@
 
 namespace App\Notifications;
 
+use App\Services\EmailBranding;
 use App\Services\SystemMailSettings;
+use App\Services\TicketEmailAvailability;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Symfony\Component\Mime\Email;
+use Throwable;
 
 class TicketEmailVerification extends Notification implements ShouldQueue
 {
@@ -28,6 +32,11 @@ class TicketEmailVerification extends Notification implements ShouldQueue
         return ['mail'];
     }
 
+    public function failed(Throwable $exception): void
+    {
+        app(TicketEmailAvailability::class)->disableTicketEmailFeatures($exception);
+    }
+
     public function toMail(object $notifiable): MailMessage
     {
         app(SystemMailSettings::class)->apply();
@@ -40,6 +49,8 @@ class TicketEmailVerification extends Notification implements ShouldQueue
             ->line('This secure link expires on '.$this->expiresAt.'.')
             ->line('We will create your ticket and send its ticket number and PDF confirmation only after you confirm your email.')
             ->line('If you did not submit this request, you can ignore this message.')
-            ->salutation('PCU IT Helpdesk');
+            ->line('![Philippine Christian University logo](cid:pcu-logo@ticketech)')
+            ->salutation('PCU IT Helpdesk')
+            ->withSymfonyMessage(fn (Email $message) => app(EmailBranding::class)->embedLogos($message));
     }
 }

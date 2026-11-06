@@ -2,14 +2,19 @@
 
 namespace App\Http\Middleware;
 
+use App\Exceptions\SystemMailSettingsUnavailable;
 use App\Services\SystemMailSettings;
+use App\Services\TicketEmailAvailability;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class ApplySystemMailSettings
 {
-    public function __construct(private SystemMailSettings $mailSettings) {}
+    public function __construct(
+        private SystemMailSettings $mailSettings,
+        private TicketEmailAvailability $ticketEmailAvailability,
+    ) {}
 
     /**
      * Handle an incoming request.
@@ -18,7 +23,11 @@ class ApplySystemMailSettings
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $this->mailSettings->apply();
+        try {
+            $this->mailSettings->apply();
+        } catch (SystemMailSettingsUnavailable $exception) {
+            $this->ticketEmailAvailability->disableTicketEmailFeatures($exception);
+        }
 
         return $next($request);
     }

@@ -26,7 +26,9 @@ class AdminUserController extends Controller
             ->where('role', 'staff')
             ->where('staff_approval_status', 'approved');
 
-        $staffMembers = (clone $staff)
+        $directoryUsers = User::query()
+            ->whereIn('role', ['staff', 'admin'])
+            ->where('staff_approval_status', 'approved')
             ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($query) use ($search): void {
                     $query->where('name', 'like', '%'.$search.'%')
@@ -34,13 +36,14 @@ class AdminUserController extends Controller
                 });
             })
             ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('employment_status', $status))
+            ->orderByRaw("CASE role WHEN 'admin' THEN 0 ELSE 1 END")
             ->orderByRaw("CASE employment_status WHEN 'active' THEN 0 WHEN 'retired' THEN 1 ELSE 2 END")
             ->orderBy('name')
             ->paginate(15)
             ->withQueryString();
 
         return view('staff.users', [
-            'staffMembers' => $staffMembers,
+            'directoryUsers' => $directoryUsers,
             'pendingStaffApplications' => User::query()
                 ->where('role', 'staff')
                 ->where('staff_approval_status', 'pending')
@@ -195,5 +198,77 @@ class AdminUserController extends Controller
             : 'Staff access record updated.';
 
         return to_route('admin.users')->with('status', $message);
+    }
+
+    public function updateRole(Request $request, User $user, AuditActivityLogger $auditLogger): RedirectResponse
+    {
+        $validated = $request->validate([
+            'role' => ['required', Rule::in(['admin', 'staff'])],
+        ]);
+        $newRole = $validated['role'];
+
+        if ($request->user()->is($user)) {
+            return to_route('admin.users')->with('warning', 'You cannot change your own administrator role.');
+        }
+
+        $result = DB::transaction(function () use ($request, $user, $newRole, $auditLogger): string {
+            $activeAdmins = User::query()
+                ->where('role', 'admin')
+                ->where('employment_status', 'active')
+                ->where('staff_approval_status', 'approved')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['id']);
+            $target = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+
+            abort_unless(
+                in_array($target->role, ['admin', 'staff'], true)
+                    && $target->employment_status === 'active'
+                    && $target->staff_approval_status === 'approved',
+                404,
+            );
+
+            if ($target->role === $newRole) {
+                return 'unchanged';
+            }
+
+            if ($target->role === 'admin' && $newRole === 'staff' && $activeAdmins->count() <= 1) {
+                return 'last_admin';
+            }
+
+            $previousRole = $target->role;
+            $target->role = $newRole;
+
+            if ($previousRole === 'admin') {
+                $target->remember_token = Str::random(60);
+            }
+
+            $target->save();
+            $auditLogger->record(
+                $request,
+                'user_role_updated',
+                "Changed {$target->name}'s role from {$previousRole} to {$newRole}.",
+                $target,
+                ['before' => ['role' => $previousRole], 'after' => ['role' => $newRole]],
+            );
+
+            return 'updated';
+        });
+
+        if ($result === 'last_admin') {
+            return to_route('admin.users')->with(
+                'warning',
+                'The last active administrator cannot be changed to staff. Promote another active staff member first.',
+            );
+        }
+
+        if ($result === 'unchanged') {
+            return to_route('admin.users')->with('status', 'That account already has the selected role.');
+        }
+
+        return to_route('admin.users')->with(
+            'status',
+            $user->name.' is now '.($newRole === 'admin' ? 'an administrator.' : 'a staff member.'),
+        );
     }
 }

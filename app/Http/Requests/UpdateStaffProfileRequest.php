@@ -4,7 +4,6 @@ namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class UpdateStaffProfileRequest extends FormRequest
 {
@@ -26,12 +25,6 @@ class UpdateStaffProfileRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'nickname' => ['nullable', 'string', 'max:80'],
-            'email' => [
-                'required',
-                'email',
-                'max:255',
-                Rule::unique('users', 'email')->ignore($this->user()?->id),
-            ],
             'avatar' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ];
     }

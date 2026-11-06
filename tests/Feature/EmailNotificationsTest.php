@@ -10,14 +10,60 @@ use App\Models\WorkspaceNotification;
 use App\Notifications\TicketEmailVerification;
 use App\Notifications\TicketRequesterUpdate;
 use App\Notifications\WorkspaceAlert;
+use App\Services\TicketEmailAvailability;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
+use RuntimeException;
+use Symfony\Component\Mime\Email;
 use Tests\TestCase;
 
 class EmailNotificationsTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_failed_requester_update_email_pauses_ticket_replies(): void
+    {
+        $notification = new TicketRequesterUpdate(
+            'Jamie Student',
+            'ED-2026-000001',
+            'Cannot access the portal',
+            'Your ticket was updated.',
+            'Your support ticket was updated',
+        );
+
+        $notification->failed(new RuntimeException('SMTP transport is unavailable.'));
+
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket.submission.enabled',
+            'value' => '0',
+        ]);
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket.replies.enabled',
+            'value' => '0',
+        ]);
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => TicketEmailAvailability::DELIVERY_STATUS_SETTING,
+            'value' => TicketEmailAvailability::DELIVERY_UNAVAILABLE_STATUS,
+        ]);
+    }
+
+    public function test_failed_workspace_email_pauses_ticket_email_features(): void
+    {
+        $notification = new WorkspaceAlert(new WorkspaceNotification);
+
+        $notification->failed(new RuntimeException('SMTP transport is unavailable.'));
+
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket.submission.enabled',
+            'value' => '0',
+        ]);
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket.replies.enabled',
+            'value' => '0',
+        ]);
+    }
 
     public function test_workspace_alerts_are_sent_to_the_notified_staff_member_by_email(): void
     {
@@ -78,6 +124,11 @@ class EmailNotificationsTest extends TestCase
         $this->get(route('ticket.submitted'))
             ->assertOk()
             ->assertSeeText('Your ticket has not been created or sent to staff yet.')
+            ->assertSeeText('Check your inbox')
+            ->assertSeeText('Confirm your email')
+            ->assertSeeText('Ticket submitted')
+            ->assertSee('class="ticket-verification-steps"', false)
+            ->assertSee('aria-current="step"', false)
             ->assertDontSeeText('Ticket Number');
 
         $this->get($verificationUrl)
@@ -107,9 +158,21 @@ class EmailNotificationsTest extends TestCase
         Notification::assertSentTo($staff, WorkspaceAlert::class);
         Notification::assertSentOnDemand(
             TicketRequesterUpdate::class,
-            fn (TicketRequesterUpdate $notification): bool => $notification->emailSubject === 'Your support ticket is confirmed'
-                && $notification->ticketPdf !== null
-                && str_starts_with($notification->ticketPdf, '%PDF-1.4'),
+            function (TicketRequesterUpdate $notification): bool {
+                if ($notification->emailSubject !== 'Your support ticket is confirmed'
+                    || $notification->ticketPdf === null
+                    || ! str_starts_with($notification->ticketPdf, '%PDF-1.4')) {
+                    return false;
+                }
+
+                $this->assertStringContainsString('TICKET DETAILS', $notification->ticketPdf);
+                $this->assertStringContainsString('CLIENT INFORMATION', $notification->ticketPdf);
+                $this->assertStringContainsString('TICKET CONVERSATION', $notification->ticketPdf);
+                $this->assertStringContainsString('Cannot access Bluebook', $notification->ticketPdf);
+                $this->assertStringNotContainsString('Priority:', $notification->ticketPdf);
+
+                return true;
+            },
         );
 
         $this->post($verificationUrl)->assertNotFound();
@@ -188,10 +251,88 @@ class EmailNotificationsTest extends TestCase
             'A reply was added to your support ticket',
         );
 
-        $renderedMail = $notification->toMail(new AnonymousNotifiable)->render();
+        $email = $this->sendNotificationAndGetEmail($notification);
+        $renderedMail = (string) $email->getHtmlBody();
 
         $this->assertStringContainsString('&lt;script&gt;', $renderedMail);
         $this->assertStringNotContainsString($dangerousMessage, $renderedMail);
+        $this->assertStringContainsString('src="cid:ticketech-logo@ticketech"', $renderedMail);
+        $this->assertStringContainsString('src="cid:pcu-logo@ticketech"', $renderedMail);
+        $this->assertStringContainsString('alt="TickeTech"', $renderedMail);
+        $this->assertStringContainsString('alt="Philippine Christian University logo"', $renderedMail);
+        $this->assertStringContainsString('width="240"', $renderedMail);
+        $this->assertStringContainsString('max-height: 80px', $renderedMail);
+        $this->assertMatchesRegularExpression(
+            '/<p[^>]*align="center"[^>]*>\s*<img src="cid:pcu-logo@ticketech"[^>]*width="90"[^>]*margin: 0 auto;/s',
+            $renderedMail,
+        );
+        $this->assertTrue(
+            strpos($renderedMail, 'src="cid:pcu-logo@ticketech"') > strpos($renderedMail, 'Please do not reply'),
+        );
+        $this->assertStringNotContainsString(asset('images/Philippine_Christian_University_logo.png'), $renderedMail);
+        $this->assertCount(2, $email->getAttachments());
+    }
+
+    public function test_email_verification_and_workspace_alerts_include_both_logos(): void
+    {
+        $verificationEmail = $this->sendNotificationAndGetEmail(new TicketEmailVerification(
+            'Jamie Student',
+            'https://example.edu/verify',
+            'November 6, 2026 at 10:00 AM',
+        ));
+        $workspaceRecipient = User::factory()->make();
+        $workspaceEmail = $this->sendNotificationAndGetEmail(
+            new WorkspaceAlert(new WorkspaceNotification([
+                'title' => 'New support ticket',
+                'message' => 'A requester needs help.',
+            ])),
+            $workspaceRecipient,
+        );
+        $verificationMail = (string) $verificationEmail->getHtmlBody();
+        $workspaceMail = (string) $workspaceEmail->getHtmlBody();
+
+        $this->assertSame(1, substr_count($verificationMail, 'src="cid:ticketech-logo@ticketech"'));
+        $this->assertSame(1, substr_count($verificationMail, 'src="cid:pcu-logo@ticketech"'));
+        $this->assertSame(1, substr_count($workspaceMail, 'src="cid:ticketech-logo@ticketech"'));
+        $this->assertSame(1, substr_count($workspaceMail, 'src="cid:pcu-logo@ticketech"'));
+        $this->assertStringContainsString('alt="TickeTech"', $verificationMail);
+        $this->assertStringContainsString('alt="Philippine Christian University logo"', $verificationMail);
+        $this->assertStringContainsString('alt="TickeTech"', $workspaceMail);
+        $this->assertStringContainsString('alt="Philippine Christian University logo"', $workspaceMail);
+        $this->assertMatchesRegularExpression(
+            '/<p[^>]*align="center"[^>]*>\s*<img src="cid:pcu-logo@ticketech"[^>]*width="90"[^>]*margin: 0 auto;/s',
+            $verificationMail,
+        );
+        $this->assertMatchesRegularExpression(
+            '/<p[^>]*align="center"[^>]*>\s*<img src="cid:pcu-logo@ticketech"[^>]*width="90"[^>]*margin: 0 auto;/s',
+            $workspaceMail,
+        );
+        $this->assertTrue(
+            strpos($verificationMail, 'src="cid:pcu-logo@ticketech"') > strpos($verificationMail, 'If you did not submit this request'),
+        );
+        $this->assertTrue(
+            strpos($workspaceMail, 'src="cid:pcu-logo@ticketech"') > strpos($workspaceMail, 'A requester needs help.'),
+        );
+    }
+
+    private function sendNotificationAndGetEmail(
+        \Illuminate\Notifications\Notification $notification,
+        ?User $notifiable = null,
+    ): Email {
+        config()->set('mail.default', 'array');
+
+        if ($notifiable) {
+            $notifiable->notifyNow($notification);
+        } else {
+            Notification::route('mail', 'recipient@example.edu')->notifyNow($notification);
+        }
+
+        $sentMessage = Mail::mailer('array')->getSymfonyTransport()->messages()->last();
+        $email = $sentMessage->getOriginalMessage();
+
+        $this->assertInstanceOf(Email::class, $email);
+
+        return $email;
     }
 
     private function createTicket(string $requesterEmail, bool $emailVerified = true): Ticket
