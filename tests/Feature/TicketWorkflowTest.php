@@ -357,8 +357,8 @@ class TicketWorkflowTest extends TestCase
     {
         $department = Department::factory()->create();
         $cases = [
-            ['subject' => 'System unavailable during staff login', 'priority' => 'High'],
-            ['subject' => 'Work affected by an access issue', 'priority' => 'Medium'],
+            ['subject' => 'Cannot sign in to the class portal', 'priority' => 'High'],
+            ['subject' => 'Slow loading in the course portal', 'priority' => 'Medium'],
             ['subject' => 'Question about training materials', 'priority' => 'Low'],
         ];
 

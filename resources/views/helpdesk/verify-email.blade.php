@@ -13,9 +13,6 @@
                 <img src="{{ asset('images/Philippine_Christian_University_logo.png') }}" alt="">
                 <span>PCU Helpdesk</span>
             </a>
-            <nav aria-label="Main navigation">
-                <a href="{{ route('home') }}">Go Back</a>
-            </nav>
         </div>
     </header>
     <main class="password-page">
@@ -44,10 +41,10 @@
                     <form class="password-form" action="{{ route('verification.send') }}" method="post">
                         @csrf
                         <button type="submit">Resend verification email</button>
-                        <a class="auth-back-link" href="{{ route('logout') }}" onclick="event.preventDefault(); document.getElementById('verification-logout-form').requestSubmit();">Sign out</a>
                     </form>
-                    <form id="verification-logout-form" action="{{ route('logout') }}" method="post" data-confirm-logout hidden>
+                    <form class="password-form" action="{{ route('logout') }}" method="post">
                         @csrf
+                        <button class="auth-back-link verification-go-back" type="submit">Go Back</button>
                     </form>
                 </div>
             </div>

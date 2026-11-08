@@ -12,6 +12,7 @@ use App\Http\Controllers\EmailVerificationController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\KnowledgeArticleController;
 use App\Http\Controllers\PasswordResetController;
+use App\Http\Controllers\PublicImageController;
 use App\Http\Controllers\StaffDashboardController;
 use App\Http\Controllers\StaffNotificationController;
 use App\Http\Controllers\StaffProfileController;
@@ -21,6 +22,10 @@ use App\Http\Controllers\StaffTicketController;
 use App\Http\Controllers\TicketAttachmentPreviewController;
 use App\Http\Controllers\TicketController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/public-images/{path}', PublicImageController::class)
+    ->where('path', '.*')
+    ->name('public-images.show');
 
 Route::middleware('redirect.workspace-users')->group(function () {
     Route::get('/', HomeController::class)->name('home');
@@ -125,6 +130,8 @@ Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])-
     Route::delete('/knowledge-base/{article}', [KnowledgeArticleController::class, 'destroy'])->name('knowledge-base.destroy');
     Route::get('/sla-settings', [AdminSlaSettingsController::class, 'index'])->name('sla-settings');
     Route::put('/sla-settings', [AdminSlaSettingsController::class, 'update'])->name('sla-settings.update');
+    Route::put('/sla-settings/priority-keywords', [AdminSlaSettingsController::class, 'updatePriorityKeywords'])
+        ->name('sla-settings.priority-keywords.update');
     Route::get('/reports/staff-performance/export', [StaffReportsController::class, 'exportStaffPerformance'])->name('reports.staff-performance.export');
     Route::post('/sla-settings/departments', [AdminDepartmentCategoryController::class, 'storeDepartment'])->name('sla-settings.departments.store');
     Route::patch('/sla-settings/departments/{department}/activation', [AdminDepartmentCategoryController::class, 'toggleDepartment'])->name('sla-settings.departments.toggle');

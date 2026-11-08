@@ -645,7 +645,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->get(route('admin.knowledge-base.create'))
             ->assertOk()
             ->assertSee('data-article-content-editor', false)
-            ->assertSee('aria-label="Bold"', false)
+            ->assertSee('aria-pressed="false" aria-label="Bold"', false)
             ->assertSee('aria-label="Italic"', false)
             ->assertSee('aria-label="Heading 1"', false)
             ->assertSee('aria-label="Heading 2"', false)
@@ -776,6 +776,10 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertOk()
             ->assertSee($firstImage->url(), false)
             ->assertSee('Article images');
+        $this->get($firstImage->url())
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
 
         $this->actingAs($admin)
             ->put(route('admin.knowledge-base.update', $article), [
@@ -848,6 +852,28 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertDontSee('data-public-review-list', false)
             ->assertDontSee('Anonymous review')
             ->assertDontSee('of 5 received');
+    }
+
+    public function test_excessive_article_ratings_return_to_the_article_with_a_wait_message(): void
+    {
+        $article = $this->createKnowledgeArticle(User::factory()->create(['role' => 'admin']));
+        $reviewUrl = route('knowledge-base.reviews.store', $article->slug);
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->post($reviewUrl, ['rating' => 5])
+                ->assertRedirect(route('knowledge-base.show', $article->slug));
+        }
+
+        $this->post($reviewUrl, ['rating' => 5])
+            ->assertRedirect(route('knowledge-base.show', $article->slug))
+            ->assertSessionHas('review_rate_limited');
+
+        $this->get(route('knowledge-base.show', $article->slug))
+            ->assertOk()
+            ->assertSee("You're rating articles a little too quickly.", false)
+            ->assertSee('Please wait about 1 minute before submitting another rating.');
+
+        $this->assertDatabaseCount('knowledge_article_reviews', 5);
     }
 
     public function test_average_article_ratings_are_shown_on_home_and_knowledge_base_after_threshold(): void
@@ -1665,19 +1691,33 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertRedirect(route('staff.profile'));
 
         $newPhotoPath = $staff->fresh()->profile_photo_path;
+        $photoUrl = route('public-images.show', ['path' => $newPhotoPath]);
         $this->assertNotSame($oldPhotoPath, $newPhotoPath);
         Storage::disk('public')->assertExists($newPhotoPath);
         Storage::disk('public')->assertMissing($oldPhotoPath);
 
+        $this->get($photoUrl)
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png');
+
         $this->actingAs($staff->fresh())
             ->get(route('staff.profile'))
             ->assertOk()
-            ->assertSee(asset('storage/'.$newPhotoPath), false);
+            ->assertSee($photoUrl, false);
 
         $this->actingAs($staff->fresh())
             ->get(route('staff.dashboard'))
             ->assertOk()
-            ->assertSee(asset('storage/'.$newPhotoPath), false);
+            ->assertSee($photoUrl, false);
+    }
+
+    public function test_public_image_endpoint_does_not_expose_files_outside_image_directories(): void
+    {
+        Storage::fake('public');
+        Storage::disk('public')->put('private-uploads/secret.png', 'not a public image');
+
+        $this->get(route('public-images.show', ['path' => 'private-uploads/secret.png']))
+            ->assertNotFound();
     }
 
     public function test_staff_profile_rejects_non_image_uploads_without_replacing_the_current_photo(): void

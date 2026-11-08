@@ -13,22 +13,22 @@
                 <img src="{{ asset('images/Philippine_Christian_University_logo.png') }}" alt="Philippine Christian University logo">
                 <span>PCU Helpdesk</span>
             </a>
-            <nav class="public-nav" aria-label="Main navigation">
-                @guest
-                    @if (request()->routeIs('home', 'helpdesk'))
+            @if (request()->routeIs('home', 'helpdesk'))
+                <nav class="public-nav" aria-label="Main navigation">
+                    @guest
                         <a class="header-sign-in" href="{{ route('login') }}">Sign in</a>
-                    @endif
-                @endguest
-                @auth
-                    @if (auth()->user()->isStaff())
-                        <a href="{{ auth()->user()->isAdmin() ? route('admin.dashboard') : route('staff.dashboard') }}">{{ auth()->user()->isAdmin() ? 'Admin console' : 'Staff portal' }}</a>
-                    @endif
-                    <form class="public-logout" action="{{ route('logout') }}" method="post" data-confirm-logout>
-                        @csrf
-                        <button type="submit">Log out</button>
-                    </form>
-                @endauth
-            </nav>
+                    @endguest
+                    @auth
+                        @if (auth()->user()->isStaff())
+                            <a href="{{ auth()->user()->isAdmin() ? route('admin.dashboard') : route('staff.dashboard') }}">{{ auth()->user()->isAdmin() ? 'Admin console' : 'Staff portal' }}</a>
+                        @endif
+                        <form class="public-logout" action="{{ route('logout') }}" method="post" data-confirm-logout>
+                            @csrf
+                            <button type="submit">Log out</button>
+                        </form>
+                    @endauth
+                </nav>
+            @endif
         </div>
     </header>
 

@@ -5,6 +5,16 @@
     @if (session('status'))
         <div class="workspace-alert workspace-alert--success public-article-status" role="status">{{ session('status') }}</div>
     @endif
+    @if (session('review_rate_limited'))
+        @php
+            $retryAfterSeconds = (int) session('review_rate_limited');
+            $retryAfterMinutes = (int) ceil($retryAfterSeconds / 60);
+        @endphp
+        <div class="workspace-alert workspace-alert--warning public-article-status" role="status">
+            <strong>You're rating articles a little too quickly.</strong>
+            <p>Please wait about {{ $retryAfterMinutes }} {{ \Illuminate\Support\Str::plural('minute', $retryAfterMinutes) }} before submitting another rating.</p>
+        </div>
+    @endif
     @if ($errors->any())
         <div class="workspace-alert workspace-alert--error public-article-status" role="alert">
             @foreach ($errors->all() as $error)<p>{{ $error }}</p>@endforeach

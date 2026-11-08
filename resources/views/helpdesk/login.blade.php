@@ -13,9 +13,6 @@
                 <img src="{{ asset('images/Philippine_Christian_University_logo.png') }}" alt="">
                 <span>PCU Helpdesk</span>
             </a>
-            <nav aria-label="Main navigation">
-                <a href="{{ route('home') }}">Go Back</a>
-            </nav>
         </div>
     </header>
     <main class="password-page">
@@ -51,11 +48,11 @@
                         @endif
 
                         <label for="login-email">University email</label>
-                        <input id="login-email" name="email" type="email" value="{{ old('email') }}" autocomplete="username" @if ($errors->has('email')) aria-invalid="true" @endif required>
+                        <input id="login-email" name="email" type="email" value="{{ old('email') }}" placeholder="e.g. name@pcu.edu.ph" autocomplete="username" @if ($errors->has('email')) aria-invalid="true" @endif required>
 
                         <label for="login-password">Password</label>
                         <div class="password-input-row">
-                            <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+                            <input id="login-password" name="password" type="password" placeholder="Enter your password" autocomplete="current-password" required>
                             <button class="password-input-toggle" type="button" data-password-toggle aria-controls="login-password" aria-label="Show password" aria-pressed="false">Show</button>
                         </div>
 

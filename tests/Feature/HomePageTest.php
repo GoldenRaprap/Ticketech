@@ -21,8 +21,9 @@ class HomePageTest extends TestCase
             ->assertSee('No account needed.')
             ->assertSee('Submit a Ticket')
             ->assertSee('View Your Tickets')
-            ->assertSee('>Sign in</a>', false)
+            ->assertSee('class="public-nav"', false)
             ->assertSee('class="header-sign-in"', false)
+            ->assertSee('>Sign in</a>', false)
             ->assertDontSee('class="crumb-wrap"', false)
             ->assertDontSee('>Submit a Ticket</a>', false)
             ->assertDontSee('>View Your Tickets</a>', false)
@@ -50,6 +51,9 @@ class HomePageTest extends TestCase
             $this->get($url)
                 ->assertOk()
                 ->assertDontSee('class="header-sign-in"', false)
+                ->assertDontSee('class="public-nav"', false)
+                ->assertDontSee('Staff portal')
+                ->assertDontSee('Log out')
                 ->assertDontSee('class="crumb-wrap"', false)
                 ->assertDontSee('class="breadcrumb"', false);
         }

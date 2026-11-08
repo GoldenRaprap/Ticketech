@@ -27,19 +27,19 @@
             <div class="article-form-field article-content-field">
                 <span id="article-content-label">Article content <b>*</b></span>
                 <div class="article-content-toolbar" role="toolbar" aria-label="Article formatting">
-                    <button type="button" data-editor-command="bold" aria-label="Bold" title="Bold"><strong>B</strong></button>
-                    <button type="button" data-editor-command="italic" aria-label="Italic" title="Italic"><em>I</em></button>
-                    <button type="button" data-editor-command="underline" aria-label="Underline" title="Underline"><u>U</u></button>
-                    <button type="button" data-editor-command="strikeThrough" aria-label="Strikethrough" title="Strikethrough"><s>S</s></button>
+                    <button type="button" data-editor-command="bold" aria-pressed="false" aria-label="Bold" title="Bold"><strong>B</strong></button>
+                    <button type="button" data-editor-command="italic" aria-pressed="false" aria-label="Italic" title="Italic"><em>I</em></button>
+                    <button type="button" data-editor-command="underline" aria-pressed="false" aria-label="Underline" title="Underline"><u>U</u></button>
+                    <button type="button" data-editor-command="strikeThrough" aria-pressed="false" aria-label="Strikethrough" title="Strikethrough"><s>S</s></button>
                     <span class="article-content-toolbar-divider" aria-hidden="true"></span>
-                    <button type="button" data-editor-command="formatBlock" data-editor-value="h1" aria-label="Heading 1" title="Heading 1">H1</button>
-                    <button type="button" data-editor-command="formatBlock" data-editor-value="h2" aria-label="Heading 2" title="Heading 2">H2</button>
-                    <button type="button" data-editor-command="formatBlock" data-editor-value="p" aria-label="Paragraph" title="Paragraph">P</button>
-                    <button type="button" data-editor-command="formatBlock" data-editor-value="pre" aria-label="Code block" title="Code block">&lt;/&gt;</button>
+                    <button type="button" data-editor-command="formatBlock" data-editor-value="h1" aria-pressed="false" aria-label="Heading 1" title="Heading 1">H1</button>
+                    <button type="button" data-editor-command="formatBlock" data-editor-value="h2" aria-pressed="false" aria-label="Heading 2" title="Heading 2">H2</button>
+                    <button type="button" data-editor-command="formatBlock" data-editor-value="p" aria-pressed="false" aria-label="Paragraph" title="Paragraph">P</button>
+                    <button type="button" data-editor-command="formatBlock" data-editor-value="pre" aria-pressed="false" aria-label="Code block" title="Code block">&lt;/&gt;</button>
                     <span class="article-content-toolbar-divider" aria-hidden="true"></span>
-                    <button type="button" data-editor-command="insertUnorderedList" aria-label="Bulleted list" title="Bulleted list">• List</button>
-                    <button type="button" data-editor-command="insertOrderedList" aria-label="Numbered list" title="Numbered list">1. List</button>
-                    <button type="button" data-editor-command="formatBlock" data-editor-value="blockquote" aria-label="Quote" title="Quote">Quote</button>
+                    <button type="button" data-editor-command="insertUnorderedList" aria-pressed="false" aria-label="Bulleted list" title="Bulleted list">• List</button>
+                    <button type="button" data-editor-command="insertOrderedList" aria-pressed="false" aria-label="Numbered list" title="Numbered list">1. List</button>
+                    <button type="button" data-editor-command="formatBlock" data-editor-value="blockquote" aria-pressed="false" aria-label="Quote" title="Quote">Quote</button>
                     <button type="button" data-editor-command="insertHorizontalRule" aria-label="Horizontal divider" title="Horizontal divider">Divider</button>
                     <span class="article-content-toolbar-divider" aria-hidden="true"></span>
                     <button type="button" data-editor-link aria-label="Insert link" title="Insert link">Link</button>

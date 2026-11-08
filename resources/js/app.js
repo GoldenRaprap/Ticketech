@@ -401,7 +401,38 @@ document.querySelectorAll('[data-article-content-editor]').forEach((editor) => {
 		return;
 	}
 
-	toolbar.querySelectorAll('[data-editor-command], [data-editor-link]').forEach((button) => {
+	const toolbarButtons = toolbar.querySelectorAll('[data-editor-command], [data-editor-link]');
+	const updateToolbarState = () => {
+		const selection = window.getSelection();
+		const hasEditorSelection = selection
+			&& selection.rangeCount > 0
+			&& editor.contains(selection.getRangeAt(0).commonAncestorContainer);
+
+		toolbarButtons.forEach((button) => {
+			if (!button.hasAttribute('aria-pressed')) {
+				return;
+			}
+
+			let isActive = false;
+
+			if (hasEditorSelection) {
+				const command = button.dataset.editorCommand;
+
+				if (command === 'formatBlock') {
+					const activeBlock = document.queryCommandValue(command)
+						.replace(/[<>]/g, '')
+						.toLowerCase();
+					isActive = activeBlock === button.dataset.editorValue;
+				} else if (command) {
+					isActive = document.queryCommandState(command);
+				}
+			}
+
+			button.setAttribute('aria-pressed', String(isActive));
+		});
+	};
+
+	toolbarButtons.forEach((button) => {
 		button.addEventListener('mousedown', (event) => event.preventDefault());
 		button.addEventListener('click', () => {
 			editor.focus();
@@ -413,6 +444,7 @@ document.querySelectorAll('[data-article-content-editor]').forEach((editor) => {
 					document.execCommand('createLink', false, url);
 				}
 
+				updateToolbarState();
 				return;
 			}
 
@@ -429,13 +461,18 @@ document.querySelectorAll('[data-article-content-editor]').forEach((editor) => {
 				: commandValue;
 
 			document.execCommand(command, false, value || undefined);
+			updateToolbarState();
 		});
 	});
 
 	editor.addEventListener('input', () => {
 		editor.removeAttribute('aria-invalid');
 		errorMessage.hidden = true;
+		updateToolbarState();
 	});
+	editor.addEventListener('keyup', updateToolbarState);
+	editor.addEventListener('mouseup', updateToolbarState);
+	document.addEventListener('selectionchange', updateToolbarState);
 
 	form.addEventListener('submit', (event) => {
 		contentInput.value = editor.innerHTML;

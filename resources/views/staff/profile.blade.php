@@ -23,7 +23,7 @@
         <div class="profile-hero-content">
             <span class="profile-large-avatar">
                 @if ($user->profile_photo_path)
-                    <img src="{{ asset('storage/'.$user->profile_photo_path) }}" alt="{{ $user->name }} profile photo">
+                    <img src="{{ route('public-images.show', ['path' => $user->profile_photo_path]) }}" alt="{{ $user->name }} profile photo">
                 @else
                     <span aria-hidden="true">{{ strtoupper(substr($user->displayName(), 0, 1)) }}</span>
                 @endif

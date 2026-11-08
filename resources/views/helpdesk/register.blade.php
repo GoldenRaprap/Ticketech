@@ -13,9 +13,6 @@
                 <img src="{{ asset('images/Philippine_Christian_University_logo.png') }}" alt="">
                 <span>PCU Helpdesk</span>
             </a>
-            <nav aria-label="Main navigation">
-                <a href="{{ route('login') }}">Go Back</a>
-            </nav>
         </div>
     </header>
 
@@ -55,10 +52,16 @@
                         <input id="register-email" name="email" type="email" value="{{ old('email') }}" placeholder="e.g. jamie.santos@pcu.edu.ph" autocomplete="email" maxlength="255" @if ($errors->has('email')) aria-invalid="true" @endif required>
 
                         <label for="register-password">Password</label>
-                        <input id="register-password" name="password" type="password" placeholder="At least 12 characters" autocomplete="new-password" minlength="12" @if ($errors->has('password')) aria-invalid="true" @endif required>
+                        <div class="password-input-row">
+                            <input id="register-password" name="password" type="password" placeholder="At least 12 characters" autocomplete="new-password" minlength="12" @if ($errors->has('password')) aria-invalid="true" @endif required>
+                            <button class="password-input-toggle" type="button" data-password-toggle aria-controls="register-password" aria-label="Show password" aria-pressed="false">Show</button>
+                        </div>
 
                         <label for="register-password-confirmation">Confirm password</label>
-                        <input id="register-password-confirmation" name="password_confirmation" type="password" placeholder="Re-enter your password" autocomplete="new-password" minlength="12" required>
+                        <div class="password-input-row">
+                            <input id="register-password-confirmation" name="password_confirmation" type="password" placeholder="Re-enter your password" autocomplete="new-password" minlength="12" required>
+                            <button class="password-input-toggle" type="button" data-password-toggle aria-controls="register-password-confirmation" aria-label="Show password" aria-pressed="false">Show</button>
+                        </div>
 
                         <button type="submit">Create account</button>
                         <a class="auth-back-link" href="{{ route('login') }}">Already registered? Sign in</a>

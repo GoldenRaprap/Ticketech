@@ -22,12 +22,14 @@ class RegistrationTest extends TestCase
 
         $this->get(route('register'))
             ->assertOk()
-            ->assertSee('<a href="'.route('login').'">Go Back</a>', false)
+            ->assertDontSee('Go Back')
             ->assertSee('Register for staff access')
             ->assertSee('placeholder="e.g. Jamie Santos"', false)
             ->assertSee('placeholder="e.g. jamie.santos@pcu.edu.ph"', false)
             ->assertSee('placeholder="At least 12 characters"', false)
-            ->assertSee('placeholder="Re-enter your password"', false);
+            ->assertSee('placeholder="Re-enter your password"', false)
+            ->assertSee('aria-controls="register-password"', false)
+            ->assertSee('aria-controls="register-password-confirmation"', false);
 
         $this->post(route('register.store'), [
             'name' => 'Jamie Staff',
@@ -106,6 +108,19 @@ class RegistrationTest extends TestCase
 
         $this->assertAuthenticatedAs($user);
         $this->get(route('staff.dashboard'))->assertRedirect(route('verification.notice'));
+        $this->get(route('verification.notice'))
+            ->assertOk()
+            ->assertSee('Verify your email')
+            ->assertSee('action="'.route('logout').'"', false)
+            ->assertSee('class="auth-back-link verification-go-back" type="submit">Go Back</button>', false)
+            ->assertDontSee('Sign out')
+            ->assertDontSee('data-confirm-logout', false);
+
+        $this->post(route('logout'))
+            ->assertRedirect(route('home'));
+
+        $this->assertGuest();
+        $this->get(route('home'))->assertOk();
     }
 
     public function test_unverified_and_unapproved_staff_cannot_access_staff_routes(): void

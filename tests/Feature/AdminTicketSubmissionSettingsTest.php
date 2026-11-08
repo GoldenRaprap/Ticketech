@@ -46,6 +46,7 @@ class AdminTicketSubmissionSettingsTest extends TestCase
 
         $this->get(route('ticket.create'))
             ->assertOk()
+            ->assertSee('ticket-form-page--closed', false)
             ->assertSee('Ticket submission is temporarily paused')
             ->assertSee($maintenanceMessage)
             ->assertDontSee('name="subject"', false)

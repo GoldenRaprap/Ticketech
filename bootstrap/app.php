@@ -8,9 +8,11 @@ use App\Http\Middleware\EnsureTicketRepliesAreEnabled;
 use App\Http\Middleware\EnsureTicketSubmissionIsOpen;
 use App\Http\Middleware\RecordStaffActivity;
 use App\Http\Middleware\RedirectWorkspaceUsers;
+use App\Models\KnowledgeArticle;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -35,4 +37,21 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+        $exceptions->render(function (ThrottleRequestsException $exception, Request $request) {
+            if (! $request->routeIs('knowledge-base.reviews.store') || $request->expectsJson()) {
+                return null;
+            }
+
+            $article = $request->route('article');
+            $articleSlug = $article instanceof KnowledgeArticle ? $article->slug : $article;
+
+            if (! is_string($articleSlug) || $articleSlug === '') {
+                return null;
+            }
+
+            $retryAfter = max(1, (int) ($exception->getHeaders()['Retry-After'] ?? 60));
+
+            return to_route('knowledge-base.show', $articleSlug)
+                ->with('review_rate_limited', $retryAfter);
+        });
     })->create();

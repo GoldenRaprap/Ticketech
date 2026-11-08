@@ -71,56 +71,20 @@
                 </article>
             @endforeach
         </section>
-        <section class="admin-console-card" aria-labelledby="priority-rules-heading">
+        <section class="admin-console-card" aria-labelledby="service-target-definitions-heading">
             <header class="admin-console-card-heading">
-                <div>
-                    <span class="admin-page-eyebrow">AUTOMATIC PRIORITY</span>
-                    <h2 id="priority-rules-heading">Subject keyword rules</h2>
-                    <p>New tickets are classified from the subject only. Add one word or phrase at a time, then expand a priority to review or remove keywords. The system checks configured rules from Urgent through Low; tickets with no match default to Low.</p>
-                </div>
+                <div><span class="admin-page-eyebrow">HOW TO INTERPRET</span><h2 id="service-target-definitions-heading">Service target definitions</h2><p>Resolution values calculate warning and due times. One business day is eight business hours; weekends and time outside the 9 a.m.–5 p.m. schedule do not count.</p></div>
             </header>
-            <div class="admin-priority-rules-grid">
-                @foreach (['urgent' => 'Urgent', 'high' => 'High', 'medium' => 'Medium', 'low' => 'Low'] as $key => $label)
-                    <div class="admin-priority-rule-field" data-priority-keyword-editor>
-                        <span class="admin-priority-rule-label" id="priority-keywords-label-{{ $key }}">{{ $label }} priority keywords</span>
-                        <details class="admin-priority-keyword-details">
-                            <summary aria-labelledby="priority-keywords-label-{{ $key }}">
-                                <span>Manage keywords</span>
-                                <span class="admin-priority-keyword-count" data-keyword-count aria-live="polite"></span>
-                            </summary>
-                            <div class="admin-priority-keyword-content">
-                                <ul class="admin-priority-keyword-list" data-keyword-list aria-label="{{ $label }} priority keyword list"></ul>
-                                <div class="admin-priority-keyword-add">
-                                    <label class="visually-hidden" for="priority-keyword-input-{{ $key }}">Keyword or phrase to add to {{ strtolower($label) }} priority</label>
-                                    <input id="priority-keyword-input-{{ $key }}" type="text" maxlength="2000" autocomplete="off" placeholder="Type one keyword or phrase" data-keyword-input>
-                                    <button class="admin-console-button" type="button" data-add-keyword>Add keyword</button>
-                                </div>
-                                <small class="admin-priority-keyword-feedback" data-keyword-feedback aria-live="polite"></small>
-                            </div>
-                        </details>
-                        <input type="hidden" name="priority_keywords[{{ $key }}]" value="{{ old("priority_keywords.{$key}", $priorityKeywords[$key]) }}" data-keyword-value>
-                        @error("priority_keywords.{$key}")
-                            <small class="admin-sla-error">{{ $message }}</small>
-                        @enderror
-                    </div>
-                @endforeach
+            <div class="admin-definition-grid">
+                <article><span class="admin-definition-number">01</span><div><strong>First response</strong><p>The target time for a staff member to make an initial response. These values are currently guidance only.</p></div></article>
+                <article><span class="admin-definition-number">02</span><div><strong>Resolution</strong><p>The target time for resolving the issue. Tickets approaching 80% of this target and overdue tickets alert the assignee and admins.</p></div></article>
+                <article><span class="admin-definition-number">03</span><div><strong>Paused states</strong><p>Waiting for User and On Hold pause the resolution clock. Reopened tickets begin a fresh resolution target.</p></div></article>
+            </div>
+            <div class="admin-sla-actions">
+                <button class="workspace-button workspace-button--primary" type="submit">Save SLA targets</button>
             </div>
         </section>
-        <div class="admin-sla-actions">
-            <button class="workspace-button workspace-button--primary" type="submit">Save ticket options</button>
-        </div>
     </form>
-
-    <section class="admin-console-card">
-        <header class="admin-console-card-heading">
-            <div><span class="admin-page-eyebrow">HOW TO INTERPRET</span><h2>Service target definitions</h2><p>Resolution values calculate warning and due times. One business day is eight business hours; weekends and time outside the 9 a.m.–5 p.m. schedule do not count.</p></div>
-        </header>
-        <div class="admin-definition-grid">
-            <article><span class="admin-definition-number">01</span><div><strong>First response</strong><p>The target time for a staff member to make an initial response. These values are currently guidance only.</p></div></article>
-            <article><span class="admin-definition-number">02</span><div><strong>Resolution</strong><p>The target time for resolving the issue. Tickets approaching 80% of this target and overdue tickets alert the assignee and admins.</p></div></article>
-            <article><span class="admin-definition-number">03</span><div><strong>Paused states</strong><p>Waiting for User and On Hold pause the resolution clock. Reopened tickets begin a fresh resolution target.</p></div></article>
-        </div>
-    </section>
 
     <section class="admin-console-card">
         <header class="admin-console-card-heading">
@@ -218,5 +182,48 @@
             </section>
         </div>
     </section>
+
+    <form action="{{ route('admin.sla-settings.priority-keywords.update') }}" method="post" class="admin-sla-form">
+        @csrf
+        @method('put')
+        <section class="admin-console-card" aria-labelledby="priority-rules-heading">
+            <header class="admin-console-card-heading">
+                <div>
+                    <span class="admin-page-eyebrow">AUTOMATIC PRIORITY</span>
+                    <h2 id="priority-rules-heading">Subject keyword rules</h2>
+                    <p>New tickets are classified from the subject only. Add one word or phrase at a time, then expand a priority to review or remove keywords. The system checks configured rules from Urgent through Low; tickets with no match default to Low.</p>
+                </div>
+            </header>
+            <div class="admin-priority-rules-grid">
+                @foreach (['urgent' => 'Urgent', 'high' => 'High', 'medium' => 'Medium', 'low' => 'Low'] as $key => $label)
+                    <div class="admin-priority-rule-field" data-priority-keyword-editor>
+                        <span class="admin-priority-rule-label" id="priority-keywords-label-{{ $key }}">{{ $label }} priority keywords</span>
+                        <details class="admin-priority-keyword-details">
+                            <summary aria-labelledby="priority-keywords-label-{{ $key }}">
+                                <span>Manage keywords</span>
+                                <span class="admin-priority-keyword-count" data-keyword-count aria-live="polite"></span>
+                            </summary>
+                            <div class="admin-priority-keyword-content">
+                                <ul class="admin-priority-keyword-list" data-keyword-list aria-label="{{ $label }} priority keyword list"></ul>
+                                <div class="admin-priority-keyword-add">
+                                    <label class="visually-hidden" for="priority-keyword-input-{{ $key }}">Keyword or phrase to add to {{ strtolower($label) }} priority</label>
+                                    <input id="priority-keyword-input-{{ $key }}" type="text" maxlength="2000" autocomplete="off" placeholder="Type one keyword or phrase" data-keyword-input>
+                                    <button class="admin-console-button" type="button" data-add-keyword>Add keyword</button>
+                                </div>
+                                <small class="admin-priority-keyword-feedback" data-keyword-feedback aria-live="polite"></small>
+                            </div>
+                        </details>
+                        <input type="hidden" name="priority_keywords[{{ $key }}]" value="{{ old("priority_keywords.{$key}", $priorityKeywords[$key]) }}" data-keyword-value>
+                        @error("priority_keywords.{$key}")
+                            <small class="admin-sla-error">{{ $message }}</small>
+                        @enderror
+                        </div>
+                    @endforeach
+            </div>
+            <div class="admin-sla-actions">
+                    <button class="workspace-button workspace-button--primary" type="submit">Save ticket options</button>
+            </div>
+        </section>
+    </form>
 </div>
 @endsection

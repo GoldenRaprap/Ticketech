@@ -13,9 +13,6 @@
                 <img src="{{ asset('images/Philippine_Christian_University_logo.png') }}" alt="">
                 <span>PCU Helpdesk</span>
             </a>
-            <nav aria-label="Main navigation">
-                <a href="{{ route('login') }}">Go Back</a>
-            </nav>
         </div>
     </header>
     <main class="password-page">
@@ -52,7 +49,7 @@
                         @endif
 
                         <label for="reset-email">University email</label>
-                        <input id="reset-email" name="email" type="email" value="{{ old('email') }}" autocomplete="email" @if ($errors->has('email')) aria-invalid="true" @endif required>
+                        <input id="reset-email" name="email" type="email" value="{{ old('email') }}" placeholder="e.g. name@pcu.edu.ph" autocomplete="email" @if ($errors->has('email')) aria-invalid="true" @endif required>
 
                         <button type="submit">Send reset link</button>
                         <a class="auth-back-link" href="{{ route('login') }}">Back to Staff Sign In</a>

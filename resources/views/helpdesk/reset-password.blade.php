@@ -13,9 +13,6 @@
                 <img src="{{ asset('images/Philippine_Christian_University_logo.png') }}" alt="">
                 <span>PCU Helpdesk</span>
             </a>
-            <nav aria-label="Main navigation">
-                <a href="{{ route('home') }}">Go Back</a>
-            </nav>
         </div>
     </header>
     <main class="password-page">
@@ -47,15 +44,15 @@
                         @endif
                         <input type="hidden" name="token" value="{{ $token }}">
                         <label for="reset-email">University email</label>
-                        <input id="reset-email" name="email" type="email" value="{{ old('email', $email) }}" autocomplete="email" required>
+                        <input id="reset-email" name="email" type="email" value="{{ old('email', $email) }}" placeholder="e.g. name@pcu.edu.ph" autocomplete="email" required>
                         <label for="reset-password">New password</label>
                         <div class="password-input-row">
-                            <input id="reset-password" name="password" type="password" autocomplete="new-password" required>
+                            <input id="reset-password" name="password" type="password" placeholder="At least 8 characters" autocomplete="new-password" required>
                             <button class="password-input-toggle" type="button" data-password-toggle aria-controls="reset-password" aria-label="Show password" aria-pressed="false">Show</button>
                         </div>
                         <label for="reset-password-confirmation">Confirm new password</label>
                         <div class="password-input-row">
-                            <input id="reset-password-confirmation" name="password_confirmation" type="password" autocomplete="new-password" required>
+                            <input id="reset-password-confirmation" name="password_confirmation" type="password" placeholder="Re-enter your new password" autocomplete="new-password" required>
                             <button class="password-input-toggle" type="button" data-password-toggle aria-controls="reset-password-confirmation" aria-label="Show password" aria-pressed="false">Show</button>
                         </div>
                         <button type="submit">Save new password</button>

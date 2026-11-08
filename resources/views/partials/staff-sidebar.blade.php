@@ -105,7 +105,7 @@
             <a class="user-mini-profile {{ request()->routeIs('staff.profile') ? 'active' : '' }}" href="{{ route('staff.profile') }}" aria-label="View {{ auth()->user()->displayName() }}'s profile" title="Profile">
                 <span class="user-mini-avatar">
                     @if (auth()->user()->profile_photo_path)
-                        <img src="{{ asset('storage/'.auth()->user()->profile_photo_path) }}" alt="">
+                        <img src="{{ route('public-images.show', ['path' => auth()->user()->profile_photo_path]) }}" alt="">
                     @else
                         <span aria-hidden="true">{{ strtoupper(substr(auth()->user()->displayName(), 0, 1)) }}</span>
                     @endif
@@ -117,10 +117,11 @@
             </a>
             <form class="sidebar-logout" action="{{ route('logout') }}" method="post" data-confirm-logout>
                 @csrf
-                <button type="submit" aria-label="Sign out" title="Sign out">
+                <button type="submit" aria-label="Log out" title="Log out">
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M13.5 4.5h4A1.5 1.5 0 0 1 19 6v12a1.5 1.5 0 0 1-1.5 1.5h-4M10 8l4 4-4 4m4-4H4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
+                    <span class="sidebar-logout-label">Log out</span>
                 </button>
             </form>
         </div>

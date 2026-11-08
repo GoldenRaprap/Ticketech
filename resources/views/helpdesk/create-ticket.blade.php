@@ -1,7 +1,7 @@
 @extends('layouts.public')
 @section('title', 'Submit a Ticket')
 @section('content')
-<section class="help-scene ticket-form-page">
+<section class="help-scene ticket-form-page {{ $ticketSubmissionOpen ? '' : 'ticket-form-page--closed' }}">
     <div class="scene-shapes" aria-hidden="true">
         <span class="shape shape-one"></span>
         <span class="shape shape-two"></span>

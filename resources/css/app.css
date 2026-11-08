@@ -2121,6 +2121,12 @@ img, svg { display: block; max-width: 100%; }
     overflow: visible;
 }
 
+.ticket-create-shell .ticket-form-page--closed {
+    flex: 1 0 auto;
+    min-height: 0;
+    padding-bottom: 32px;
+}
+
 .ticket-create-shell .ticket-panel {
     max-height: none;
     margin-top: 20px;
@@ -2624,8 +2630,13 @@ img, svg { display: block; max-width: 100%; }
 .public-footer,
 .password-footer {
     position: relative;
+    display: flex;
+    flex: 0 0 82px;
+    flex-direction: column;
+    height: 82px;
     min-height: 82px;
-    padding: 10px 24px 0;
+    padding: 8px 24px 0;
+    overflow: hidden;
     border-top: 0;
     border-bottom: 0;
     background: #e6eef7;
@@ -2635,15 +2646,19 @@ img, svg { display: block; max-width: 100%; }
     line-height: 1.65;
 }
 
-.public-footer {
-    display: flex;
-}
-
 .public-footer-inner {
     flex: 1;
     display: flex;
     flex-direction: column;
+    min-width: 0;
     padding: 0;
+}
+
+.public-footer-inner > div:not(.public-copyright-bar),
+.password-footer > div:not(.password-copyright-bar) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .public-footer-brand,
@@ -2664,8 +2679,9 @@ img, svg { display: block; max-width: 100%; }
 
 .public-copyright-bar,
 .password-copyright-bar {
+    flex: 0 0 16px;
     min-height: 16px;
-    margin: 16px -24px 0;
+    margin: auto -24px 0;
     padding: 2px 20px;
     display: flex;
     align-items: center;
@@ -2674,10 +2690,6 @@ img, svg { display: block; max-width: 100%; }
     color: #fff;
     font-size: 0.66rem;
     line-height: 1.1;
-}
-
-.public-copyright-bar {
-    margin-top: auto;
 }
 
 .staff-shell {
@@ -2702,6 +2714,10 @@ img, svg { display: block; max-width: 100%; }
     color: rgba(255,255,255,0.88);
     overflow: hidden;
     transition: width 0.2s ease, flex-basis 0.2s ease;
+}
+
+.staff-sidebar-backdrop {
+    display: none;
 }
 
 .staff-shell.sidebar-collapsed .staff-sidebar {
@@ -3026,6 +3042,10 @@ img, svg { display: block; max-width: 100%; }
     color: #fff;
     cursor: pointer;
     transition: background-color 0.15s ease;
+}
+
+.sidebar-logout-label {
+    display: none;
 }
 
 .sidebar-logout button svg {
@@ -3856,6 +3876,7 @@ img, svg { display: block; max-width: 100%; }
 
 .password-page-body {
     min-height: 100vh;
+    min-height: 100dvh;
     background: #e6eef7;
     color: #173b7c;
 }
@@ -3884,14 +3905,15 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .password-page {
-    min-height: calc(100vh - 64px);
+    min-height: calc(100vh - 72px);
+    min-height: calc(100dvh - 72px);
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto;
     background: #e6eef7;
 }
 
 .password-main {
-    min-height: 680px;
+    min-height: 0;
     display: grid;
     grid-template-columns: 60% 40%;
     overflow: hidden;
@@ -3994,54 +4016,60 @@ img, svg { display: block; max-width: 100%; }
 .password-form-panel {
     display: flex;
     align-items: center;
-    padding: 32px 9% 46px 7%;
+    padding: clamp(16px, 3.8vh, 36px) 7%;
     background: #e6eef7;
 }
 
 .password-form-inner {
-    width: min(100%, 430px);
-    margin-top: -8px;
+    width: min(100%, 440px);
 }
 
 .password-form-inner h1 {
-    margin: 0 0 2px;
+    margin: 0 0 4px;
     color: #173b7c;
-    font-size: clamp(1.8rem, 2.5vw, 2.4rem);
+    font-size: clamp(1.8rem, 2.35vw, 2.3rem);
     line-height: 1.15;
     font-weight: 700;
 }
 
 .password-form-inner > p {
     max-width: 390px;
-    margin: 8px 0 18px;
-    color: #173b7c;
-    font-size: 0.94rem;
-    line-height: 1.5;
+    margin: 8px 0 16px;
+    color: #52677e;
+    font-size: 0.95rem;
+    line-height: 1.45;
 }
 
 .password-eyebrow {
-    margin: 0 0 8px !important;
+    margin: 0 0 7px !important;
     color: #426b9e !important;
     font-size: 0.72rem !important;
     font-weight: 700;
+    letter-spacing: 0.1em;
 }
 
 .password-form {
     display: grid;
-    gap: 8px;
+    gap: 7px;
     color: #173b7c;
     font-size: 1rem;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .password-form > input {
     width: 100%;
-    min-height: 44px;
-    border: 1px solid #5578bb;
-    border-radius: 5px;
-    background: rgba(255,255,255,0.82);
-    color: #173b7c;
-    padding: 9px 11px;
+    min-height: 46px;
+    border: 1px solid #a8b7c8;
+    border-radius: 7px;
+    background: #fff;
+    color: #1a2d42;
+    padding: 10px 12px;
+    font: 400 1rem/1.4 var(--font-sans);
+}
+
+.password-form input::placeholder {
+    color: #77879a;
+    opacity: 1;
 }
 
 .password-form input:focus-visible {
@@ -4052,11 +4080,11 @@ img, svg { display: block; max-width: 100%; }
 .password-input-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    min-height: 44px;
+    min-height: 46px;
     overflow: hidden;
-    border: 1px solid #5578bb;
-    border-radius: 5px;
-    background: rgba(255,255,255,0.82);
+    border: 1px solid #a8b7c8;
+    border-radius: 7px;
+    background: #fff;
 }
 
 .password-input-row:focus-within {
@@ -4067,11 +4095,13 @@ img, svg { display: block; max-width: 100%; }
 .password-form .password-input-row input {
     width: 100%;
     min-width: 0;
-    height: 42px;
+    height: 44px;
     border: 0;
     border-radius: 0;
     background: transparent;
-    padding: 9px 11px;
+    padding: 10px 12px;
+    color: #1a2d42;
+    font: 400 1rem/1.4 var(--font-sans);
 }
 
 .password-form .password-input-row input:focus-visible {
@@ -4086,9 +4116,9 @@ img, svg { display: block; max-width: 100%; }
     padding: 0 11px;
     border: 0;
     border-radius: 4px;
-    background: #e6eef7;
+    background: #edf3fa;
     color: #173b7c;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     font-weight: 700;
     cursor: pointer;
 }
@@ -4136,7 +4166,7 @@ img, svg { display: block; max-width: 100%; }
 .login-forgot-link,
 .auth-back-link {
     color: #224d92;
-    font-size: 0.84rem;
+    font-size: 0.88rem;
     font-weight: 700;
     text-decoration: underline;
     text-underline-offset: 3px;
@@ -4194,10 +4224,10 @@ img, svg { display: block; max-width: 100%; }
 
 .password-form button[type="submit"] {
     width: 100%;
-    min-height: 44px;
-    margin: 12px 0 0;
+    min-height: 48px;
+    margin: 9px 0 0;
     border: 0;
-    border-radius: 5px;
+    border-radius: 7px;
     background: #0d4fa7;
     color: #fff;
     font-family: var(--font-sans);
@@ -4206,8 +4236,22 @@ img, svg { display: block; max-width: 100%; }
     cursor: pointer;
 }
 
+.password-form button.verification-go-back {
+    width: auto;
+    min-height: 0;
+    margin: 8px 0 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #224d92;
+    font: 700 0.88rem/1.4 var(--font-sans);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
 .login-form-inner > p {
-    margin-bottom: 18px;
+    margin-bottom: 16px;
 }
 
 @media (max-width: 1100px) {
@@ -4714,19 +4758,93 @@ img, svg { display: block; max-width: 100%; }
         box-shadow: 18px 0 30px rgba(12, 26, 49, 0.15);
     }
     .staff-shell.menu-open .staff-sidebar { transform: translateX(0); }
+    .staff-sidebar-backdrop {
+        position: fixed;
+        z-index: 19;
+        inset: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: rgba(11, 25, 45, 0.48);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+    }
+    .staff-shell.menu-open .staff-sidebar-backdrop {
+        opacity: 1;
+        pointer-events: auto;
+    }
     .staff-shell.sidebar-collapsed .staff-sidebar { width: var(--sidebar-width); flex-basis: var(--sidebar-width); }
     .sidebar-toggle { display: none; }
     .staff-shell.menu-open .sidebar-toggle { display: inline-flex; }
+    .sidebar-nav {
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
     .staff-header .menu-toggle { display: inline-flex; }
     .staff-shell.sidebar-collapsed .sidebar-link { justify-content: flex-start; gap: 10px; padding-right: 12px; padding-left: 12px; }
     .staff-shell.sidebar-collapsed .sidebar-link-label,
     .staff-shell.sidebar-collapsed .user-mini-details { display: initial; }
     .staff-shell.sidebar-collapsed .sidebar-logout { display: flex; }
     .staff-shell.sidebar-collapsed .sidebar-icon { width: 18px; flex-basis: 18px; }
-    .staff-shell.sidebar-collapsed .user-mini { flex-direction: row; }
+    .staff-shell.sidebar-collapsed .user-mini {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 8px;
+    }
+    .staff-shell.sidebar-collapsed .user-mini-profile {
+        flex: 0 0 auto;
+        justify-content: flex-start;
+    }
+    .staff-sidebar .sidebar-footer .sidebar-logout {
+        display: flex;
+        width: 100%;
+    }
+    .staff-sidebar .sidebar-footer .sidebar-logout button {
+        display: flex;
+        width: 100%;
+        min-height: 42px;
+        height: auto;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.1);
+        color: #fff;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 600;
+        text-align: left;
+        transition: background-color 0.15s ease;
+    }
+    .staff-sidebar .sidebar-footer .sidebar-logout button:hover {
+        background: rgba(255, 255, 255, 0.18);
+    }
+    .staff-sidebar .sidebar-footer .sidebar-logout button:focus-visible {
+        outline: 3px solid #8cc9ff;
+        outline-offset: 2px;
+    }
+    .staff-sidebar .sidebar-footer .sidebar-logout button svg {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 20px;
+    }
+    .staff-sidebar .sidebar-logout-label { display: inline; }
     .staff-shell.sidebar-collapsed .sidebar-top { justify-content: flex-end; }
-    .staff-header { padding: 0 18px; }
-    .staff-header-title { font-size: 1.7rem; }
+    .staff-header { gap: 10px; padding: 0 14px; }
+    .staff-header-left { min-width: 0; flex: 1; gap: 10px; }
+    .staff-header-title {
+        min-width: 0;
+        overflow: hidden;
+        font-size: clamp(1.05rem, 4vw, 1.7rem);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
     .staff-header-logo { width: 38px; height: 38px; }
     .staff-badge-row { display: none; }
     .staff-content { padding: 20px 18px 28px; }
@@ -4738,6 +4856,12 @@ img, svg { display: block; max-width: 100%; }
     .ticket-form .attachment-box { grid-column: 1; }
     .remember-box { margin-left: 0; }
     .view-ticket-button { width: 100%; }
+}
+
+@media (max-width: 400px) {
+    .staff-header { padding-right: 10px; padding-left: 10px; }
+    .staff-header-logo { display: none; }
+    .staff-header-left { gap: 8px; }
 }
 
 @media (max-width: 620px) {
@@ -7845,6 +7969,17 @@ img, svg { display: block; max-width: 100%; }
     color: #9f4841;
 }
 
+.workspace-alert--warning {
+    border-color: #ead9aa;
+    background: #fffaf0;
+    color: #795b1e;
+}
+
+.workspace-alert--warning p {
+    margin: 4px 0 0;
+    color: #795b1e;
+}
+
 .workspace-alert ul {
     margin: 7px 0 0;
     padding-left: 20px;
@@ -10465,8 +10600,24 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .article-editor-card {
-    max-width: 980px;
+    width: 100%;
+    max-width: none;
     padding: clamp(20px, 3vw, 32px);
+}
+
+.article-form-field .article-content-value {
+    width: 1px;
+    min-width: 1px;
+    max-width: 1px;
+    min-height: 1px;
+    padding: 0;
+}
+
+.article-content-toolbar button[aria-pressed="true"] {
+    border-color: #8db4da;
+    background: #e4effa;
+    color: #174f91;
+    box-shadow: inset 0 0 0 1px rgba(23, 79, 145, 0.08);
 }
 
 .article-editor-fields {
@@ -11128,5 +11279,249 @@ img, svg { display: block; max-width: 100%; }
 
     .app-confirmation-button {
         min-height: 40px;
+    }
+}
+
+@media (max-width: 620px) {
+    .staff-content {
+        padding: 16px 12px 24px;
+    }
+
+    .workspace-page,
+    .admin-console-page,
+    .admin-dashboard {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .workspace-page-heading,
+    .admin-page-header,
+    .workspace-page-heading > div,
+    .admin-page-header > div {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .workspace-page-heading > form,
+    .workspace-page-heading > form > button,
+    .workspace-page-heading > a.workspace-button {
+        width: 100%;
+    }
+
+    .admin-page-context {
+        max-width: 100%;
+        white-space: normal;
+    }
+
+    .profile-hero-content {
+        display: grid;
+        grid-template-columns: 62px minmax(0, 1fr);
+        align-content: center;
+    }
+
+    .profile-content-grid {
+        grid-template-columns: minmax(0, 1fr);
+        min-width: 0;
+    }
+
+    .profile-information-card,
+    .profile-security-column {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .profile-hero-copy h2,
+    .profile-hero-copy p {
+        overflow-wrap: anywhere;
+        white-space: normal;
+    }
+
+    .profile-hero-copy p {
+        max-width: none;
+    }
+
+    .profile-edit-field {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+        gap: 7px;
+        padding: 12px 0;
+    }
+
+    .profile-edit-field input,
+    .profile-photo-input input {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .profile-detail-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 5px;
+        padding: 11px 0;
+    }
+
+    .profile-detail-row dd {
+        padding-left: 34px;
+    }
+
+    .profile-form-actions > button {
+        width: 100%;
+    }
+
+    .admin-table-wrap,
+    .ticket-table-scroll {
+        max-width: 100%;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .admin-console-table {
+        min-width: 720px;
+    }
+
+    .admin-audit-table {
+        min-width: 1000px;
+    }
+
+    .admin-user-role-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 9px;
+    }
+
+    .admin-user-management-actions,
+    .admin-user-management-actions form,
+    .admin-user-management-actions .admin-console-button {
+        width: 100%;
+    }
+
+    .moderation-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .moderation-actions form,
+    .moderation-actions .workspace-button {
+        width: 100%;
+    }
+
+    .knowledge-review-settings form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        width: 100%;
+    }
+
+    .knowledge-review-settings input,
+    .knowledge-review-settings .workspace-button {
+        width: 100%;
+    }
+
+    .knowledge-article {
+        min-width: 0;
+        flex-wrap: wrap;
+    }
+
+    .knowledge-article-copy {
+        min-width: 0;
+        flex: 1 1 calc(100% - 50px);
+    }
+
+    .knowledge-article-actions {
+        width: 100%;
+        flex-direction: row;
+        align-items: stretch;
+    }
+
+    .knowledge-article-actions form,
+    .knowledge-article-actions .workspace-button {
+        width: 100%;
+    }
+
+    .notification-summary > div {
+        min-width: 0;
+    }
+
+    .notification-summary p,
+    .notification-copy > p {
+        overflow-wrap: anywhere;
+        white-space: normal;
+    }
+
+    .notification-title-row {
+        flex-wrap: wrap;
+    }
+
+    .notification-title-row h3 {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+}
+
+@media (max-width: 520px) {
+    .staff-content {
+        padding-right: 10px;
+        padding-left: 10px;
+    }
+
+    .workspace-card,
+    .admin-console-card,
+    .admin-console-page .workspace-card {
+        padding: 13px;
+    }
+
+    .admin-ticket-submission-summary {
+        grid-template-columns: 34px minmax(0, 1fr) 42px;
+        gap: 8px;
+    }
+
+    .admin-ticket-submission-copy {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .admin-ticket-submission-switch {
+        grid-column: 1;
+        grid-row: 2;
+        justify-content: flex-start;
+    }
+
+    .admin-ticket-submission-switch-state {
+        grid-column: 2;
+        grid-row: 2;
+        min-width: 0;
+        text-align: left;
+    }
+
+    .admin-ticket-message-chevron-button {
+        grid-column: 3;
+        grid-row: 1 / 3;
+        align-self: center;
+    }
+
+    .admin-ticket-message-content {
+        gap: 10px;
+        padding-left: 0;
+    }
+
+    .admin-ticket-message-content .admin-console-button {
+        width: 100%;
+    }
+
+    .admin-config-list > div {
+        align-items: flex-start;
+    }
+
+    .report-filter-actions,
+    .report-filter-actions > button,
+    .report-staff-export-actions,
+    .report-staff-export-actions > button {
+        width: 100%;
+    }
+
+    .admin-console-card-footer nav,
+    .table-footer nav {
+        max-width: 100%;
+        overflow-x: auto;
     }
 }

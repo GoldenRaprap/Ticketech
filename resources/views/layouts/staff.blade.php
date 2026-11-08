@@ -8,6 +8,7 @@
 </head>
 <body class="staff-shell sidebar-collapsed" data-staff-shell>
     @include('partials.staff-sidebar')
+    <button class="staff-sidebar-backdrop" type="button" aria-label="Close navigation" data-sidebar-close tabindex="-1"></button>
     <div class="staff-main">
         <header class="staff-header">
             <div class="staff-header-left">
@@ -33,6 +34,7 @@
     <script>
         const staffShell = document.querySelector('[data-staff-shell]');
         const sidebarToggles = document.querySelectorAll('[data-sidebar-toggle]');
+        const sidebarCloseButtons = document.querySelectorAll('[data-sidebar-close]');
         const mobileSidebar = window.matchMedia('(max-width: 820px)');
         const sidebarPreferenceKey = 'ticketech.staff-sidebar-collapsed';
         let isDesktopSidebarCollapsed = true;
@@ -66,6 +68,11 @@
             });
         }
 
+        function closeMobileSidebar() {
+            staffShell.classList.remove('menu-open');
+            updateSidebarToggle();
+        }
+
         sidebarToggles.forEach(function (toggle) {
             toggle.addEventListener('click', function () {
                 if (mobileSidebar.matches) {
@@ -83,6 +90,16 @@
 
                 updateSidebarToggle();
             });
+        });
+
+        sidebarCloseButtons.forEach(function (button) {
+            button.addEventListener('click', closeMobileSidebar);
+        });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && mobileSidebar.matches && staffShell.classList.contains('menu-open')) {
+                closeMobileSidebar();
+            }
         });
 
         mobileSidebar.addEventListener('change', function () {
