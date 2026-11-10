@@ -1,3 +1,113 @@
+document.querySelectorAll('[data-staff-bulk-form]').forEach((form) => {
+	const entryList = form.querySelector('[data-staff-entry-list]');
+	const entryTemplate = form.querySelector('template[data-staff-entry-template]');
+	const addEntryButton = form.querySelector('[data-add-staff-entry]');
+	const feedback = form.querySelector('[data-staff-entry-feedback]');
+	const maxEntries = Number(form.dataset.maxEntries);
+
+	if (
+		!(entryList instanceof HTMLElement) ||
+		!(entryTemplate instanceof HTMLTemplateElement) ||
+		!(addEntryButton instanceof HTMLButtonElement) ||
+		!(feedback instanceof HTMLElement) ||
+		!Number.isInteger(maxEntries) ||
+		maxEntries < 1
+	) {
+		throw new Error('Staff account form is missing required controls.');
+	}
+
+	let nextIndex = 0;
+
+	entryList.querySelectorAll('input[name^="staff["]').forEach((input) => {
+		const match = input.name.match(/^staff\[(\d+)\]\[name\]$/);
+
+		if (match) {
+			nextIndex = Math.max(nextIndex, Number(match[1]) + 1);
+		}
+	});
+
+	const updateEntryControls = () => {
+		const entries = entryList.querySelectorAll('[data-staff-entry]');
+
+		entries.forEach((entry, index) => {
+			const legend = entry.querySelector('[data-entry-legend]');
+			const removeButton = entry.querySelector('[data-remove-staff-entry]');
+
+			if (!(legend instanceof HTMLElement) || !(removeButton instanceof HTMLButtonElement)) {
+				throw new Error('Staff account row is missing its label or remove button.');
+			}
+
+			legend.textContent = `Staff member ${index + 1}`;
+			removeButton.disabled = entries.length === 1;
+			removeButton.setAttribute('aria-label', `Remove staff member ${index + 1}`);
+		});
+
+		addEntryButton.disabled = entries.length >= maxEntries;
+		feedback.textContent = `${entries.length} of ${maxEntries} staff members`;
+	};
+
+	addEntryButton.addEventListener('click', () => {
+		if (entryList.querySelectorAll('[data-staff-entry]').length >= maxEntries) {
+			updateEntryControls();
+			return;
+		}
+
+		const fragment = entryTemplate.content.cloneNode(true);
+		const entry = fragment.firstElementChild;
+
+		if (!(entry instanceof HTMLFieldSetElement)) {
+			throw new Error('Staff account row template is invalid.');
+		}
+
+		const nameInput = entry.querySelector('[data-staff-field="name"]');
+		const emailInput = entry.querySelector('[data-staff-field="email"]');
+
+		if (!(nameInput instanceof HTMLInputElement) || !(emailInput instanceof HTMLInputElement)) {
+			throw new Error('Staff account row template is missing its inputs.');
+		}
+
+		nameInput.name = `staff[${nextIndex}][name]`;
+		nameInput.id = `new-staff-${nextIndex}-name`;
+		emailInput.name = `staff[${nextIndex}][email]`;
+		emailInput.id = `new-staff-${nextIndex}-email`;
+		nextIndex += 1;
+		entryList.append(entry);
+		updateEntryControls();
+		nameInput.focus();
+	});
+
+	entryList.addEventListener('click', (event) => {
+		if (!(event.target instanceof Element)) {
+			return;
+		}
+
+		const removeButton = event.target.closest('[data-remove-staff-entry]');
+
+		if (!(removeButton instanceof HTMLButtonElement)) {
+			return;
+		}
+
+		const entries = entryList.querySelectorAll('[data-staff-entry]');
+		const entry = removeButton.closest('[data-staff-entry]');
+
+		if (!(entry instanceof HTMLFieldSetElement)) {
+			throw new Error('Staff account remove button is not attached to a row.');
+		}
+
+		if (entries.length === 1) {
+			entry.querySelectorAll('input').forEach((input) => {
+				input.value = '';
+			});
+		} else {
+			entry.remove();
+		}
+
+		updateEntryControls();
+	});
+
+	updateEntryControls();
+});
+
 document.querySelectorAll('[data-priority-keyword-editor]').forEach((editor) => {
 	const keywordValue = editor.querySelector('[data-keyword-value]');
 	const keywordList = editor.querySelector('[data-keyword-list]');
@@ -303,6 +413,28 @@ document.querySelectorAll('[data-confirm-delete]').forEach((form) => {
 			titleText: form.dataset.confirmTitle || 'Remove this record?',
 			messageText: form.dataset.confirmMessage || 'This action cannot be undone.',
 			confirmText: 'Remove permanently',
+		}).then((confirmed) => {
+			if (confirmed) {
+				HTMLFormElement.prototype.submit.call(form);
+			}
+		});
+	});
+});
+
+document.querySelectorAll('[data-confirm-submit]').forEach((form) => {
+	if (!(form instanceof HTMLFormElement)) {
+		console.error('Confirmation target is not a form.');
+		return;
+	}
+
+	form.addEventListener('submit', (event) => {
+		event.preventDefault();
+
+		void requestConfirmation({
+			titleText: form.dataset.confirmTitle || 'Confirm this account access change?',
+			messageText: form.dataset.confirmMessage || 'The account access status will be changed.',
+			confirmText: form.dataset.confirmButton || 'Continue',
+			isDangerous: form.dataset.confirmDanger !== 'false',
 		}).then((confirmed) => {
 			if (confirmed) {
 				HTMLFormElement.prototype.submit.call(form);

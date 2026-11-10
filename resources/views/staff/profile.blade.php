@@ -38,7 +38,7 @@
                     {{ $user->email }}
                 </p>
             </div>
-            <div class="profile-hero-meta"><small>Member since</small><strong>{{ $user->created_at->format('F Y') }}</strong></div>
+            <div class="profile-hero-meta"><small>Member since</small><strong>{{ $user->created_at->copy()->timezone(config('app.display_timezone'))->format('F Y') }}</strong></div>
         </div>
     </section>
 
@@ -64,7 +64,7 @@
                 <label class="profile-edit-field" for="profile-nickname"><span><span class="profile-detail-icon" aria-hidden="true">✦</span>Nickname</span><input id="profile-nickname" name="nickname" value="{{ old('nickname', $user->nickname) }}" autocomplete="nickname" maxlength="80" placeholder="Optional"></label>
                 <label class="profile-edit-field" for="profile-email"><span><span class="profile-detail-icon" aria-hidden="true">@</span>Email address</span><input id="profile-email" type="email" value="{{ $user->email }}" autocomplete="email" readonly aria-describedby="profile-email-help"></label>
                 <div class="profile-detail-row"><dt><span class="profile-detail-icon" aria-hidden="true">▤</span>Account role</dt><dd><span class="profile-detail-role">{{ $roleLabel }}</span></dd></div>
-                <div class="profile-detail-row"><dt><span class="profile-detail-icon" aria-hidden="true">◷</span>Account created</dt><dd>{{ $user->created_at->format('F j, Y') }}</dd></div>
+                <div class="profile-detail-row"><dt><span class="profile-detail-icon" aria-hidden="true">◷</span>Account created</dt><dd>{{ $user->created_at->copy()->timezone(config('app.display_timezone'))->format('F j, Y') }}</dd></div>
                 <p class="profile-information-note" id="profile-email-help"><span aria-hidden="true">ⓘ</span> Your email address is read-only. Contact an administrator if it needs to be changed.</p>
                 <div class="profile-form-actions"><button class="workspace-button workspace-button--primary" type="submit">Save profile changes</button></div>
             </form>

@@ -49,7 +49,7 @@
                 <tbody>
                     @forelse ($events as $event)
                         <tr>
-                            <td><time datetime="{{ $event->created_at->toIso8601String() }}">{{ $event->created_at->format('M j, Y') }}<small>{{ $event->created_at->format('g:i A') }}</small></time></td>
+                            <td><time datetime="{{ $event->created_at->copy()->timezone(config('app.display_timezone'))->toIso8601String() }}">{{ $event->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}<small>{{ $event->created_at->copy()->timezone(config('app.display_timezone'))->format('g:i A') }}</small></time></td>
                             @php($actorName = $event->actor?->name ?? $event->actor_name ?? 'Requester')
                             <td><span class="admin-audit-actor"><span>{{ strtoupper(substr($actorName, 0, 1)) }}</span>{{ $actorName }}</span></td>
                             <td><span class="admin-audit-event">{{ \Illuminate\Support\Str::headline($event->event) }}</span></td>

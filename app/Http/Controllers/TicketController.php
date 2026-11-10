@@ -234,16 +234,31 @@ class TicketController extends Controller
                 ]);
             }
 
-            User::query()->whereIn('role', ['staff', 'admin'])->where('employment_status', 'active')->get(['id'])->each(
-                fn (User $user) => WorkspaceNotification::create([
-                    'user_id' => $user->id,
-                    'ticket_id' => $ticket->id,
-                    'actor_id' => $requesterUserId,
-                    'type' => 'new_ticket',
-                    'title' => 'New support ticket',
-                    'message' => "{$ticket->ticket_number} · {$ticket->subject}",
-                ]),
-            );
+            User::query()
+                ->whereIn('role', ['admin', 'department_admin'])
+                ->where('employment_status', 'active')
+                ->where('staff_approval_status', 'approved')
+                ->where(function ($query) use ($ticket): void {
+                    $query->where('role', 'admin');
+
+                    if ($ticket->department_id !== null) {
+                        $query->orWhere(function ($query) use ($ticket): void {
+                            $query->where('role', 'department_admin')
+                                ->where('department_id', $ticket->department_id);
+                        });
+                    }
+                })
+                ->get(['id'])
+                ->each(
+                    fn (User $user) => WorkspaceNotification::create([
+                        'user_id' => $user->id,
+                        'ticket_id' => $ticket->id,
+                        'actor_id' => $requesterUserId,
+                        'type' => 'new_ticket',
+                        'title' => 'New support ticket',
+                        'message' => "{$ticket->ticket_number} · {$ticket->subject}",
+                    ]),
+                );
 
             $lockedSubmission->delete();
 
@@ -347,7 +362,7 @@ class TicketController extends Controller
         foreach (
             $ticket->comments()
                 ->where('is_internal', false)
-                ->whereHas('author', fn ($query) => $query->whereIn('role', ['staff', 'admin']))
+                ->whereHas('author', fn ($query) => $query->whereIn('role', User::STAFF_ACCESS_ROLES))
                 ->oldest()
                 ->get(['id', 'body', 'created_at']) as $comment
         ) {
@@ -362,7 +377,7 @@ class TicketController extends Controller
         foreach (
             $ticket->events()
                 ->where('event', 'status_changed')
-                ->whereHas('actor', fn ($query) => $query->whereIn('role', ['staff', 'admin']))
+                ->whereHas('actor', fn ($query) => $query->whereIn('role', User::STAFF_ACCESS_ROLES))
                 ->oldest()
                 ->get(['id', 'description', 'created_at']) as $event
         ) {
@@ -571,19 +586,42 @@ class TicketController extends Controller
                     'description' => "{$lockedTicket->requester_name} replied to the ticket.",
                 ]);
 
-                $recipients = $lockedTicket->assigned_to_user_id
-                    ? User::query()->whereKey($lockedTicket->assigned_to_user_id)->where('employment_status', 'active')
-                    : User::query()->whereIn('role', ['staff', 'admin'])->where('employment_status', 'active');
+                User::query()
+                    ->where('employment_status', 'active')
+                    ->where('staff_approval_status', 'approved')
+                    ->where(function ($query) use ($lockedTicket): void {
+                        $query->where('role', 'admin');
 
-                $recipients->get(['id'])->each(
-                    fn (User $user) => WorkspaceNotification::create([
-                        'user_id' => $user->id,
-                        'ticket_id' => $lockedTicket->id,
-                        'type' => 'requester_reply',
-                        'title' => 'New requester reply',
-                        'message' => "{$lockedTicket->ticket_number} · {$lockedTicket->subject}",
-                    ]),
-                );
+                        if ($lockedTicket->department_id !== null) {
+                            $query->orWhere(function ($query) use ($lockedTicket): void {
+                                $query->where('role', 'department_admin')
+                                    ->where('department_id', $lockedTicket->department_id);
+                            });
+                        }
+
+                        if ($lockedTicket->assigned_to_user_id !== null) {
+                            $query->orWhere(function ($query) use ($lockedTicket): void {
+                                $query->whereKey($lockedTicket->assigned_to_user_id)
+                                    ->where(function ($query) use ($lockedTicket): void {
+                                        $query->where('role', 'admin');
+
+                                        if ($lockedTicket->department_id !== null) {
+                                            $query->orWhere('department_id', $lockedTicket->department_id);
+                                        }
+                                    });
+                            });
+                        }
+                    })
+                    ->get(['id'])
+                    ->each(
+                        fn (User $user) => WorkspaceNotification::create([
+                            'user_id' => $user->id,
+                            'ticket_id' => $lockedTicket->id,
+                            'type' => 'requester_reply',
+                            'title' => 'New requester reply',
+                            'message' => "{$lockedTicket->ticket_number} · {$lockedTicket->subject}",
+                        ]),
+                    );
 
                 Notification::route('mail', $lockedTicket->requester_email)->notify(new TicketRequesterUpdate(
                     $lockedTicket->requester_name,

@@ -24,7 +24,7 @@
         <span class="public-article-category">{{ $article->category }}</span>
         <h1>{{ $article->title }}</h1>
         <p class="public-article-summary">{{ $article->summary }}</p>
-        <div class="public-article-byline">PCU Helpdesk · Updated {{ $article->published_at?->format('F j, Y') }}</div>
+        <div class="public-article-byline">PCU Helpdesk · Updated {{ $article->published_at?->copy()->timezone(config('app.display_timezone'))->format('F j, Y') }}</div>
         <div class="public-article-body">{!! $articleContent !!}</div>
         @if ($article->images->isNotEmpty())
             <section class="public-article-images" aria-label="Article images">

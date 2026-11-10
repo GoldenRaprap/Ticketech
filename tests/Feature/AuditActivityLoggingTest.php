@@ -74,6 +74,52 @@ class AuditActivityLoggingTest extends TestCase
             ->assertSee('data-auto-submit-on-change', false);
     }
 
+    public function test_audit_log_uses_manila_time_and_filters_by_manila_calendar_day(): void
+    {
+        $this->travelTo('2026-01-01 00:00:00 UTC');
+        config()->set('app.display_timezone', 'Asia/Manila');
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $beforeUtcMidnight = TicketEvent::create([
+            'event' => 'boundary_before',
+            'description' => 'Manila day begins before UTC midnight',
+        ]);
+        $beforeUtcMidnight->forceFill([
+            'created_at' => '2026-11-09 16:30:00',
+            'updated_at' => '2026-11-09 16:30:00',
+        ])->save();
+        $afterUtcMidnight = TicketEvent::create([
+            'event' => 'boundary_after',
+            'description' => 'Manila day ends after UTC midnight',
+        ]);
+        $afterUtcMidnight->forceFill([
+            'created_at' => '2026-11-10 15:59:59',
+            'updated_at' => '2026-11-10 15:59:59',
+        ])->save();
+        $nextManilaDay = TicketEvent::create([
+            'event' => 'next_manila_day',
+            'description' => 'Belongs to the next Manila day',
+        ]);
+        $nextManilaDay->forceFill([
+            'created_at' => '2026-11-10 16:00:00',
+            'updated_at' => '2026-11-10 16:00:00',
+        ])->save();
+
+        $response = $this->actingAs($admin)
+            ->get(route('admin.audit-logs', ['date' => '2026-11-10']))
+            ->assertOk()
+            ->assertSee('Nov 10, 2026')
+            ->assertSee('12:30 AM')
+            ->assertSee('Manila day begins before UTC midnight')
+            ->assertSee('Manila day ends after UTC midnight')
+            ->assertDontSee('Belongs to the next Manila day');
+
+        $this->assertSame(
+            [$afterUtcMidnight->id, $beforeUtcMidnight->id],
+            $response->viewData('events')->getCollection()->modelKeys(),
+        );
+    }
+
     public function test_staff_attempts_to_open_admin_pages_are_recorded_as_denied(): void
     {
         $staff = User::factory()->create(['role' => 'staff']);
@@ -107,7 +153,7 @@ class AuditActivityLoggingTest extends TestCase
                 $staff->id => [
                     'name' => 'Former Staff',
                     'email' => 'former.staff@example.edu',
-                    'employment_status' => 'retired',
+                    'employment_status' => 'inactive',
                 ],
             ],
         ])->assertRedirect(route('admin.users'));
@@ -120,7 +166,7 @@ class AuditActivityLoggingTest extends TestCase
         $this->assertSame('Current Staff', $event->properties['before']['name']);
         $this->assertSame('active', $event->properties['before']['employment_status']);
         $this->assertSame('Former Staff', $event->properties['after']['name']);
-        $this->assertSame('retired', $event->properties['after']['employment_status']);
+        $this->assertSame('inactive', $event->properties['after']['employment_status']);
         $this->assertArrayNotHasKey('password', $event->properties['before']);
         $this->assertArrayNotHasKey('password', $event->properties['after']);
     }

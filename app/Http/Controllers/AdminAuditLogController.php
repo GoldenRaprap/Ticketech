@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\TicketEvent;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -114,7 +115,7 @@ class AdminAuditLogController extends Controller
                         }
 
                         $writer->addRow(Row::fromValues([
-                            $event->created_at?->toDateTimeString() ?? '',
+                            $event->created_at?->copy()->timezone(config('app.display_timezone'))->toDateTimeString() ?? '',
                             $this->spreadsheetSafeValue($event->actor?->name ?? $event->actor_name ?? 'Requester'),
                             $this->spreadsheetSafeValue(str($event->event)->headline()->toString()),
                             $this->spreadsheetSafeValue($target),
@@ -179,7 +180,14 @@ class AdminAuditLogController extends Controller
                         });
                 });
             })
-            ->when($filters['date'] ?? null, fn ($query, string $date) => $query->whereDate('created_at', $date))
+            ->when($filters['date'] ?? null, function ($query, string $date): void {
+                $timezone = config('app.display_timezone');
+                $start = CarbonImmutable::parse($date, $timezone)->startOfDay()->utc();
+                $end = CarbonImmutable::parse($date, $timezone)->addDay()->startOfDay()->utc();
+
+                $query->where('created_at', '>=', $start)
+                    ->where('created_at', '<', $end);
+            })
             ->when($filters['actor'] ?? null, fn ($query, int $actorId) => $query->where('actor_id', $actorId))
             ->latest();
     }

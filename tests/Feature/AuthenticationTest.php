@@ -101,7 +101,7 @@ class AuthenticationTest extends TestCase
         $this->actingAs($admin)->get(route('admin.dashboard'))->assertOk();
         $this->actingAs($admin)->get(route('admin.users'))->assertOk()
             ->assertSee('admin-console-page', false)
-            ->assertSee('Manage staff access');
+            ->assertSee('Add staff accounts');
         $this->actingAs($admin)->get(route('admin.moderation'))->assertOk()
             ->assertSee('admin-console-page', false)
             ->assertSee('Pending reports');

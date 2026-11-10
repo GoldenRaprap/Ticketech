@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -36,6 +37,28 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 ])]
 class Ticket extends Model
 {
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        if ($user->isAdmin()) {
+            return $query;
+        }
+
+        if ($user->department_id === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where(
+            $query->getModel()->qualifyColumn('department_id'),
+            $user->department_id,
+        );
+    }
+
+    public function isVisibleTo(User $user): bool
+    {
+        return $user->isAdmin()
+            || ($user->department_id !== null && $this->department_id === $user->department_id);
+    }
+
     protected function casts(): array
     {
         return [

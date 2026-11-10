@@ -64,6 +64,10 @@ class AuthenticatedSessionController extends Controller
             return redirect()->intended(route('admin.dashboard'));
         }
 
+        if ($request->user()->isDepartmentAdmin()) {
+            return redirect()->intended(route('admin.users'));
+        }
+
         if ($request->user()->staff_approval_status === 'denied') {
             return to_route('staff.application.denied');
         }

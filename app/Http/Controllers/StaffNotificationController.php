@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use App\Models\WorkspaceNotification;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -15,9 +17,8 @@ class StaffNotificationController extends Controller
             'read' => ['nullable', 'in:all,unread,read'],
         ])['read'] ?? 'all';
 
-        $notifications = WorkspaceNotification::query()
+        $notifications = $this->visibleNotifications($request->user())
             ->with('ticket:id,ticket_number')
-            ->where('user_id', $request->user()->id)
             ->when($filter === 'unread', fn ($query) => $query->whereNull('read_at'))
             ->when($filter === 'read', fn ($query) => $query->whereNotNull('read_at'))
             ->latest()
@@ -27,8 +28,7 @@ class StaffNotificationController extends Controller
         return view('staff.notifications', [
             'notifications' => $notifications,
             'filter' => $filter,
-            'unreadCount' => WorkspaceNotification::query()
-                ->where('user_id', $request->user()->id)
+            'unreadCount' => $this->visibleNotifications($request->user())
                 ->whereNull('read_at')
                 ->count(),
         ]);
@@ -36,8 +36,7 @@ class StaffNotificationController extends Controller
 
     public function markAllRead(Request $request): RedirectResponse
     {
-        WorkspaceNotification::query()
-            ->where('user_id', $request->user()->id)
+        $this->visibleNotifications($request->user())
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
@@ -46,7 +45,12 @@ class StaffNotificationController extends Controller
 
     public function markRead(Request $request, WorkspaceNotification $notification): RedirectResponse
     {
-        abort_unless($notification->user_id === $request->user()->id, 404);
+        $ticket = $notification->ticket;
+        abort_unless(
+            $notification->user_id === $request->user()->id
+                && ($ticket === null || $ticket->isVisibleTo($request->user())),
+            404,
+        );
 
         $notification->update(['read_at' => now()]);
 
@@ -57,5 +61,18 @@ class StaffNotificationController extends Controller
         return $notification->ticket
             ? to_route('staff.ticket-detail', $notification->ticket)
             : to_route('staff.notifications');
+    }
+
+    /**
+     * @return Builder<WorkspaceNotification>
+     */
+    private function visibleNotifications(User $user): Builder
+    {
+        return WorkspaceNotification::query()
+            ->where('user_id', $user->id)
+            ->where(function (Builder $query) use ($user): void {
+                $query->whereNull('ticket_id')
+                    ->orWhereHas('ticket', fn (Builder $tickets) => $tickets->visibleTo($user));
+            });
     }
 }

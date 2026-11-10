@@ -85,11 +85,18 @@ class EmailNotificationsTest extends TestCase
         );
     }
 
-    public function test_ticket_submission_waits_for_email_confirmation_before_creating_a_ticket(): void
+    public function test_ticket_submission_notifies_only_its_department_queue_after_email_confirmation(): void
     {
         Notification::fake();
-        $staff = User::factory()->create(['role' => 'staff']);
         $department = Department::factory()->create();
+        $departmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $department->id,
+        ]);
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
         $category = Category::factory()->create();
 
         $this->post(route('ticket.store'), [
@@ -152,10 +159,16 @@ class EmailNotificationsTest extends TestCase
             'requester_email' => 'jamie@example.edu',
         ]);
         $this->assertDatabaseHas('workspace_notifications', [
+            'user_id' => $departmentAdmin->id,
             'ticket_id' => $ticket->id,
             'type' => 'new_ticket',
         ]);
-        Notification::assertSentTo($staff, WorkspaceAlert::class);
+        $this->assertDatabaseMissing('workspace_notifications', [
+            'user_id' => $staff->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'new_ticket',
+        ]);
+        Notification::assertSentTo($departmentAdmin, WorkspaceAlert::class);
         Notification::assertSentOnDemand(
             TicketRequesterUpdate::class,
             function (TicketRequesterUpdate $notification): bool {
@@ -183,8 +196,11 @@ class EmailNotificationsTest extends TestCase
     public function test_public_staff_reply_emails_the_requester_but_internal_notes_do_not(): void
     {
         Notification::fake();
-        $staff = User::factory()->create(['role' => 'staff']);
         $ticket = $this->createTicket('jamie@example.edu');
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $ticket->department_id,
+        ]);
 
         $this->actingAs($staff)
             ->post(route('staff.ticket-comments.store', $ticket), [
@@ -208,8 +224,11 @@ class EmailNotificationsTest extends TestCase
     public function test_ticket_status_changes_email_the_requester(): void
     {
         Notification::fake();
-        $staff = User::factory()->create(['role' => 'staff']);
         $ticket = $this->createTicket('jamie@example.edu');
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $ticket->department_id,
+        ]);
 
         $this->actingAs($staff)
             ->put(route('staff.ticket-update', $ticket), ['status' => 'Resolved'])
@@ -224,8 +243,11 @@ class EmailNotificationsTest extends TestCase
     public function test_staff_replies_and_status_changes_do_not_email_an_unverified_requester(): void
     {
         Notification::fake();
-        $staff = User::factory()->create(['role' => 'staff']);
         $ticket = $this->createTicket('jamie@example.edu', false);
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $ticket->department_id,
+        ]);
 
         $this->actingAs($staff)
             ->post(route('staff.ticket-comments.store', $ticket), [

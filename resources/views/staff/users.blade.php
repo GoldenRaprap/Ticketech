@@ -7,7 +7,7 @@
         <div>
             <span class="admin-page-eyebrow">ADMINISTRATION / ACCESS CONTROL</span>
             <h1>User access</h1>
-            <p>Manage staff accounts and grant administrator access to active, approved staff.</p>
+            <p>Assign staff to departments and grant scoped department-admin access. Super Admins retain global administration.</p>
         </div>
         <span class="admin-page-context"><span aria-hidden="true">●</span> User directory</span>
     </header>
@@ -18,6 +18,107 @@
     @if (session('warning'))
         <div class="workspace-alert workspace-alert--error" role="alert">{{ session('warning') }}</div>
     @endif
+
+    <section class="admin-console-card admin-staff-bulk-card">
+        <header class="admin-console-card-heading">
+            <div>
+                <span class="admin-page-eyebrow">STAFF ONBOARDING</span>
+                <h2>Add staff accounts</h2>
+                <p>Add multiple staff at once. Accounts are approved immediately; each person receives a password setup link and can sign in without registering or waiting for approval.</p>
+            </div>
+        </header>
+
+        <form action="{{ route('admin.users.store') }}" method="post" data-staff-bulk-form data-max-entries="50">
+            @csrf
+            @foreach ($errors->get('staff') as $error)
+                <p class="admin-staff-validation" role="alert">{{ $error }}</p>
+            @endforeach
+
+            @php
+                $staffEntries = old('staff', [['name' => '', 'email' => '']]);
+                $staffEntries = is_array($staffEntries) ? array_filter($staffEntries, 'is_array') : [];
+                $staffEntries = $staffEntries === [] ? [['name' => '', 'email' => '']] : $staffEntries;
+            @endphp
+            <div class="admin-staff-bulk-list" data-staff-entry-list>
+                @foreach ($staffEntries as $index => $staffEntry)
+                    <fieldset class="admin-staff-bulk-entry" data-staff-entry>
+                        <legend data-entry-legend>Staff member {{ $loop->iteration }}</legend>
+                        <label class="admin-staff-field" for="new-staff-{{ $index }}-name">
+                            <span>Full name</span>
+                            <input id="new-staff-{{ $index }}-name" name="staff[{{ $index }}][name]" data-staff-field="name" value="{{ is_string($staffEntry['name'] ?? null) ? $staffEntry['name'] : '' }}" autocomplete="name" maxlength="255" required>
+                            @foreach ($errors->get('staff.'.$index.'.name') as $error)
+                                <span class="admin-staff-validation" role="alert">{{ $error }}</span>
+                            @endforeach
+                        </label>
+                        <label class="admin-staff-field" for="new-staff-{{ $index }}-email">
+                            <span>Work email</span>
+                            <input id="new-staff-{{ $index }}-email" name="staff[{{ $index }}][email]" data-staff-field="email" type="email" value="{{ is_string($staffEntry['email'] ?? null) ? $staffEntry['email'] : '' }}" autocomplete="email" maxlength="255" required>
+                            @foreach ($errors->get('staff.'.$index.'.email') as $error)
+                                <span class="admin-staff-validation" role="alert">{{ $error }}</span>
+                            @endforeach
+                        </label>
+                        @if (auth()->user()->isAdmin())
+                            <label class="admin-staff-field" for="new-staff-{{ $index }}-department">
+                                <span>Department</span>
+                                <select id="new-staff-{{ $index }}-department" name="staff[{{ $index }}][department_id]" data-staff-field="department">
+                                    <option value="">Unassigned</option>
+                                    @foreach ($activeDepartments as $department)
+                                        <option value="{{ $department->id }}" @selected((string) ($staffEntry['department_id'] ?? '') === (string) $department->id)>{{ $department->name }}</option>
+                                    @endforeach
+                                </select>
+                                @foreach ($errors->get('staff.'.$index.'.department_id') as $error)
+                                    <span class="admin-staff-validation" role="alert">{{ $error }}</span>
+                                @endforeach
+                            </label>
+                        @else
+                            <div class="admin-staff-field">
+                                <span>Department</span>
+                                <strong>{{ auth()->user()->department?->name ?? 'Unassigned' }}</strong>
+                            </div>
+                        @endif
+                        <button class="admin-console-button admin-console-button--danger" type="button" data-remove-staff-entry aria-label="Remove staff member {{ $loop->iteration }}">Remove</button>
+                    </fieldset>
+                @endforeach
+            </div>
+
+            <template data-staff-entry-template>
+                <fieldset class="admin-staff-bulk-entry" data-staff-entry>
+                    <legend data-entry-legend></legend>
+                    <label class="admin-staff-field" for="new-staff-__INDEX__-name">
+                        <span>Full name</span>
+                        <input id="new-staff-__INDEX__-name" name="staff[__INDEX__][name]" data-staff-field="name" autocomplete="name" maxlength="255" required>
+                    </label>
+                    <label class="admin-staff-field" for="new-staff-__INDEX__-email">
+                        <span>Work email</span>
+                        <input id="new-staff-__INDEX__-email" name="staff[__INDEX__][email]" data-staff-field="email" type="email" autocomplete="email" maxlength="255" required>
+                    </label>
+                    @if (auth()->user()->isAdmin())
+                        <label class="admin-staff-field" for="new-staff-__INDEX__-department">
+                            <span>Department</span>
+                            <select id="new-staff-__INDEX__-department" name="staff[__INDEX__][department_id]" data-staff-field="department">
+                                <option value="">Unassigned</option>
+                                @foreach ($activeDepartments as $department)
+                                    <option value="{{ $department->id }}">{{ $department->name }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                    @else
+                        <div class="admin-staff-field">
+                            <span>Department</span>
+                            <strong>{{ auth()->user()->department?->name ?? 'Unassigned' }}</strong>
+                        </div>
+                    @endif
+                    <button class="admin-console-button admin-console-button--danger" type="button" data-remove-staff-entry>Remove</button>
+                </fieldset>
+            </template>
+
+            <div class="admin-staff-bulk-actions">
+                <button class="admin-console-button admin-console-button--secondary" type="button" data-add-staff-entry>Add another staff member</button>
+                <button class="admin-console-button" type="submit">Create accounts and send setup links</button>
+            </div>
+            <p class="admin-staff-bulk-feedback" aria-live="polite" data-staff-entry-feedback></p>
+        </form>
+    </section>
 
     @if ($pendingStaffApplications->isNotEmpty())
         <section class="admin-console-card">
@@ -81,7 +182,7 @@
                                 <span class="admin-user-avatar">{{ strtoupper(substr($application->name, 0, 1)) }}</span>
                                 <span><strong>{{ $application->name }}</strong><small>{{ $application->email }}</small></span>
                             </div>
-                            <span class="admin-staff-status admin-staff-status--terminated">Denied · email unverified</span>
+                            <span class="admin-staff-status admin-staff-status--inactive">Denied · email unverified</span>
                         </header>
                         <div class="admin-staff-card-actions">
                             <form
@@ -107,18 +208,18 @@
     <section class="admin-metric-grid" aria-label="Staff access summary">
         <article class="admin-metric-card">
             <span class="admin-metric-icon admin-metric-icon--blue" aria-hidden="true">◎</span>
-            <div><span>Total staff accounts</span><strong>{{ $staffCount }}</strong></div>
-            <small>Retained for ticket history</small>
+            <div><span>Total department accounts</span><strong>{{ $staffCount }}</strong></div>
+            <small>Accounts remain for ticket history</small>
         </article>
         <article class="admin-metric-card">
             <span class="admin-metric-icon admin-metric-icon--green" aria-hidden="true">✓</span>
-            <div><span>Active access</span><strong>{{ $activeCount }}</strong></div>
+            <div><span>Active department access</span><strong>{{ $activeCount }}</strong></div>
             <small>Can sign in to the helpdesk</small>
         </article>
         <article class="admin-metric-card">
             <span class="admin-metric-icon admin-metric-icon--amber" aria-hidden="true">◷</span>
-            <div><span>Departed staff</span><strong>{{ $retiredCount + $terminatedCount }}</strong></div>
-            <small>{{ $retiredCount }} retired · {{ $terminatedCount }} terminated</small>
+            <div><span>Deactivated department accounts</span><strong>{{ $inactiveCount }}</strong></div>
+            <small>Access is off; account history is retained</small>
         </article>
     </section>
 
@@ -126,107 +227,213 @@
         <header class="admin-console-card-heading">
             <div>
                 <span class="admin-page-eyebrow">STAFF AND ADMINISTRATORS</span>
-                <h2>Manage staff and admin access</h2>
-                <p>Promote active, approved staff to administrators. Retired and terminated accounts cannot sign in.</p>
+                <h2>Manage Super Admins, department admins and staff</h2>
+                <p>Department admins manage their own department accounts. Ticket access remains shared across departments.</p>
             </div>
             <span class="admin-readonly-badge">{{ $directoryUsers->total() }} matching accounts</span>
         </header>
 
-        <form class="admin-console-toolbar" action="{{ route('admin.users') }}" method="get">
+        <form class="admin-console-toolbar admin-user-filter-toolbar" action="{{ route('admin.users') }}" method="get" data-auto-submit-on-change>
             <label class="admin-search-field">
                 <span class="visually-hidden">Search users</span>
                 <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><circle cx="10.8" cy="10.8" r="6.3" stroke="currentColor" stroke-width="1.7"/><path d="m15.5 15.5 4.2 4.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
                 <input type="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search name or email" aria-label="Search staff and administrators">
             </label>
             <label class="admin-filter-field">
-                <span class="visually-hidden">Filter by employment status</span>
-                <select name="status" aria-label="Filter by employment status">
+                <span class="visually-hidden">Filter by account access</span>
+                <select name="status" aria-label="Filter by account access">
                     <option value="">All statuses</option>
-                    @foreach (['active' => 'Active', 'retired' => 'Retired', 'terminated' => 'Terminated'] as $status => $label)
+                    @foreach (['active' => 'Active', 'inactive' => 'Deactivated'] as $status => $label)
                         <option value="{{ $status }}" @selected(($filters['status'] ?? '') === $status)>{{ $label }}</option>
                     @endforeach
                 </select>
             </label>
-            <button class="admin-console-button" type="submit">Apply filters</button>
+            @if (auth()->user()->isAdmin())
+                <label class="admin-filter-field admin-user-filter-department">
+                    <span class="visually-hidden">Filter by department</span>
+                    <select name="department_id" aria-label="Filter by department">
+                        <option value="">All departments</option>
+                        @foreach ($departments as $department)
+                            <option value="{{ $department->id }}" @selected((string) ($filters['department_id'] ?? '') === (string) $department->id)>{{ $department->name }}</option>
+                        @endforeach
+                    </select>
+                </label>
+            @endif
             @if ($filters !== [])
                 <a class="admin-console-clear" href="{{ route('admin.users') }}">Clear</a>
             @endif
         </form>
 
-        <div class="admin-staff-list">
-            @forelse ($directoryUsers as $directoryUser)
-                <article class="admin-staff-card">
-                    <header class="admin-staff-card-heading">
-                        <div class="admin-user-cell">
-                            <span class="admin-user-avatar">{{ strtoupper(substr($directoryUser->name, 0, 1)) }}</span>
-                            <span><strong>{{ $directoryUser->name }}</strong><small>{{ $directoryUser->email }}</small></span>
-                        </div>
-                        <span class="admin-staff-status admin-staff-status--{{ $directoryUser->employment_status }}">{{ ucfirst($directoryUser->employment_status) }}</span>
-                    </header>
-
-                    <div class="admin-user-role-row">
-                        <p class="admin-user-role">Role <strong>{{ $directoryUser->isAdmin() ? 'Administrator' : 'Staff' }}</strong></p>
-                        <div class="admin-user-management-actions">
-                            @if ($directoryUser->role === 'staff' && $directoryUser->employment_status === 'active')
-                                <form action="{{ route('admin.users.role.update', $directoryUser) }}" method="post">
-                                    @csrf
-                                    @method('patch')
-                                    <input type="hidden" name="role" value="admin">
-                                    <button class="admin-console-button" type="submit">Promote to administrator</button>
-                                </form>
-                            @elseif ($directoryUser->role === 'admin' && $directoryUser->employment_status === 'active' && auth()->id() !== $directoryUser->id)
-                                <form action="{{ route('admin.users.role.update', $directoryUser) }}" method="post">
-                                    @csrf
-                                    @method('patch')
-                                    <input type="hidden" name="role" value="staff">
-                                    <button class="admin-console-button admin-console-button--danger" type="submit">Change to staff</button>
-                                </form>
-                            @elseif ($directoryUser->isAdmin() && auth()->id() === $directoryUser->id)
-                                <span class="admin-readonly-badge">Your account</span>
-                            @elseif ($directoryUser->employment_status !== 'active')
-                                <span class="admin-readonly-badge">Only active accounts can change roles</span>
-                            @endif
-                        </div>
-                    </div>
-
-                    @php($staffErrors = $errors->getBag('default'))
-                    @if ($staffErrors->has('staff.'.$directoryUser->id.'.name') || $staffErrors->has('staff.'.$directoryUser->id.'.email') || $staffErrors->has('staff.'.$directoryUser->id.'.employment_status'))
-                        <div class="admin-staff-validation" role="alert">
-                            @foreach (['name', 'email', 'employment_status'] as $field)
-                                @foreach ($staffErrors->get('staff.'.$directoryUser->id.'.'.$field) as $error)
-                                    <span>{{ $error }}</span>
-                                @endforeach
-                            @endforeach
-                        </div>
-                    @endif
-
-                    @if ($directoryUser->role === 'staff')
-                        <form class="admin-staff-edit-form" action="{{ route('admin.users.update', $directoryUser) }}" method="post">
-                            @csrf
-                            @method('put')
-                            <label class="admin-staff-field" for="staff-{{ $directoryUser->id }}-name">
-                                <span>Full name</span>
-                                <input id="staff-{{ $directoryUser->id }}-name" name="staff[{{ $directoryUser->id }}][name]" value="{{ old('staff.'.$directoryUser->id.'.name', $directoryUser->name) }}" autocomplete="name" maxlength="255" required>
-                            </label>
-                            <label class="admin-staff-field" for="staff-{{ $directoryUser->id }}-email">
-                                <span>Work email</span>
-                                <input id="staff-{{ $directoryUser->id }}-email" name="staff[{{ $directoryUser->id }}][email]" type="email" value="{{ old('staff.'.$directoryUser->id.'.email', $directoryUser->email) }}" autocomplete="email" maxlength="255" required>
-                            </label>
-                            <label class="admin-staff-field" for="staff-{{ $directoryUser->id }}-status">
-                                <span>Employment status</span>
-                                <select id="staff-{{ $directoryUser->id }}-status" name="staff[{{ $directoryUser->id }}][employment_status]">
-                                    @foreach (['active' => 'Active', 'retired' => 'Retired', 'terminated' => 'Terminated'] as $status => $label)
-                                        <option value="{{ $status }}" @selected(old('staff.'.$directoryUser->id.'.employment_status', $directoryUser->employment_status) === $status)>{{ $label }}</option>
-                                    @endforeach
-                                </select>
-                            </label>
-                            <button class="admin-console-button" type="submit">Save changes</button>
-                        </form>
-                    @endif
-                </article>
-            @empty
-                <div class="workspace-empty-state"><strong>No staff or administrator accounts found</strong><p>Adjust your filters or review pending staff applications.</p></div>
-            @endforelse
+        <div class="admin-table-wrap admin-staff-directory-wrap">
+            <table class="admin-console-table admin-staff-directory">
+                <thead>
+                    <tr>
+                        <th scope="col">Account</th>
+                        <th scope="col">Role</th>
+                        <th scope="col">Account access</th>
+                        <th scope="col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($directoryUsers as $directoryUser)
+                        <tr>
+                            <td>
+                                <div class="admin-user-cell admin-staff-directory-user">
+                                    <span class="admin-user-avatar" aria-hidden="true">{{ strtoupper(substr($directoryUser->name, 0, 1)) }}</span>
+                                    @if ($directoryUser->role === 'staff')
+                                        <form id="staff-update-{{ $directoryUser->id }}" class="admin-staff-directory-form" action="{{ route('admin.users.update', $directoryUser) }}" method="post">
+                                            @csrf
+                                            @method('put')
+                                            <label class="visually-hidden" for="staff-{{ $directoryUser->id }}-name">Full name</label>
+                                            <input id="staff-{{ $directoryUser->id }}-name" name="staff[{{ $directoryUser->id }}][name]" value="{{ old('staff.'.$directoryUser->id.'.name', $directoryUser->name) }}" autocomplete="name" maxlength="255" required>
+                                            <label class="visually-hidden" for="staff-{{ $directoryUser->id }}-email">Work email</label>
+                                            <input id="staff-{{ $directoryUser->id }}-email" name="staff[{{ $directoryUser->id }}][email]" type="email" value="{{ old('staff.'.$directoryUser->id.'.email', $directoryUser->email) }}" autocomplete="email" maxlength="255" required>
+                                            @if (auth()->user()->isAdmin())
+                                                <label class="visually-hidden" for="staff-{{ $directoryUser->id }}-department">Department</label>
+                                                <select id="staff-{{ $directoryUser->id }}-department" name="staff[{{ $directoryUser->id }}][department_id]">
+                                                    <option value="">Unassigned</option>
+                                                    @foreach ($departments as $department)
+                                                        <option value="{{ $department->id }}" @selected((string) old('staff.'.$directoryUser->id.'.department_id', $directoryUser->department_id) === (string) $department->id)>{{ $department->name }}{{ $department->is_active ? '' : ' (Inactive)' }}</option>
+                                                    @endforeach
+                                                </select>
+                                            @else
+                                                <small class="admin-staff-directory-department">{{ $directoryUser->department?->name ?? 'Unassigned' }}</small>
+                                            @endif
+                                            @php($staffErrors = $errors->getBag('default'))
+                                            @if ($staffErrors->has('staff.'.$directoryUser->id.'.name') || $staffErrors->has('staff.'.$directoryUser->id.'.email') || $staffErrors->has('staff.'.$directoryUser->id.'.employment_status'))
+                                                <div class="admin-staff-validation" role="alert">
+                                                    @foreach (['name', 'email', 'employment_status'] as $field)
+                                                        @foreach ($staffErrors->get('staff.'.$directoryUser->id.'.'.$field) as $error)
+                                                            <span>{{ $error }}</span>
+                                                        @endforeach
+                                                    @endforeach
+                                                </div>
+                                            @endif
+                                        </form>
+                                    @else
+                                        <span>
+                                            <strong>{{ $directoryUser->name }}</strong>
+                                            <small>{{ $directoryUser->email }}</small>
+                                            <small class="admin-staff-directory-department">{{ $directoryUser->department?->name ?? 'Unassigned' }}</small>
+                                        </span>
+                                    @endif
+                                </div>
+                            </td>
+                            <td>
+                                <div class="admin-staff-role-cell">
+                                    <span class="admin-role-badge {{ $directoryUser->role !== 'staff' ? 'admin-role-badge--admin' : '' }}">
+                                        {{ match ($directoryUser->role) {
+                                            'admin' => 'Super Admin',
+                                            'department_admin' => 'Department Admin',
+                                            default => 'Staff',
+                                        } }}
+                                    </span>
+                                    <div class="admin-user-management-actions">
+                                        @can('manage-user-roles')
+                                            @if ($directoryUser->role === 'staff' && $directoryUser->employment_status === 'active' && $directoryUser->department_id !== null)
+                                                <form action="{{ route('admin.users.role.update', $directoryUser) }}" method="post">
+                                                    @csrf
+                                                    @method('patch')
+                                                    <input type="hidden" name="role" value="department_admin">
+                                                    <input type="hidden" name="department_id" value="{{ $directoryUser->department_id }}">
+                                                    <button class="admin-console-button" type="submit">Promote to department admin</button>
+                                                </form>
+                                            @elseif (in_array($directoryUser->role, ['admin', 'department_admin'], true) && $directoryUser->employment_status === 'active' && auth()->id() !== $directoryUser->id)
+                                                <form action="{{ route('admin.users.role.update', $directoryUser) }}" method="post">
+                                                    @csrf
+                                                    @method('patch')
+                                                    <input type="hidden" name="role" value="staff">
+                                                    <button class="admin-console-button admin-console-button--danger" type="submit">Change to staff</button>
+                                                </form>
+                                            @elseif ($directoryUser->isAdmin() && auth()->id() === $directoryUser->id)
+                                                <span class="admin-readonly-badge">Your account</span>
+                                            @elseif ($directoryUser->employment_status !== 'active')
+                                                <span class="admin-readonly-badge">Only active accounts can change roles</span>
+                                            @endif
+                                        @endcan
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                @php($currentAccessStatus = $directoryUser->isActive() ? 'active' : 'inactive')
+                                @php($isLastActiveSuperAdmin = $directoryUser->isAdmin() && $currentAccessStatus === 'active' && $activeSuperAdminCount <= 1)
+                                @if ($directoryUser->role === 'staff')
+                                    <span class="admin-staff-status admin-staff-status--{{ $currentAccessStatus }}">{{ $currentAccessStatus === 'active' ? 'Active' : 'Deactivated' }}</span>
+                                    <form
+                                        id="user-status-{{ $directoryUser->id }}"
+                                        action="{{ route('admin.users.status.update', $directoryUser) }}"
+                                        method="post"
+                                        data-confirm-submit
+                                        data-confirm-title="{{ $currentAccessStatus === 'active' ? (auth()->id() === $directoryUser->id ? 'Deactivate your Super Admin account?' : 'Deactivate this account?') : 'Reactivate this account?' }}"
+                                        data-confirm-message="{{ $currentAccessStatus === 'active' ? (auth()->id() === $directoryUser->id ? 'You will be signed out immediately. This is only allowed when another active Super Admin remains.' : 'This account will lose sign-in access, and any assigned tickets will return to the shared queue.') : 'This account will be able to sign in again. Existing ticket assignments will not be restored automatically.' }}"
+                                        data-confirm-button="{{ $currentAccessStatus === 'active' ? 'Deactivate account' : 'Reactivate account' }}"
+                                        data-confirm-danger="{{ $currentAccessStatus === 'active' ? 'true' : 'false' }}"
+                                    >
+                                        @csrf
+                                        @method('patch')
+                                        <input type="hidden" name="employment_status" value="{{ $currentAccessStatus === 'active' ? 'inactive' : 'active' }}">
+                                        @foreach ($errors->get('employment_status') as $error)
+                                            <span class="admin-staff-validation" role="alert">{{ $error }}</span>
+                                        @endforeach
+                                    </form>
+                                @elseif (auth()->user()->can('manage-user-roles'))
+                                    <span class="admin-staff-status admin-staff-status--{{ $currentAccessStatus }}">{{ $currentAccessStatus === 'active' ? 'Active' : 'Deactivated' }}</span>
+                                    <form
+                                        id="user-status-{{ $directoryUser->id }}"
+                                        action="{{ route('admin.users.status.update', $directoryUser) }}"
+                                        method="post"
+                                        data-confirm-submit
+                                        data-confirm-title="{{ $currentAccessStatus === 'active' ? (auth()->id() === $directoryUser->id ? 'Deactivate your Super Admin account?' : 'Deactivate this account?') : 'Reactivate this account?' }}"
+                                        data-confirm-message="{{ $currentAccessStatus === 'active' ? (auth()->id() === $directoryUser->id ? 'You will be signed out immediately. This is only allowed when another active Super Admin remains.' : 'This account will lose sign-in access, and any assigned tickets will return to the shared queue.') : 'This account will be able to sign in again. Existing ticket assignments will not be restored automatically.' }}"
+                                        data-confirm-button="{{ $currentAccessStatus === 'active' ? 'Deactivate account' : 'Reactivate account' }}"
+                                        data-confirm-danger="{{ $currentAccessStatus === 'active' ? 'true' : 'false' }}"
+                                    >
+                                        @csrf
+                                        @method('patch')
+                                        <input type="hidden" name="employment_status" value="{{ $currentAccessStatus === 'active' ? 'inactive' : 'active' }}">
+                                        @foreach ($errors->get('employment_status') as $error)
+                                            <span class="admin-staff-validation" role="alert">{{ $error }}</span>
+                                        @endforeach
+                                    </form>
+                                @else
+                                    <span class="admin-staff-status admin-staff-status--{{ $currentAccessStatus }}">{{ $currentAccessStatus === 'active' ? 'Active' : 'Deactivated' }}</span>
+                                @endif
+                            </td>
+                            <td>
+                                @if ($directoryUser->role === 'staff')
+                                    <div class="admin-user-management-actions">
+                                        <button
+                                            class="admin-console-button {{ $currentAccessStatus === 'active' ? 'admin-console-button--danger' : '' }}"
+                                            type="submit"
+                                            form="user-status-{{ $directoryUser->id }}"
+                                        >
+                                            {{ $currentAccessStatus === 'active' ? 'Deactivate account' : 'Reactivate account' }}
+                                        </button>
+                                    </div>
+                                @elseif (auth()->user()->can('manage-user-roles'))
+                                    <button
+                                        class="admin-console-button {{ $currentAccessStatus === 'active' ? 'admin-console-button--danger' : '' }}"
+                                        type="submit"
+                                        form="user-status-{{ $directoryUser->id }}"
+                                        @disabled($isLastActiveSuperAdmin)
+                                        @if ($isLastActiveSuperAdmin)
+                                            title="The last active Super Admin cannot be deactivated. Activate another Super Admin first."
+                                        @endif
+                                    >
+                                        {{ $currentAccessStatus === 'active'
+                                            ? (auth()->id() === $directoryUser->id ? 'Deactivate my account' : 'Deactivate account')
+                                            : 'Reactivate account' }}
+                                    </button>
+                                @else
+                                    <span class="admin-staff-directory-unavailable" aria-label="Not available for administrator accounts">—</span>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="4"><div class="workspace-empty-state"><strong>No staff or administrator accounts found</strong><p>Adjust your filters or review pending staff applications.</p></div></td></tr>
+                    @endforelse
+                </tbody>
+            </table>
         </div>
 
         <footer class="admin-console-card-footer">

@@ -65,7 +65,7 @@
                         <div class="knowledge-article-title"><h3>{{ $article->title }}</h3><span>{{ $article->category }}</span></div>
                         <p>{{ $article->summary }}</p>
                         <div class="knowledge-article-meta">
-                            <span>Updated {{ $article->updated_at->format('M j, Y') }}</span>
+                            <span>Updated {{ $article->updated_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</span>
                             <span class="{{ $article->is_published ? 'visibility-label' : 'draft-label' }}">{{ $article->is_published ? 'Published' : 'Draft' }}</span>
                             <span>By {{ $article->author?->name ?? 'Former staff member' }}</span>
                             <span>{{ $article->images->count() }} images</span>
@@ -74,7 +74,13 @@
                     </div>
                     <div class="knowledge-article-actions">
                         <a class="workspace-button workspace-button--secondary article-edit-button" href="{{ route('admin.knowledge-base.edit', $article) }}">Edit</a>
-                        <form action="{{ route('admin.knowledge-base.destroy', $article) }}" method="post" onsubmit="return confirm('Delete this article? This cannot be undone.')">
+                        <form
+                            action="{{ route('admin.knowledge-base.destroy', $article) }}"
+                            method="post"
+                            data-confirm-delete
+                            data-confirm-title="Delete this article?"
+                            data-confirm-message="“{{ $article->title }}” will be permanently deleted. This action cannot be undone."
+                        >
                             @csrf
                             @method('delete')
                             <button class="article-delete-button" type="submit">Delete</button>

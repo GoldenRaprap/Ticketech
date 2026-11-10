@@ -42,9 +42,13 @@ class TicketAttachmentPreviewController extends Controller
         return $this->preview($attachment);
     }
 
-    public function staff(Ticket $ticket, TicketAttachment $attachment): StreamedResponse
+    public function staff(Request $request, Ticket $ticket, TicketAttachment $attachment): StreamedResponse
     {
-        abort_unless($attachment->ticket_id === $ticket->id, 404);
+        abort_unless(
+            $request->user()?->isStaff()
+                && $attachment->ticket_id === $ticket->id,
+            404,
+        );
 
         return $this->preview($attachment);
     }

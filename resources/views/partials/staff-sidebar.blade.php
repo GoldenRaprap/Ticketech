@@ -1,4 +1,4 @@
-<aside id="staff-sidebar" class="staff-sidebar" aria-label="{{ auth()->user()->isAdmin() ? 'Administrator' : 'Staff' }} navigation">
+<aside id="staff-sidebar" class="staff-sidebar" aria-label="{{ auth()->user()->isAdmin() ? 'Super Admin' : (auth()->user()->isDepartmentAdmin() ? 'Department Admin' : 'Staff') }} navigation">
     <div class="sidebar-top">
         <a class="sidebar-brand" href="{{ auth()->user()->isAdmin() ? route('admin.dashboard') : route('staff.dashboard') }}">
             <img src="{{ asset('images/TickeTech_Logo_Transparent.png') }}" alt="Ticketech Edtech Support System">
@@ -96,6 +96,13 @@
             <a class="sidebar-link {{ request()->routeIs('admin.system-settings') ? 'active' : '' }}" href="{{ route('admin.system-settings') }}" title="System Settings">
                 <span class="sidebar-icon" aria-hidden="true">⚙</span>
                 <span class="sidebar-link-label">System Settings</span>
+            </a>
+        @elseif (auth()->user()->can('manage-user-access'))
+            <span class="sidebar-section-label sidebar-link-label">Administration</span>
+
+            <a class="sidebar-link {{ request()->routeIs('admin.users*') ? 'active' : '' }}" href="{{ route('admin.users') }}" title="User Access">
+                <span class="sidebar-icon" aria-hidden="true">♙</span>
+                <span class="sidebar-link-label">User Access</span>
             </a>
         @endif
     </nav>

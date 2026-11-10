@@ -48,7 +48,7 @@
                         <div class="notification-title-row"><h3>{{ $notification->title }}</h3>@unless ($notification->read_at)<span class="unread-label">New</span>@endunless</div>
                         <p>{{ $notification->message }}</p>
                     </div>
-                    <time datetime="{{ $notification->created_at->toIso8601String() }}">{{ $notification->created_at->diffForHumans() }}</time>
+                    <time datetime="{{ $notification->created_at->copy()->timezone(config('app.display_timezone'))->toIso8601String() }}">{{ $notification->created_at->copy()->timezone(config('app.display_timezone'))->diffForHumans() }}</time>
                     @if ($notification->ticket)
                         <form data-notification-action action="{{ route('staff.notifications.read', $notification) }}" method="post" hidden>
                             @csrf

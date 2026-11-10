@@ -2,17 +2,21 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Department;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class StaffRegistrationController extends Controller
 {
     public function create(): View
     {
-        return view('helpdesk.register');
+        return view('helpdesk.register', [
+            'departments' => Department::query()->where('is_active', true)->orderBy('name')->get(),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -20,6 +24,7 @@ class StaffRegistrationController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
+            'department_id' => ['nullable', 'integer', Rule::exists('departments', 'id')->where('is_active', true)],
             'password' => ['required', 'string', 'min:12', 'confirmed'],
         ]);
 
@@ -28,6 +33,7 @@ class StaffRegistrationController extends Controller
             'email' => $validated['email'],
             'password' => $validated['password'],
             'role' => 'staff',
+            'department_id' => $validated['department_id'] ?? null,
         ]);
         $user->staff_approval_status = 'pending';
         $user->save();

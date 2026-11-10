@@ -99,7 +99,7 @@ class TicketEmailAvailability
         }
     }
 
-    public function clearDeliveryFailureAfterCredentialReplacement(): void
+    public function clearDeliveryFailureAfterSettingsUpdate(): void
     {
         DB::table('system_settings')
             ->whereIn('setting', [

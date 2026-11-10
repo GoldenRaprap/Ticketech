@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -56,10 +57,53 @@ class StaffDashboardTest extends TestCase
         $this->get(route('staff.dashboard'))->assertRedirect(route('login'));
     }
 
+    public function test_workspace_header_identifies_role_and_department(): void
+    {
+        $department = Department::factory()->create(['name' => 'EdTech']);
+        $departmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $department->id,
+        ]);
+        $staffDepartment = Department::factory()->create(['name' => 'COI']);
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $staffDepartment->id,
+        ]);
+        $superAdmin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($superAdmin)
+            ->get(route('staff.tickets'))
+            ->assertOk()
+            ->assertSee('Super Admin')
+            ->assertSee('All departments')
+            ->assertSee('staff-header-context')
+            ->assertDontSee('workspace-identity');
+
+        $this->actingAs($departmentAdmin)
+            ->get(route('staff.tickets'))
+            ->assertOk()
+            ->assertSee('Department Admin')
+            ->assertSee('EdTech')
+            ->assertSee('staff-header-context')
+            ->assertDontSee('workspace-identity');
+
+        $this->actingAs($staff)
+            ->get(route('staff.tickets'))
+            ->assertOk()
+            ->assertSee('Staff')
+            ->assertSee('COI')
+            ->assertSee('staff-header-context')
+            ->assertDontSee('workspace-identity');
+    }
+
     public function test_staff_workspace_pages_render_their_main_content(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
-        $ticket = $this->createTicket('ED-2026-000250', 'New', null);
+        $department = Department::factory()->create();
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+        $ticket = $this->createTicket('ED-2026-000250', 'New', null, $department->id);
         $pages = [
             ['staff.dashboard', 'Dashboard'],
             ['staff.tickets', 'Ticket queue'],
@@ -112,10 +156,11 @@ class StaffDashboardTest extends TestCase
             ->assertSee(route('password.request'));
     }
 
-    private function createTicket(string $ticketNumber, string $status, ?int $assignedToUserId): Ticket
+    private function createTicket(string $ticketNumber, string $status, ?int $assignedToUserId, ?int $departmentId = null): Ticket
     {
         return Ticket::create([
             'ticket_number' => $ticketNumber,
+            'department_id' => $departmentId,
             'assigned_to_user_id' => $assignedToUserId,
             'requester_name' => 'Jamie Student',
             'student_id' => 'PCU-001',

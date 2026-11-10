@@ -62,6 +62,20 @@ class TicketWorkflowTest extends TestCase
         config()->set('app.display_timezone', 'Asia/Manila');
         $this->travelTo('2026-10-27 10:00:00');
         $department = Department::factory()->create();
+        $otherDepartment = Department::factory()->create();
+        $departmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $department->id,
+        ]);
+        $otherDepartmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $otherDepartment->id,
+        ]);
+        $departmentStaff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+        $globalAdmin = User::factory()->create(['role' => 'admin']);
         $category = Category::factory()->create();
 
         Notification::fake();
@@ -95,6 +109,26 @@ class TicketWorkflowTest extends TestCase
             'category_id' => $category->id,
             'priority' => 'Low',
             'status' => 'New',
+        ]);
+        $this->assertDatabaseHas('workspace_notifications', [
+            'user_id' => $departmentAdmin->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'new_ticket',
+        ]);
+        $this->assertDatabaseHas('workspace_notifications', [
+            'user_id' => $globalAdmin->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'new_ticket',
+        ]);
+        $this->assertDatabaseMissing('workspace_notifications', [
+            'user_id' => $otherDepartmentAdmin->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'new_ticket',
+        ]);
+        $this->assertDatabaseMissing('workspace_notifications', [
+            'user_id' => $departmentStaff->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'new_ticket',
         ]);
         $this->assertCount(5, $ticket->attachments);
         foreach ($ticket->attachments as $attachment) {
@@ -547,10 +581,24 @@ class TicketWorkflowTest extends TestCase
         ])->assertOk();
     }
 
-    public function test_client_can_reply_to_a_verified_ticket_and_staff_are_notified(): void
+    public function test_client_can_reply_to_a_ticket_and_notifies_its_department_queue(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
+        $department = Department::factory()->create();
+        $otherDepartment = Department::factory()->create();
+        $departmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $department->id,
+        ]);
+        $otherDepartmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $otherDepartment->id,
+        ]);
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
         $ticket = $this->createTicket();
+        $ticket->update(['department_id' => $department->id]);
 
         $this->post(route('ticket.lookup'), [
             'ticket' => $ticket->ticket_number,
@@ -579,6 +627,16 @@ class TicketWorkflowTest extends TestCase
             'event' => 'requester_reply',
         ]);
         $this->assertDatabaseHas('workspace_notifications', [
+            'user_id' => $departmentAdmin->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'requester_reply',
+        ]);
+        $this->assertDatabaseMissing('workspace_notifications', [
+            'user_id' => $otherDepartmentAdmin->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'requester_reply',
+        ]);
+        $this->assertDatabaseMissing('workspace_notifications', [
             'user_id' => $staff->id,
             'ticket_id' => $ticket->id,
             'type' => 'requester_reply',
@@ -592,8 +650,13 @@ class TicketWorkflowTest extends TestCase
     public function test_client_can_attach_multiple_files_to_a_reply_and_preview_them_in_the_conversation(): void
     {
         Storage::fake('private');
-        $staff = User::factory()->create(['role' => 'staff']);
+        $department = Department::factory()->create();
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
         $ticket = $this->createTicket();
+        $ticket->update(['department_id' => $department->id]);
 
         $this->get(route('ticket.attachments.preview', 1))->assertNotFound();
 

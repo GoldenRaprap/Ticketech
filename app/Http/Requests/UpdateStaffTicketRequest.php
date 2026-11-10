@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Ticket;
+use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -13,7 +15,18 @@ class UpdateStaffTicketRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->isStaff() ?? false;
+        $user = $this->user();
+        $ticket = $this->route('ticket');
+
+        abort_unless(
+            $user instanceof User
+                && $ticket instanceof Ticket
+                && $ticket->isVisibleTo($user),
+            404,
+        );
+
+        return $user->isStaff()
+            && (! $this->exists('assigned_to_user_id') || $user->canManageDepartmentTickets());
     }
 
     /**
@@ -24,6 +37,7 @@ class UpdateStaffTicketRequest extends FormRequest
     public function rules(): array
     {
         $ticket = $this->route('ticket');
+        $user = $this->user();
         $assigneeId = $this->input('assigned_to_user_id', $ticket?->assigned_to_user_id);
         $willBeAssigned = filled($assigneeId);
 
@@ -34,10 +48,26 @@ class UpdateStaffTicketRequest extends FormRequest
                 : ['prohibited'],
             'assigned_to_user_id' => [
                 'nullable',
-                Rule::exists('users', 'id')->where(fn ($query) => $query
-                    ->whereIn('role', ['staff', 'admin'])
-                    ->where('employment_status', 'active')
-                    ->where('staff_approval_status', 'approved')),
+                Rule::exists('users', 'id')->where(function ($query) use ($ticket, $user): void {
+                    $query
+                        ->where('employment_status', 'active')
+                        ->where('staff_approval_status', 'approved')
+                        ->where(function ($query) use ($ticket, $user): void {
+                            $query->where(function ($query) use ($ticket): void {
+                                if ($ticket?->department_id === null) {
+                                    $query->whereRaw('1 = 0');
+                                } else {
+                                    $query
+                                        ->where('role', 'staff')
+                                        ->where('department_id', $ticket->department_id);
+                                }
+                            });
+
+                            if ($user?->isAdmin()) {
+                                $query->orWhere('role', 'admin');
+                            }
+                        });
+                }),
             ],
         ];
     }

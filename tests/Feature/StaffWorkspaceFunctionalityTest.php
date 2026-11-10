@@ -24,7 +24,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_ticket_queue_search_filters_database_tickets(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $matchingTicket = $this->createTicket('ED-2026-000301', 'Network is offline');
         $this->createTicket('ED-2026-000302', 'Cannot reset my password');
 
@@ -39,11 +39,10 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_ticket_queue_filters_by_status_priority_and_assignee(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
-        $assignee = User::factory()->create([
+        $staff = $this->createStaffUser();
+        $assignee = $this->createStaffUser([
             'name' => 'Jordan Lee',
             'nickname' => 'Jo',
-            'role' => 'staff',
         ]);
         $matchingTicket = $this->createTicket('ED-2026-000311', 'Matching ticket', $assignee->id, 'High', 'In Progress');
         $this->createTicket('ED-2026-000312', 'Wrong status', $assignee->id, 'High', 'New');
@@ -65,10 +64,10 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertDontSee('>Jordan Lee</option>', false);
     }
 
-    public function test_staff_can_update_ticket_status_priority_and_assignee(): void
+    public function test_department_admin_can_update_ticket_status_priority_and_assignee(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
-        $assignee = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createDepartmentAdmin();
+        $assignee = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000303', 'Portal access issue');
 
         $this->actingAs($staff)
@@ -103,17 +102,15 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_staff_cannot_change_priority_until_a_ticket_is_assigned(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000322', 'Unassigned ticket', null, 'High');
 
         $this->actingAs($staff)
             ->get(route('staff.ticket-detail', $ticket))
             ->assertOk()
-            ->assertSee('data-priority-field', false)
-            ->assertSee('data-ticket-assignee', false)
-            ->assertSee('data-automatic-priority-note', false)
-            ->assertSee('name="priority" disabled', false)
-            ->assertSee('Assign this ticket to enable priority changes.');
+            ->assertDontSee('data-priority-field', false)
+            ->assertDontSee('data-automatic-priority-note', false)
+            ->assertSee('Assignment is managed by your department admin.');
 
         $this->from(route('staff.ticket-detail', $ticket))
             ->put(route('staff.ticket-update', $ticket), [
@@ -129,19 +126,17 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_ticket_assignment_options_only_include_approved_active_staff(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
-        $approvedStaff = User::factory()->create([
+        $departmentAdmin = $this->createDepartmentAdmin();
+        $staff = $this->createStaffUser();
+        $approvedStaff = $this->createStaffUser([
             'name' => 'Taylor Morgan',
             'nickname' => 'Tay',
-            'role' => 'staff',
             'staff_approval_status' => 'approved',
         ]);
-        $pendingStaff = User::factory()->create([
-            'role' => 'staff',
+        $pendingStaff = $this->createStaffUser([
             'staff_approval_status' => 'pending',
         ]);
-        $deniedStaff = User::factory()->create([
-            'role' => 'staff',
+        $deniedStaff = $this->createStaffUser([
             'staff_approval_status' => 'denied',
         ]);
         $ticket = $this->createTicket('ED-2026-000319', 'Assignment options ticket');
@@ -149,7 +144,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $expectedAssigneeIds = [$staff->id, $approvedStaff->id];
         sort($expectedAssigneeIds);
 
-        $this->actingAs($staff)
+        $this->actingAs($departmentAdmin)
             ->get(route('staff.tickets'))
             ->assertOk()
             ->assertViewHas('assignees', function ($assignees) use ($expectedAssigneeIds): bool {
@@ -181,14 +176,13 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_staff_cannot_assign_a_ticket_to_a_denied_staff_account(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
-        $deniedStaff = User::factory()->create([
-            'role' => 'staff',
+        $departmentAdmin = $this->createDepartmentAdmin();
+        $deniedStaff = $this->createStaffUser([
             'staff_approval_status' => 'denied',
         ]);
         $ticket = $this->createTicket('ED-2026-000320', 'Denied assignee ticket');
 
-        $this->actingAs($staff)
+        $this->actingAs($departmentAdmin)
             ->from(route('staff.ticket-detail', $ticket))
             ->put(route('staff.ticket-update', $ticket), [
                 'status' => 'In Progress',
@@ -203,8 +197,8 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_ticket_update_preserves_assignee_when_field_is_omitted(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
-        $assignee = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
+        $assignee = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000314', 'Portal access issue', $assignee->id);
 
         $this->actingAs($staff)
@@ -219,8 +213,8 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_ticket_detail_renders_after_updating_assignment_and_resolution(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
-        $assignee = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createDepartmentAdmin();
+        $assignee = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000316', 'Resolved request');
 
         $this->actingAs($staff)
@@ -232,6 +226,8 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
         $this->get(route('staff.ticket-detail', $ticket))
             ->assertOk()
+            ->assertSee('Ticket number')
+            ->assertSee('<strong>ED-2026-000316</strong>', false)
             ->assertSee('Assigned')
             ->assertSee('Resolved');
 
@@ -242,7 +238,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_staff_ticket_detail_detects_new_replies_and_restricts_update_checks_to_staff(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000317', 'New requester reply');
         $existingComment = $ticket->comments()->create([
             'author_name' => 'Jamie Student',
@@ -286,7 +282,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_staff_can_report_client_conduct_for_admin_review(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $admin = User::factory()->create(['role' => 'admin']);
         $ticket = $this->createTicket('ED-2026-000318', 'Repeated spam requests');
 
@@ -406,11 +402,12 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_staff_can_record_first_assignment_and_resolution_durations_in_ticket_detail(): void
     {
         $this->travelTo('2026-10-21 10:00:00');
-        $staff = User::factory()->create(['role' => 'staff']);
+        $departmentAdmin = $this->createDepartmentAdmin();
+        $staff = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000320', 'Ticket timing test');
 
         $this->travelTo('2026-10-21 10:45:00');
-        $this->actingAs($staff)
+        $this->actingAs($departmentAdmin)
             ->put(route('staff.ticket-update', $ticket), [
                 'status' => 'Assigned',
                 'assigned_to_user_id' => $staff->id,
@@ -419,7 +416,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
         $this->travelTo('2026-10-21 12:30:00');
         $ticket->refresh();
-        $this->actingAs($staff)
+        $this->actingAs($departmentAdmin)
             ->put(route('staff.ticket-update', $ticket), [
                 'status' => 'Resolved',
                 'priority' => 'Low',
@@ -432,6 +429,12 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->assertNotNull($ticket->last_resolved_at);
 
         $this->travelTo('2026-10-22 12:30:00');
+        $this->actingAs($departmentAdmin)
+            ->put(route('staff.ticket-update', $ticket), [
+                'status' => 'Waiting for User',
+            ])
+            ->assertRedirect(route('staff.ticket-detail', $ticket));
+
         $this->post(route('ticket.reply'), [
             'ticket' => $ticket->ticket_number,
             'email' => 'jamie@example.edu',
@@ -445,7 +448,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
         $this->travelTo('2026-10-22 14:30:00');
         $ticket->refresh();
-        $this->actingAs($staff)
+        $this->actingAs($departmentAdmin)
             ->put(route('staff.ticket-update', $ticket), [
                 'status' => 'Resolved',
                 'priority' => 'Low',
@@ -462,11 +465,11 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_staff_cannot_assign_a_ticket_to_a_requester(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
+        $departmentAdmin = $this->createDepartmentAdmin();
         $requester = User::factory()->create(['role' => 'requester']);
         $ticket = $this->createTicket('ED-2026-000304', 'Portal access issue');
 
-        $this->actingAs($staff)
+        $this->actingAs($departmentAdmin)
             ->from(route('staff.ticket-detail', $ticket))
             ->put(route('staff.ticket-update', $ticket), [
                 'status' => 'In Progress',
@@ -478,7 +481,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->assertSame('New', $ticket->fresh()->status);
         $this->assertDatabaseMissing('ticket_events', ['ticket_id' => $ticket->id]);
         $this->assertDatabaseHas('ticket_events', [
-            'actor_id' => $staff->id,
+            'actor_id' => $departmentAdmin->id,
             'event' => 'staff_action_performed',
             'route_name' => 'staff.ticket-update',
         ]);
@@ -487,8 +490,8 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_staff_can_add_internal_ticket_notes_without_assignment_notification(): void
     {
         Storage::fake('private');
-        $staff = User::factory()->create(['role' => 'staff']);
-        $assignee = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
+        $assignee = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000305', 'Portal access issue', $assignee->id);
 
         $this->actingAs($staff)
@@ -535,7 +538,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_staff_ticket_activity_separates_public_replies_and_internal_notes(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000317', 'Conversation display');
         $ticket->comments()->create([
             'author_id' => $staff->id,
@@ -565,8 +568,8 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_public_staff_reply_notifies_the_assigned_staff_member(): void
     {
         Storage::fake('private');
-        $staff = User::factory()->create(['role' => 'staff']);
-        $assignee = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
+        $assignee = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000315', 'Portal access issue', $assignee->id);
 
         $this->actingAs($staff)
@@ -602,7 +605,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_staff_attachment_download_is_scoped_to_its_ticket(): void
     {
         Storage::fake('private');
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000306', 'Portal access issue');
         $otherTicket = $this->createTicket('ED-2026-000307', 'Other issue');
         Storage::disk('private')->put('ticket-attachments/support.pdf', 'private attachment');
@@ -966,7 +969,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_reports_are_calculated_from_ticket_records(): void
     {
         $this->travelTo(Carbon::parse('2026-11-10 12:00:00'));
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $this->createTicket('ED-2026-000308', 'New network issue', null, 'Urgent');
         $this->createTicket('ED-2026-000309', 'Resolved account issue', null, 'Low', 'Resolved');
 
@@ -991,13 +994,13 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_weekly_reports_include_the_selected_dates_monday_through_sunday(): void
     {
         $this->travelTo(Carbon::parse('2026-03-04 12:00:00'));
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $mondayTicket = $this->createTicket('ED-2026-000324', 'Monday ticket');
         $sundayTicket = $this->createTicket('ED-2026-000325', 'Sunday ticket');
         $outsideTicket = $this->createTicket('ED-2026-000326', 'Next week ticket');
-        $mondayTicket->forceFill(['created_at' => Carbon::parse('2026-03-02 08:00:00')])->save();
-        $sundayTicket->forceFill(['created_at' => Carbon::parse('2026-03-08 18:00:00')])->save();
-        $outsideTicket->forceFill(['created_at' => Carbon::parse('2026-03-09 08:00:00')])->save();
+        $mondayTicket->forceFill(['created_at' => Carbon::parse('2026-03-02 00:00:00 UTC')])->save();
+        $sundayTicket->forceFill(['created_at' => Carbon::parse('2026-03-08 10:00:00 UTC')])->save();
+        $outsideTicket->forceFill(['created_at' => Carbon::parse('2026-03-09 00:00:00 UTC')])->save();
 
         $this->actingAs($staff)
             ->get(route('staff.reports', [
@@ -1012,15 +1015,15 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_monthly_reports_and_exports_include_the_selected_calendar_month(): void
     {
         $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $previousMonthTicket = $this->createTicket('ED-2026-000337', 'Previous month ticket');
         $firstMonthTicket = $this->createTicket('ED-2026-000338', 'First day of month');
         $lastMonthTicket = $this->createTicket('ED-2026-000339', 'Last day of month');
         $nextMonthTicket = $this->createTicket('ED-2026-000340', 'Next month ticket');
-        $previousMonthTicket->forceFill(['created_at' => Carbon::parse('2026-02-28 23:59:00')])->save();
-        $firstMonthTicket->forceFill(['created_at' => Carbon::parse('2026-03-01 00:00:00')])->save();
-        $lastMonthTicket->forceFill(['created_at' => Carbon::parse('2026-03-31 23:59:59')])->save();
-        $nextMonthTicket->forceFill(['created_at' => Carbon::parse('2026-04-01 00:00:00')])->save();
+        $previousMonthTicket->forceFill(['created_at' => Carbon::parse('2026-02-28 15:59:00 UTC')])->save();
+        $firstMonthTicket->forceFill(['created_at' => Carbon::parse('2026-02-28 16:00:00 UTC')])->save();
+        $lastMonthTicket->forceFill(['created_at' => Carbon::parse('2026-03-31 15:59:59 UTC')])->save();
+        $nextMonthTicket->forceFill(['created_at' => Carbon::parse('2026-03-31 16:00:00 UTC')])->save();
         $filters = [
             'period' => 'monthly',
             'reference_date' => '2026-03-15',
@@ -1059,7 +1062,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_report_export_volume_bars_match_each_category_share_of_all_tickets(): void
     {
         $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
 
         $this->createTicket('ED-2026-000351', 'High ticket one', null, 'High');
         $this->createTicket('ED-2026-000352', 'High ticket two', null, 'High');
@@ -1239,11 +1242,11 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_yearly_reports_use_the_selected_calendar_year(): void
     {
         $this->travelTo(Carbon::parse('2026-01-01 12:00:00'));
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $priorYearTicket = $this->createTicket('ED-2026-000327', 'Prior year ticket');
         $currentYearTicket = $this->createTicket('ED-2026-000328', 'Current year ticket');
-        $priorYearTicket->forceFill(['created_at' => Carbon::parse('2025-12-31 23:59:00')])->save();
-        $currentYearTicket->forceFill(['created_at' => Carbon::parse('2026-01-01 00:00:00')])->save();
+        $priorYearTicket->forceFill(['created_at' => Carbon::parse('2025-12-31 15:59:00 UTC')])->save();
+        $currentYearTicket->forceFill(['created_at' => Carbon::parse('2025-12-31 16:00:00 UTC')])->save();
 
         $this->actingAs($staff)
             ->get(route('staff.reports', [
@@ -1258,13 +1261,13 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_custom_report_trend_counts_only_tickets_inside_the_selected_dates(): void
     {
         $this->travelTo(Carbon::parse('2026-04-04 12:00:00'));
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $beforePeriodTicket = $this->createTicket('ED-2026-000331', 'Before custom range');
         $this->createTicket('ED-2026-000332', 'First day of custom range');
         $this->createTicket('ED-2026-000333', 'Last day of custom range');
         $afterPeriodTicket = $this->createTicket('ED-2026-000334', 'After custom range');
-        $beforePeriodTicket->forceFill(['created_at' => Carbon::parse('2026-04-03 23:59:00')])->save();
-        $afterPeriodTicket->forceFill(['created_at' => Carbon::parse('2026-05-11 00:00:00')])->save();
+        $beforePeriodTicket->forceFill(['created_at' => Carbon::parse('2026-04-03 15:59:00 UTC')])->save();
+        $afterPeriodTicket->forceFill(['created_at' => Carbon::parse('2026-05-10 16:00:00 UTC')])->save();
 
         $this->actingAs($staff)
             ->get(route('staff.reports', [
@@ -1280,7 +1283,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_long_custom_report_periods_use_a_bounded_trend_chart(): void
     {
         $this->travelTo(Carbon::parse('2026-04-04 12:00:00'));
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $firstTicket = $this->createTicket('ED-2026-000335', 'Early report ticket');
         $lastTicket = $this->createTicket('ED-2026-000336', 'Recent report ticket');
         $firstTicket->forceFill(['created_at' => Carbon::parse('2020-06-15 12:00:00')])->save();
@@ -1319,8 +1322,9 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     public function test_staff_can_export_custom_period_tickets_as_formula_safe_xlsx(): void
     {
         $this->travelTo(Carbon::parse('2026-04-04 12:00:00'));
-        $staff = User::factory()->create(['role' => 'staff']);
-        $assignee = User::factory()->create(['name' => 'Taylor Morgan', 'role' => 'staff']);
+        config()->set('app.display_timezone', 'Asia/Manila');
+        $staff = $this->createStaffUser();
+        $assignee = $this->createStaffUser(['name' => 'Taylor Morgan']);
         $includedTicket = $this->createTicket(
             'ED-2026-000329',
             '=HYPERLINK("https://example.com", "click")',
@@ -1328,7 +1332,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             'Urgent',
         );
         $outsideTicket = $this->createTicket('ED-2026-000330', 'Outside the selected period');
-        $outsideTicket->forceFill(['created_at' => Carbon::parse('2026-04-03 23:59:00')])->save();
+        $outsideTicket->forceFill(['created_at' => Carbon::parse('2026-04-03 15:59:00 UTC')])->save();
 
         $response = $this->actingAs($staff)
             ->get(route('staff.reports.export', [
@@ -1359,6 +1363,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->assertStringContainsString('FFFCE4E4', $styles);
         $this->assertStringContainsString('FFDDEBF7', $styles);
         $this->assertStringContainsString($includedTicket->ticket_number, $ticketsSheetText);
+        $this->assertStringContainsString('2026-04-04 20:00:00', $ticketsSheetText);
         $this->assertStringContainsString("'=HYPERLINK", $ticketsSheetText);
         $this->assertStringContainsString($assignee->name, $ticketsSheetText);
         $this->assertStringNotContainsString($outsideTicket->ticket_number, $ticketsSheetText);
@@ -1414,7 +1419,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $actor = User::factory()->create(['name' => 'Taylor Morgan', 'role' => 'staff']);
         $otherActor = User::factory()->create(['name' => 'Jordan Lee', 'role' => 'staff']);
         $ticket = $this->createTicket('ED-2026-000381', 'Audit export target');
-        TicketEvent::create([
+        $matchingEvent = TicketEvent::create([
             'ticket_id' => $ticket->id,
             'actor_id' => $actor->id,
             'actor_name' => $actor->name,
@@ -1428,9 +1433,11 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             'ip_address' => '192.0.2.10',
             'user_agent' => 'Test browser',
             'properties' => ['before' => ['role' => 'staff'], 'after' => ['role' => 'admin']],
+        ]);
+        $matchingEvent->forceFill([
             'created_at' => '2026-11-04 10:00:00',
             'updated_at' => '2026-11-04 10:00:00',
-        ]);
+        ])->save();
         TicketEvent::create([
             'actor_id' => $actor->id,
             'actor_name' => $actor->name,
@@ -1476,6 +1483,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->assertStringContainsString('autoFilter ref="A1:J2"', $sheet);
         $this->assertMatchesRegularExpression('~<col[^>]*min="10"[^>]*width="72"[^>]*>~', $sheet);
         $this->assertStringContainsString('Date and time', $sheetText);
+        $this->assertStringContainsString('2026-11-04 18:00:00', $sheetText);
         $this->assertStringContainsString('Audit Details', $sheetText);
         $this->assertStringContainsString('rgb="FFD9EAF7"', $styles);
         $this->assertStringContainsString('rgb="FF1F4E79"', $styles);
@@ -1521,7 +1529,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
     public function test_ticket_notifications_render_as_clickable_rows_without_an_open_button(): void
     {
-        $staff = User::factory()->create(['role' => 'staff']);
+        $staff = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000399', 'Notification ticket');
         $notification = WorkspaceNotification::create([
             'user_id' => $staff->id,
@@ -1754,6 +1762,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
     ): Ticket {
         return Ticket::create([
             'ticket_number' => $ticketNumber,
+            'department_id' => $this->defaultDepartment()->id,
             'assigned_to_user_id' => $assigneeId,
             'requester_name' => 'Jamie Student',
             'student_id' => '2023000001',
@@ -1763,6 +1772,35 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             'priority' => $priority,
             'status' => $status,
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function createStaffUser(array $attributes = []): User
+    {
+        return User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $this->defaultDepartment()->id,
+            ...$attributes,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function createDepartmentAdmin(array $attributes = []): User
+    {
+        return User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $this->defaultDepartment()->id,
+            ...$attributes,
+        ]);
+    }
+
+    private function defaultDepartment(): Department
+    {
+        return Department::query()->firstOrCreate(['name' => 'Staff workspace test']);
     }
 
     /**

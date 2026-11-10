@@ -66,7 +66,7 @@ class PasswordResetTest extends TestCase
 
     public function test_valid_reset_token_updates_password_and_cannot_be_reused(): void
     {
-        $user = User::factory()->create(['password' => 'old-password-123', 'role' => 'staff']);
+        $user = User::factory()->unverified()->create(['password' => 'old-password-123', 'role' => 'staff']);
         $token = Password::createToken($user);
 
         $this->get(route('password.reset', ['token' => $token, 'email' => $user->email]))
@@ -84,6 +84,7 @@ class PasswordResetTest extends TestCase
             ->assertSessionHas('status', 'Your password has been reset. You can now sign in.');
 
         $this->assertTrue(Hash::check('new-password-456', $user->refresh()->password));
+        $this->assertNotNull($user->email_verified_at);
 
         $this->from(route('password.reset', ['token' => $token, 'email' => $user->email]))
             ->post(route('password.update'), [

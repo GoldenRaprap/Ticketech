@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Ticket;
+use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -12,7 +14,17 @@ class StoreStaffTicketCommentRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->isStaff() ?? false;
+        $user = $this->user();
+        $ticket = $this->route('ticket');
+
+        abort_unless(
+            $user instanceof User
+                && $ticket instanceof Ticket
+                && $ticket->isVisibleTo($user),
+            404,
+        );
+
+        return $user->isStaff();
     }
 
     /**

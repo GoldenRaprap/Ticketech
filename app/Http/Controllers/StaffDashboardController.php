@@ -10,27 +10,29 @@ class StaffDashboardController extends Controller
 {
     public function __invoke(Request $request): View
     {
+        $user = $request->user();
         $openStatuses = ['New', 'Assigned', 'In Progress', 'Waiting for User', 'On Hold'];
-        $statusCounts = Ticket::query()
+        $visibleTickets = Ticket::query()->visibleTo($user);
+        $statusCounts = (clone $visibleTickets)
             ->selectRaw('status, COUNT(*) as total')
             ->groupBy('status')
             ->orderBy('status')
             ->pluck('total', 'status');
 
-        $recentTickets = Ticket::query()
+        $recentTickets = (clone $visibleTickets)
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->limit(6)
             ->get();
 
         return view('staff.dashboard', [
-            'openTicketCount' => Ticket::query()->whereIn('status', $openStatuses)->count(),
+            'openTicketCount' => (clone $visibleTickets)->whereIn('status', $openStatuses)->count(),
             'newTicketCount' => $statusCounts->get('New', 0),
-            'unassignedTicketCount' => Ticket::query()
+            'unassignedTicketCount' => (clone $visibleTickets)
                 ->whereIn('status', $openStatuses)
                 ->whereNull('assigned_to_user_id')
                 ->count(),
-            'assignedToMeCount' => Ticket::query()
+            'assignedToMeCount' => (clone $visibleTickets)
                 ->whereIn('status', $openStatuses)
                 ->where('assigned_to_user_id', $request->user()->id)
                 ->count(),

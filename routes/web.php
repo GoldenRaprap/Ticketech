@@ -94,6 +94,7 @@ Route::prefix('staff')->name('staff.')->group(function () {
         Route::get('/tickets/{ticket:ticket_number}', [StaffTicketController::class, 'show'])->name('ticket-detail');
         Route::get('/tickets/{ticket:ticket_number}/updates', [StaffTicketController::class, 'updates'])->name('ticket-updates');
         Route::put('/tickets/{ticket:ticket_number}', [StaffTicketController::class, 'update'])->name('ticket-update');
+        Route::post('/tickets/{ticket:ticket_number}/transfer', [StaffTicketController::class, 'transfer'])->name('ticket-transfer');
         Route::post('/tickets/{ticket:ticket_number}/comments', [StaffTicketController::class, 'comment'])->name('ticket-comments.store');
         Route::post('/tickets/{ticket:ticket_number}/misuse-reports', [StaffTicketController::class, 'reportClient'])->name('ticket-misuse-reports.store');
         Route::get('/tickets/{ticket:ticket_number}/attachments/{attachment}', [StaffTicketController::class, 'downloadAttachment'])->name('ticket-attachments.download');
@@ -109,18 +110,28 @@ Route::prefix('staff')->name('staff.')->group(function () {
     });
 });
 
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'audit.activity'])->group(function () {
+    Route::middleware('can:manage-user-access')->group(function () {
+        Route::get('/users', [AdminUserController::class, 'index'])->name('users');
+        Route::post('/users', [AdminUserController::class, 'store'])->name('users.store');
+        Route::post('/users/{user}/approve', [AdminUserController::class, 'approve'])->name('users.approve');
+        Route::post('/users/{user}/deny', [AdminUserController::class, 'deny'])->name('users.deny');
+        Route::delete('/users/{user}/denied-unverified-application', [AdminUserController::class, 'removeDeniedUnverifiedApplication'])
+            ->name('users.denied-unverified-application.destroy');
+        Route::put('/users/{user}', [AdminUserController::class, 'update'])->name('users.update');
+        Route::patch('/users/{user}/status', [AdminUserController::class, 'updateAdministrativeStatus'])
+            ->name('users.status.update');
+        Route::patch('/users/{user}/role', [AdminUserController::class, 'updateRole'])
+            ->middleware('can:manage-user-roles')
+            ->name('users.role.update');
+    });
+});
+
 Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])->group(function () {
     Route::get('/dashboard', AdminDashboardController::class)->name('dashboard');
     Route::get('/moderation', [AdminModerationController::class, 'index'])->name('moderation');
     Route::patch('/moderation/reports/{report}/review', [AdminModerationController::class, 'review'])->name('moderation.review');
     Route::patch('/moderation/clients/{clientModeration}/clear', [AdminModerationController::class, 'clear'])->name('moderation.clear');
-    Route::get('/users', [AdminUserController::class, 'index'])->name('users');
-    Route::post('/users/{user}/approve', [AdminUserController::class, 'approve'])->name('users.approve');
-    Route::post('/users/{user}/deny', [AdminUserController::class, 'deny'])->name('users.deny');
-    Route::delete('/users/{user}/denied-unverified-application', [AdminUserController::class, 'removeDeniedUnverifiedApplication'])
-        ->name('users.denied-unverified-application.destroy');
-    Route::put('/users/{user}', [AdminUserController::class, 'update'])->name('users.update');
-    Route::patch('/users/{user}/role', [AdminUserController::class, 'updateRole'])->name('users.role.update');
     Route::get('/knowledge-base', [KnowledgeArticleController::class, 'index'])->name('knowledge-base');
     Route::put('/knowledge-base/review-settings', [KnowledgeArticleController::class, 'updateReviewSettings'])->name('knowledge-base.review-settings');
     Route::get('/knowledge-base/create', [KnowledgeArticleController::class, 'create'])->name('knowledge-base.create');

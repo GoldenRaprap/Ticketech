@@ -10,6 +10,15 @@
     @include('partials.staff-sidebar')
     <button class="staff-sidebar-backdrop" type="button" aria-label="Close navigation" data-sidebar-close tabindex="-1"></button>
     <div class="staff-main">
+        @php
+            $workspaceUser = auth()->user();
+            $workspaceRole = $workspaceUser->isAdmin()
+                ? 'Super Admin'
+                : ($workspaceUser->isDepartmentAdmin() ? 'Department Admin' : 'Staff');
+            $workspaceDepartment = $workspaceUser->isAdmin()
+                ? 'All departments'
+                : ($workspaceUser->department?->name ?? 'No department assigned');
+        @endphp
         <header class="staff-header">
             <div class="staff-header-left">
                 <button class="menu-toggle" type="button" aria-label="Open navigation" aria-controls="staff-sidebar" aria-expanded="false" data-sidebar-toggle>
@@ -22,10 +31,12 @@
                     </svg>
                 </button>
                 <img class="staff-header-logo" src="{{ asset('images/Philippine_Christian_University_logo.png') }}" alt="">
-                <div class="staff-header-title">@yield('heading', auth()->user()->isAdmin() ? 'Admin Console' : 'Staff Workspace')</div>
+                <div class="staff-header-copy">
+                    <div class="staff-header-title">@yield('heading', auth()->user()->isAdmin() ? 'Admin Console' : 'Staff Workspace')</div>
+                    <div class="staff-header-context">{{ $workspaceRole }} · {{ $workspaceDepartment }}</div>
+                </div>
             </div>
             <div class="staff-badge-row">
-                <span class="workspace-role">{{ auth()->user()->isAdmin() ? 'Administrator' : 'Helpdesk Staff' }}</span>
                 <a class="primary-button" href="{{ route('staff.tickets') }}">View Tickets</a>
             </div>
         </header>

@@ -51,6 +51,16 @@
                         <label for="register-email">PCU staff email</label>
                         <input id="register-email" name="email" type="email" value="{{ old('email') }}" placeholder="e.g. jamie.santos@pcu.edu.ph" autocomplete="email" maxlength="255" @if ($errors->has('email')) aria-invalid="true" @endif required>
 
+                        @if ($departments->isNotEmpty())
+                            <label for="register-department">Department</label>
+                            <select id="register-department" name="department_id" @if ($errors->has('department_id')) aria-invalid="true" @endif>
+                                <option value="">Select a department (optional)</option>
+                                @foreach ($departments as $department)
+                                    <option value="{{ $department->id }}" @selected((string) old('department_id') === (string) $department->id)>{{ $department->name }}</option>
+                                @endforeach
+                            </select>
+                        @endif
+
                         <label for="register-password">Password</label>
                         <div class="password-input-row">
                             <input id="register-password" name="password" type="password" placeholder="At least 12 characters" autocomplete="new-password" minlength="12" @if ($errors->has('password')) aria-invalid="true" @endif required>

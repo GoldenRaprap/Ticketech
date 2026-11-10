@@ -242,9 +242,7 @@ class AdminSystemSettingsController extends Controller
             }
         });
 
-        if (filled($validated['smtp_app_password'] ?? null)) {
-            $ticketEmailAvailability->clearDeliveryFailureAfterCredentialReplacement();
-        }
+        $ticketEmailAvailability->clearDeliveryFailureAfterSettingsUpdate();
 
         $scheme = match ($validated['smtp_encryption']) {
             'ssl' => 'smtps',

@@ -43,7 +43,7 @@
                     <dl class="moderation-report-meta">
                         <div><dt>Reason</dt><dd>{{ str($report->reason)->replace('_', ' ')->title() }}</dd></div>
                         <div><dt>Reported by</dt><dd>{{ $report->reporter->name }}</dd></div>
-                        <div><dt>Submitted</dt><dd>{{ $report->created_at->format('M j, Y g:i A') }}</dd></div>
+                        <div><dt>Submitted</dt><dd>{{ $report->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</dd></div>
                         @if ($report->action)
                             <div><dt>Decision</dt><dd>{{ ucfirst($report->action) }}{{ $report->reviewedBy ? ' by '.$report->reviewedBy->name : '' }}</dd></div>
                         @endif
@@ -82,7 +82,7 @@
                         <strong>{{ $moderation->email }}</strong>
                         <span class="status-pill status-pill--{{ $moderation->cleared_at ? 'resolved' : ($moderation->status === 'blocked' ? 'closed' : 'on-hold') }}">{{ $moderation->cleared_at ? 'Cleared' : ucfirst($moderation->status) }}</span>
                         <p>{{ $moderation->reason }}</p>
-                        <small>{{ $moderation->actedBy?->name ?? 'Administrator' }} · Updated {{ $moderation->updated_at->format('M j, Y') }}</small>
+                        <small>{{ $moderation->actedBy?->name ?? 'Administrator' }} · Updated {{ $moderation->updated_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</small>
                     </div>
                     @if (! $moderation->cleared_at)
                         <form action="{{ route('admin.moderation.clear', $moderation) }}" method="post">
@@ -91,7 +91,7 @@
                             <button class="workspace-button workspace-button--secondary" type="submit">Clear action</button>
                         </form>
                     @else
-                        <small>Cleared {{ $moderation->cleared_at->format('M j, Y') }}</small>
+                        <small>Cleared {{ $moderation->cleared_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</small>
                     @endif
                 </article>
             @empty

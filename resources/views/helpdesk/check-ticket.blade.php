@@ -149,7 +149,7 @@
                                 <div class="ticket-message-meta">
                                     <strong>{{ $ticket->requester_name }}</strong>
                                     <span>Original request</span>
-                                    <time datetime="{{ $ticket->created_at->toIso8601String() }}">{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</time>
+                                    <time datetime="{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->toIso8601String() }}">{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</time>
                                 </div>
                                 <p>{{ $ticket->description }}</p>
                                 @include('partials.message-attachments', [
@@ -178,7 +178,7 @@
                                     <div class="ticket-message-meta">
                                         <strong>{{ $publicAuthorName }}</strong>
                                         <span>{{ $isRequesterComment ? 'Your reply' : 'Support team' }}</span>
-                                        <time datetime="{{ $comment->created_at->toIso8601String() }}">{{ $comment->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</time>
+                                        <time datetime="{{ $comment->created_at->copy()->timezone(config('app.display_timezone'))->toIso8601String() }}">{{ $comment->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</time>
                                     </div>
                                     <p>{{ $comment->body }}</p>
                                     @include('partials.message-attachments', [

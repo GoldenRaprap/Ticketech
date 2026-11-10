@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Models\WorkspaceNotification;
@@ -108,7 +109,7 @@ class TicketResolutionSlaTest extends TestCase
         $this->setTicketCycleStart($ticket, CarbonImmutable::parse('2026-11-02 01:00:00 UTC'));
 
         $this->travelTo('2026-11-02 01:30:00 UTC');
-        $this->actingAs($staff)
+        $this->actingAs($staff->fresh())
             ->put(route('staff.ticket-update', $ticket), ['status' => 'Waiting for User'])
             ->assertRedirect(route('staff.ticket-detail', $ticket));
 
@@ -122,7 +123,7 @@ class TicketResolutionSlaTest extends TestCase
         ]);
 
         $this->travelTo('2026-11-02 03:30:00 UTC');
-        $this->actingAs($staff)
+        $this->actingAs($staff->fresh())
             ->put(route('staff.ticket-update', $ticket), ['status' => 'In Progress'])
             ->assertRedirect(route('staff.ticket-detail', $ticket));
 
@@ -174,7 +175,7 @@ class TicketResolutionSlaTest extends TestCase
         $ticket = $this->createTicket($staff->id, 'Urgent', 'Resolved');
         $this->travelTo('2026-11-02 02:00:00 UTC');
 
-        $this->actingAs($staff)
+        $this->actingAs($staff->fresh())
             ->put(route('staff.ticket-update', $ticket), ['status' => 'In Progress'])
             ->assertRedirect(route('staff.ticket-detail', $ticket));
 
@@ -192,7 +193,7 @@ class TicketResolutionSlaTest extends TestCase
         $this->setTicketCycleStart($ticket, CarbonImmutable::parse('2026-11-02 01:00:00 UTC'));
         $this->travelTo('2026-11-02 01:30:00 UTC');
 
-        $this->actingAs($staff)
+        $this->actingAs($staff->fresh())
             ->put(route('staff.ticket-update', $ticket), ['status' => 'Waiting for User'])
             ->assertRedirect(route('staff.ticket-detail', $ticket));
 
@@ -244,7 +245,7 @@ class TicketResolutionSlaTest extends TestCase
             'resolution_due_at' => now()->subMinute(),
         ])->save();
 
-        $this->actingAs($staff)
+        $this->actingAs($staff->fresh())
             ->get(route('staff.tickets'))
             ->assertOk()
             ->assertSeeInOrder([
@@ -280,8 +281,23 @@ class TicketResolutionSlaTest extends TestCase
 
     private function createTicket(?int $assigneeId, string $priority, string $status = 'New'): Ticket
     {
+        $departmentId = null;
+
+        if ($assigneeId !== null) {
+            $assignee = User::query()->findOrFail($assigneeId);
+            $departmentId = $assignee->department_id;
+
+            if ($departmentId === null) {
+                $departmentId = Department::factory()->create()->id;
+                $assignee->update(['department_id' => $departmentId]);
+            }
+        } else {
+            $departmentId = Department::factory()->create()->id;
+        }
+
         return Ticket::create([
             'ticket_number' => 'ED-2026-'.str_pad((string) (Ticket::query()->count() + 1), 6, '0', STR_PAD_LEFT),
+            'department_id' => $departmentId,
             'assigned_to_user_id' => $assigneeId,
             'requester_name' => 'Jamie Student',
             'student_id' => 'PCU-001',

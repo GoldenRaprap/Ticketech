@@ -6,6 +6,7 @@ use App\Models\Ticket;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
@@ -30,10 +31,10 @@ class StaffReportsController extends Controller
         $filters = $this->validatedFilters($request);
         $period = $filters['period'] ?? 'weekly';
         [$periodStart, $periodEnd] = $this->periodRange($filters, $period);
-        $baseQuery = $this->ticketsInPeriod($periodStart, $periodEnd);
+        $baseQuery = $this->ticketsInPeriod($request->user(), $periodStart, $periodEnd);
         $summary = $this->summary(clone $baseQuery);
-        $trendBuckets = collect($this->trendBuckets($period, $periodStart, $periodEnd));
-        $staffWorkload = $this->staffWorkload(clone $baseQuery);
+        $trendBuckets = collect($this->trendBuckets($request->user(), $period, $periodStart, $periodEnd));
+        $staffWorkload = $this->staffWorkload(clone $baseQuery, $request->user());
 
         return view('staff.reports', [
             ...$summary,
@@ -73,7 +74,7 @@ class StaffReportsController extends Controller
         $filters = $this->validatedFilters($request);
         $period = $filters['period'] ?? 'weekly';
         [$periodStart, $periodEnd] = $this->periodRange($filters, $period);
-        $periodTickets = $this->ticketsInPeriod($periodStart, $periodEnd);
+        $periodTickets = $this->ticketsInPeriod($request->user(), $periodStart, $periodEnd);
         $summary = $this->summary(clone $periodTickets);
         $priorityCounts = (clone $periodTickets)
             ->selectRaw('priority, COUNT(*) as total')
@@ -298,8 +299,8 @@ class StaffReportsController extends Controller
                             $this->spreadsheetSafeValue($ticket->priority),
                             $this->spreadsheetSafeValue($ticket->status),
                             $this->spreadsheetSafeValue($ticket->assignedTo?->name ?? 'Unassigned'),
-                            $ticket->created_at?->toDateTimeString() ?? '',
-                            $ticket->resolved_at?->toDateTimeString() ?? '',
+                            $ticket->created_at?->copy()->timezone(config('app.display_timezone'))->toDateTimeString() ?? '',
+                            $ticket->resolved_at?->copy()->timezone(config('app.display_timezone'))->toDateTimeString() ?? '',
                         ], $ticketRow % 2 === 0 ? $stripeStyle : null, [
                             4 => $priorityStyle,
                             5 => $statusStyle,
@@ -362,7 +363,7 @@ class StaffReportsController extends Controller
         }
 
         $ticketQuery = Ticket::query()
-            ->whereBetween('tickets.created_at', [$periodStart, $periodEnd])
+            ->whereBetween('tickets.created_at', [$periodStart->utc(), $periodEnd->utc()])
             ->whereIn('assigned_to_user_id', $staffMembers->modelKeys())
             ->select([
                 'id',
@@ -521,8 +522,8 @@ class StaffReportsController extends Controller
                             $this->spreadsheetSafeValue($ticket->assignedTo?->email),
                             $this->spreadsheetSafeValue($ticket->priority),
                             $this->spreadsheetSafeValue($ticket->status),
-                            $ticket->created_at?->toDateTimeString() ?? '',
-                            $ticket->resolved_at?->toDateTimeString() ?? '',
+                            $ticket->created_at?->copy()->timezone(config('app.display_timezone'))->toDateTimeString() ?? '',
+                            $ticket->resolved_at?->copy()->timezone(config('app.display_timezone'))->toDateTimeString() ?? '',
                             $durationHours,
                         ]));
                     }
@@ -563,13 +564,18 @@ class StaffReportsController extends Controller
     private function periodRange(array $filters, string $period): array
     {
         if ($period === 'custom') {
+            $timezone = config('app.display_timezone');
+
             return [
-                CarbonImmutable::parse($filters['start_date'])->startOfDay(),
-                CarbonImmutable::parse($filters['end_date'])->endOfDay(),
+                CarbonImmutable::parse($filters['start_date'], $timezone)->startOfDay(),
+                CarbonImmutable::parse($filters['end_date'], $timezone)->endOfDay(),
             ];
         }
 
-        $referenceDate = CarbonImmutable::parse($filters['reference_date'] ?? now()->toDateString());
+        $referenceDate = CarbonImmutable::parse(
+            $filters['reference_date'] ?? now(config('app.display_timezone'))->toDateString(),
+            config('app.display_timezone'),
+        );
 
         return match ($period) {
             'daily' => [$referenceDate->startOfDay(), $referenceDate->endOfDay()],
@@ -582,9 +588,14 @@ class StaffReportsController extends Controller
         };
     }
 
-    private function ticketsInPeriod(CarbonImmutable $periodStart, CarbonImmutable $periodEnd): Builder
-    {
-        return Ticket::query()->whereBetween('tickets.created_at', [$periodStart, $periodEnd]);
+    private function ticketsInPeriod(
+        User $user,
+        CarbonImmutable $periodStart,
+        CarbonImmutable $periodEnd,
+    ): Builder {
+        return Ticket::query()
+            ->visibleTo($user)
+            ->whereBetween('tickets.created_at', [$periodStart->utc(), $periodEnd->utc()]);
     }
 
     /**
@@ -623,18 +634,21 @@ class StaffReportsController extends Controller
      * @return list<array{label: string, received: int, resolved: int, receivedHeight: int, resolvedHeight: int}>
      */
     private function trendBuckets(
+        User $user,
         string $period,
         CarbonImmutable $periodStart,
         CarbonImmutable $periodEnd,
     ): array {
         $bucketRanges = $this->trendBucketRanges($period, $periodStart, $periodEnd);
         $receivedCounts = $this->countsByTrendBucket(
-            Ticket::query(),
+            Ticket::query()->visibleTo($user),
             'tickets.created_at',
             $bucketRanges,
         );
         $resolvedCounts = $this->countsByTrendBucket(
-            Ticket::query()->whereIn('status', ['Resolved', 'Closed'])->whereNotNull('resolved_at'),
+            Ticket::query()->visibleTo($user)
+                ->whereIn('status', ['Resolved', 'Closed'])
+                ->whereNotNull('resolved_at'),
             'tickets.resolved_at',
             $bucketRanges,
         );
@@ -744,13 +758,13 @@ class StaffReportsController extends Controller
 
         foreach ($bucketRanges as $index => $bucket) {
             $caseConditions[] = "WHEN {$dateColumn} BETWEEN ? AND ? THEN {$index}";
-            $bindings[] = $bucket['start'];
-            $bindings[] = $bucket['end'];
+            $bindings[] = $bucket['start']->utc();
+            $bindings[] = $bucket['end']->utc();
         }
 
         $bucketExpression = 'CASE '.implode(' ', $caseConditions).' END';
-        $rangeStart = $bucketRanges[0]['start'];
-        $rangeEnd = $bucketRanges[array_key_last($bucketRanges)]['end'];
+        $rangeStart = $bucketRanges[0]['start']->utc();
+        $rangeEnd = $bucketRanges[array_key_last($bucketRanges)]['end']->utc();
 
         return $tickets
             ->whereBetween($dateColumn, [$rangeStart, $rangeEnd])
@@ -762,10 +776,16 @@ class StaffReportsController extends Controller
     /**
      * @return Collection<int, object>
      */
-    private function staffWorkload(Builder $tickets): Collection
+    private function staffWorkload(Builder $tickets, User $user): Collection
     {
         $rows = $tickets
-            ->leftJoin('users as assigned_staff', 'tickets.assigned_to_user_id', '=', 'assigned_staff.id')
+            ->leftJoin('users as assigned_staff', function (JoinClause $join) use ($user): void {
+                $join->on('tickets.assigned_to_user_id', '=', 'assigned_staff.id');
+
+                if (! $user->isAdmin()) {
+                    $join->on('assigned_staff.department_id', '=', 'tickets.department_id');
+                }
+            })
             ->selectRaw("COALESCE(assigned_staff.name, 'Unassigned') as staff_name")
             ->selectRaw('COUNT(*) as total_tickets')
             ->selectRaw("SUM(CASE WHEN tickets.status NOT IN ('Resolved', 'Closed') THEN 1 ELSE 0 END) as open_tickets")

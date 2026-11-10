@@ -2,19 +2,24 @@
 
 namespace App\Models;
 
+use App\Enums\UserPermission;
+use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'nickname', 'email', 'password', 'role', 'employment_status'])]
+#[Fillable(['name', 'nickname', 'email', 'password', 'role', 'department_id', 'employment_status'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail
 {
+    public const STAFF_ACCESS_ROLES = ['admin', 'department_admin', 'staff'];
+
     protected $attributes = [
         'employment_status' => 'active',
         'staff_approval_status' => 'approved',
@@ -41,6 +46,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Ticket::class, 'requester_user_id');
     }
 
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
+    }
+
     public function assignedTickets(): HasMany
     {
         return $this->hasMany(Ticket::class, 'assigned_to_user_id');
@@ -58,7 +68,8 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function isStaff(): bool
     {
-        return in_array($this->role, ['admin', 'staff'], true);
+        return in_array($this->role, ['admin', 'staff'], true)
+            || ($this->isDepartmentAdmin() && $this->department_id !== null);
     }
 
     public function isActive(): bool
@@ -74,6 +85,31 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    public function isDepartmentAdmin(): bool
+    {
+        return $this->role === 'department_admin';
+    }
+
+    public function canManageDepartmentTickets(): bool
+    {
+        return $this->hasPermissionTo(UserPermission::ManageDepartmentTickets);
+    }
+
+    public function hasPermissionTo(UserPermission $permission): bool
+    {
+        $role = UserRole::tryFrom($this->role);
+
+        if (! $this->isActive() || ! $this->isStaffApproved()) {
+            return false;
+        }
+
+        if ($role === UserRole::DepartmentAdmin && $this->department_id === null) {
+            return false;
+        }
+
+        return $role?->hasPermission($permission) ?? false;
     }
 
     public function displayName(): string

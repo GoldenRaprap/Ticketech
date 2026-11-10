@@ -55,7 +55,7 @@
                     </div>
                     <span class="priority-pill priority-pill--{{ strtolower($ticket->priority) }}">{{ $ticket->priority }}</span>
                     <span class="status-pill">{{ $ticket->status }}</span>
-                    <time datetime="{{ $ticket->created_at->toDateString() }}">{{ $ticket->created_at->format('M j, Y') }}</time>
+                    <time datetime="{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->toDateString() }}">{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</time>
                 </article>
             @empty
                 <div class="workspace-empty-state">

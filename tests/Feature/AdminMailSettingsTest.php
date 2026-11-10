@@ -306,6 +306,74 @@ class AdminMailSettingsTest extends TestCase
         $this->assertSame('smtp', config('mail.default'));
     }
 
+    public function test_admin_mail_settings_update_clears_delivery_warning_without_replacing_saved_password(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $encryptedPassword = Crypt::encryptString('existing-app-password');
+        DB::table('system_settings')->insert([
+            [
+                'setting' => 'mail.smtp.password',
+                'value' => $encryptedPassword,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => TicketEmailAvailability::DELIVERY_STATUS_SETTING,
+                'value' => TicketEmailAvailability::DELIVERY_UNAVAILABLE_STATUS,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => TicketEmailAvailability::DELIVERY_MESSAGE_SETTING,
+                'value' => 'Automatic email delivery needs attention.',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => 'ticket.submission.enabled',
+                'value' => '0',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'setting' => 'ticket.replies.enabled',
+                'value' => '0',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->actingAs($admin)->put(route('admin.system-settings.update'), [
+            'from_address' => 'helpdesk@pcu.edu.ph',
+            'from_name' => 'PCU IT Helpdesk',
+            'smtp_host' => 'smtp.pcu.edu.ph',
+            'smtp_port' => '587',
+            'smtp_encryption' => 'tls',
+            'smtp_username' => 'helpdesk@pcu.edu.ph',
+            'smtp_app_password' => '',
+        ])->assertRedirect(route('admin.system-settings'))
+            ->assertSessionHas('status');
+
+        $this->assertSame(
+            $encryptedPassword,
+            DB::table('system_settings')->where('setting', 'mail.smtp.password')->value('value'),
+        );
+        $this->assertDatabaseMissing('system_settings', [
+            'setting' => TicketEmailAvailability::DELIVERY_STATUS_SETTING,
+        ]);
+        $this->assertDatabaseMissing('system_settings', [
+            'setting' => TicketEmailAvailability::DELIVERY_MESSAGE_SETTING,
+        ]);
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket.submission.enabled',
+            'value' => '0',
+        ]);
+        $this->assertDatabaseHas('system_settings', [
+            'setting' => 'ticket.replies.enabled',
+            'value' => '0',
+        ]);
+    }
+
     public function test_admin_mail_settings_reject_invalid_sender_email(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);

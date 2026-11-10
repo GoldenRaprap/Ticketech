@@ -13,20 +13,26 @@
     <header class="ticket-detail-heading">
         <div class="ticket-detail-title">
             <div class="ticket-heading-meta">
-                <span class="ticket-number-tag">{{ $ticket->ticket_number }}</span>
+                <span class="ticket-number-tag"><span>Ticket number</span><strong>{{ $ticket->ticket_number }}</strong></span>
                 <span class="status-pill status-pill--{{ strtolower(str_replace(' ', '-', $ticket->status)) }}">{{ $ticket->status }}</span>
                 <span class="priority-pill priority-pill--{{ strtolower($ticket->priority) }}">{{ $ticket->priority }} priority</span>
             </div>
             <h1>{{ $ticket->subject }}</h1>
-            <p><span class="requester-avatar requester-avatar--small" aria-hidden="true">{{ strtoupper(substr($ticket->requester_name, 0, 1)) }}</span> Submitted by <strong>{{ $ticket->requester_name }}</strong><span class="detail-separator">·</span><time datetime="{{ $ticket->created_at->toIso8601String() }}">{{ $ticket->created_at->format('F j, Y \a\t g:i A') }}</time></p>
+            <p><span class="requester-avatar requester-avatar--small" aria-hidden="true">{{ strtoupper(substr($ticket->requester_name, 0, 1)) }}</span> Submitted by <strong>{{ $ticket->requester_name }}</strong><span class="detail-separator">·</span><time datetime="{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->toIso8601String() }}">{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('F j, Y \a\t g:i A') }}</time></p>
         </div>
         <a class="workspace-button workspace-button--secondary" href="{{ route('staff.tickets') }}"><span aria-hidden="true">←</span> Back to tickets</a>
     </header>
 
+    @if ($isCrossDepartmentView)
+        <div class="workspace-alert workspace-alert--info" role="status">
+            Read-only view: this ticket belongs to {{ $ticket->department?->name ?? 'another department' }}. You can review it, but only that department’s staff can update or assign it.
+        </div>
+    @endif
+
     <div class="ticket-detail-layout">
         <div class="ticket-detail-main">
             <section class="workspace-card ticket-description-card">
-                <div class="workspace-card-heading"><div><span class="workspace-eyebrow">Request details</span><h2>Problem description</h2></div><span class="ticket-updated-label">Submitted {{ $ticket->created_at->format('M j, Y g:i A') }}</span></div>
+                <div class="workspace-card-heading"><div><span class="workspace-eyebrow">Request details</span><h2>Problem description</h2></div><span class="ticket-updated-label">Submitted {{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</span></div>
                 <div class="ticket-description-content"><p>{{ $ticket->description }}</p></div>
                 @if ($ticket->attachments->isNotEmpty())
                     <div class="ticket-original-attachments">
@@ -80,7 +86,7 @@
                                 <div class="conversation-entry-head">
                                     <strong>{{ $comment->author_name }}</strong>
                                     <span class="conversation-role">{{ $comment->is_internal ? 'Internal note' : ($comment->author?->isStaff() ? 'Public reply' : 'Requester reply') }}</span>
-                                    <time datetime="{{ $comment->created_at->toIso8601String() }}">{{ $comment->created_at->format('M j, Y g:i A') }}</time>
+                                    <time datetime="{{ $comment->created_at->copy()->timezone(config('app.display_timezone'))->toIso8601String() }}">{{ $comment->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</time>
                                 </div>
                                 <p>{{ $comment->body }}</p>
                                 @include('partials.message-attachments', [
@@ -92,10 +98,14 @@
                             </div>
                         </article>
                     @empty
-                        <div class="workspace-empty-state workspace-empty-state--compact"><strong>No replies yet</strong><p>Add a reply or internal note to record progress.</p></div>
+                        <div class="workspace-empty-state workspace-empty-state--compact">
+                            <strong>No replies yet</strong>
+                            <p>{{ $canWorkTicket ? 'Add a reply or internal note to record progress.' : 'There are no replies to view yet.' }}</p>
+                        </div>
                     @endforelse
                 </div>
-                <form class="reply-composer" action="{{ route('staff.ticket-comments.store', $ticket) }}" method="post" enctype="multipart/form-data">
+                @if ($canWorkTicket)
+                    <form class="reply-composer" action="{{ route('staff.ticket-comments.store', $ticket) }}" method="post" enctype="multipart/form-data">
                     @csrf
                     <div class="conversation-composer-intro">
                         <strong>Reply to requester</strong>
@@ -128,13 +138,15 @@
                         <label class="internal-note-toggle"><input type="checkbox" name="is_internal" value="1" @checked(old('is_internal'))> Add as an internal note</label>
                         <button class="workspace-button workspace-button--primary" type="submit">Add comment <span aria-hidden="true">→</span></button>
                     </div>
-                </form>
+                    </form>
+                @endif
             </section>
             @include('partials.image-preview-dialog')
         </div>
 
         <aside class="ticket-detail-sidebar">
-            <section class="workspace-card ticket-management-card">
+            @if ($canWorkTicket)
+                <section class="workspace-card ticket-management-card">
                 <div class="workspace-card-heading"><div><span class="workspace-eyebrow">Manage request</span><h2>Ticket properties</h2></div></div>
                 <form action="{{ route('staff.ticket-update', $ticket) }}" method="post">
                     @csrf
@@ -145,28 +157,46 @@
                                 <option value="{{ $status }}" @selected(old('status', $ticket->status) === $status)>{{ $status }}</option>
                             @endforeach
                         </select></label>
-                        <label class="workspace-field" data-priority-field>
-                            <span>Priority</span>
-                            <select name="priority" @disabled(! $ticket->assigned_to_user_id && ! old('assigned_to_user_id'))>
-                                @foreach (['Urgent', 'High', 'Medium', 'Low'] as $priority)
-                                    <option value="{{ $priority }}" @selected(old('priority', $ticket->priority) === $priority)>{{ $priority }}</option>
+                        @if ($ticket->assigned_to_user_id || $canManageTickets)
+                            <label class="workspace-field" data-priority-field>
+                                <span>Priority</span>
+                                <select name="priority" @disabled(! $ticket->assigned_to_user_id && ! old('assigned_to_user_id'))>
+                                    @foreach (['Urgent', 'High', 'Medium', 'Low'] as $priority)
+                                        <option value="{{ $priority }}" @selected(old('priority', $ticket->priority) === $priority)>{{ $priority }}</option>
+                                    @endforeach
+                                </select>
+                                @error('priority')<span class="form-field-error">{{ $message }}</span>@enderror
+                            </label>
+                        @endif
+                        @if ($canManageTickets)
+                            @if (! $ticket->assigned_to_user_id)
+                                <p class="workspace-field" data-automatic-priority-note>
+                                    <span>Assign this ticket to enable priority changes.</span>
+                                </p>
+                            @endif
+                            <label class="workspace-field"><span>Assigned to</span><select name="assigned_to_user_id" data-ticket-assignee>
+                                <option value="">Unassigned</option>
+                                @foreach ($staffUsers as $staffUser)
+                                    <option value="{{ $staffUser->id }}" @selected((string) old('assigned_to_user_id', $ticket->assigned_to_user_id) === (string) $staffUser->id)>{{ $staffUser->displayName() }}</option>
                                 @endforeach
-                            </select>
-                            @error('priority')<span class="form-field-error">{{ $message }}</span>@enderror
-                        </label>
-                        <p class="workspace-field" data-automatic-priority-note @if ($ticket->assigned_to_user_id || old('assigned_to_user_id')) hidden @endif>
-                            <span>Assign this ticket to enable priority changes.</span>
-                        </p>
-                        <label class="workspace-field"><span>Assigned to</span><select name="assigned_to_user_id" data-ticket-assignee>
-                            <option value="">Unassigned</option>
-                            @foreach ($staffUsers as $staffUser)
-                                <option value="{{ $staffUser->id }}" @selected((string) old('assigned_to_user_id', $ticket->assigned_to_user_id) === (string) $staffUser->id)>{{ $staffUser->displayName() }}</option>
-                            @endforeach
-                        </select></label>
+                            </select></label>
+                        @else
+                            <p class="workspace-field"><span>Assignment is managed by your department admin.</span></p>
+                        @endif
                     </div>
                     <button class="workspace-button workspace-button--primary workspace-button--full" type="submit">Save changes</button>
                 </form>
-            </section>
+                </section>
+            @else
+                <section class="workspace-card ticket-management-card" aria-label="Read-only ticket properties">
+                    <div class="workspace-card-heading"><div><span class="workspace-eyebrow">Read-only</span><h2>Ticket properties</h2></div></div>
+                    <div class="ticket-property-fields">
+                        <p class="workspace-field"><span>Status</span><strong>{{ $ticket->status }}</strong></p>
+                        <p class="workspace-field"><span>Priority</span><strong>{{ $ticket->priority }}</strong></p>
+                        <p class="workspace-field"><span>Assigned to</span><strong>{{ $ticket->assignedTo?->name ?? 'Unassigned' }}</strong></p>
+                    </div>
+                </section>
+            @endif
 
             <section class="workspace-card assignment-card">
                 <div class="workspace-card-heading"><div><span class="workspace-eyebrow">Ownership</span><h2>Assignment</h2></div></div>
@@ -175,11 +205,41 @@
                 @else
                     <div class="ticket-no-attachments"><span aria-hidden="true">○</span><span>This ticket is currently unassigned.</span></div>
                 @endif
-                <div class="ticket-assignment-meta"><span>Created</span><strong>{{ $ticket->created_at->format('M j, Y') }}</strong></div>
+                <div class="ticket-assignment-meta"><span>Created</span><strong>{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</strong></div>
                 @if ($ticket->assigned_at)
-                    <div class="ticket-assignment-meta"><span>Assigned</span><strong>{{ $ticket->assigned_at->format('M j, Y') }}</strong></div>
+                    <div class="ticket-assignment-meta"><span>Assigned</span><strong>{{ $ticket->assigned_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</strong></div>
                 @endif
             </section>
+
+            @if ($canTransferTicket && $departments->isNotEmpty())
+                <details class="workspace-card ticket-collapsible-card ticket-transfer-card" @if ($errors->hasAny(['department_id', 'handoff_note'])) open @endif>
+                    <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">Department handoff</span><h2>Transfer ticket</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>
+                    <div class="ticket-collapsible-content">
+                        <p class="client-report-intro">The ticket will move to the receiving department's queue and become unassigned. Include completed checks, findings, and the next action needed.</p>
+                        <form action="{{ route('staff.ticket-transfer', $ticket) }}" method="post">
+                            @csrf
+                            <div class="ticket-property-fields">
+                                <label class="workspace-field">
+                                    <span>Receiving department</span>
+                                    <select name="department_id" required>
+                                        <option value="">Select a department</option>
+                                        @foreach ($departments as $department)
+                                            <option value="{{ $department->id }}" @selected((string) old('department_id') === (string) $department->id)>{{ $department->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error('department_id')<span class="form-field-error">{{ $message }}</span>@enderror
+                                </label>
+                                <label class="workspace-field">
+                                    <span>Handoff note</span>
+                                    <textarea name="handoff_note" maxlength="5000" required placeholder="Summarize the issue, work completed, findings, and what the receiving team should do next.">{{ old('handoff_note') }}</textarea>
+                                    @error('handoff_note')<span class="form-field-error">{{ $message }}</span>@enderror
+                                </label>
+                            </div>
+                            <button class="workspace-button workspace-button--secondary workspace-button--full" type="submit">Transfer to department</button>
+                        </form>
+                    </div>
+                </details>
+            @endif
 
             <details class="workspace-card ticket-collapsible-card client-report-card" @if ($errors->has('reason') || $errors->has('details')) open @endif>
                 <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">CLIENT CONDUCT</span><h2>Report client</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>
@@ -189,12 +249,13 @@
                         <div class="client-report-history">
                             <strong>{{ str($report->reason)->replace('_', ' ')->title() }}</strong>
                             <span>{{ ucfirst($report->status) }}{{ $report->action ? ' · '.ucfirst($report->action) : '' }}</span>
-                            <small>Reported by {{ $report->reporter->name }} · {{ $report->created_at->format('M j, Y') }}</small>
+                            <small>Reported by {{ $report->reporter->name }} · {{ $report->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</small>
                         </div>
                     @empty
                         <p class="client-report-empty">No reports have been submitted for this ticket.</p>
                     @endforelse
-                    <form class="client-report-form" action="{{ route('staff.ticket-misuse-reports.store', $ticket) }}" method="post">
+                    @if ($canWorkTicket)
+                        <form class="client-report-form" action="{{ route('staff.ticket-misuse-reports.store', $ticket) }}" method="post">
                         @csrf
                         <label class="workspace-field">
                             <span>Reason</span>
@@ -214,7 +275,8 @@
                             @error('details')<span class="form-field-error">{{ $message }}</span>@enderror
                         </label>
                         <button class="workspace-button workspace-button--secondary" type="submit">Submit report for review</button>
-                    </form>
+                        </form>
+                    @endif
                 </div>
             </details>
 
@@ -234,9 +296,9 @@
                 <div class="workspace-card-heading"><div><span class="workspace-eyebrow">History</span><h2>Ticket activity</h2></div></div>
                 <ol class="ticket-timeline">
                     @forelse ($ticket->events as $event)
-                        <li><span class="timeline-marker" aria-hidden="true"></span><div><strong>{{ $event->description }}</strong><small>{{ $event->actor?->name ?? 'Requester' }} · {{ $event->created_at->format('M j, Y g:i A') }}</small></div></li>
+                        <li><span class="timeline-marker" aria-hidden="true"></span><div><strong>{{ $event->description }}</strong><small>{{ $event->actor?->name ?? 'Requester' }} · {{ $event->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</small></div></li>
                     @empty
-                        <li><span class="timeline-marker" aria-hidden="true"></span><div><strong>Ticket received</strong><small>{{ $ticket->created_at->format('M j, Y g:i A') }}</small></div></li>
+                        <li><span class="timeline-marker" aria-hidden="true"></span><div><strong>Ticket received</strong><small>{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</small></div></li>
                     @endforelse
                 </ol>
             </section>

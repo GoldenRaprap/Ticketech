@@ -55,6 +55,10 @@ img, svg { display: block; max-width: 100%; }
     margin-top: auto;
 }
 
+.public-shell > .help-scene {
+    flex: 1 0 auto;
+}
+
 .ticket-create-shell {
     min-height: 100vh;
 }
@@ -3122,6 +3126,22 @@ img, svg { display: block; max-width: 100%; }
     font-size: 2.1rem;
     font-weight: 800;
     letter-spacing: -0.04em;
+    line-height: 1.1;
+}
+
+.staff-header-copy {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.staff-header-context {
+    overflow: hidden;
+    color: #5a7390;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .staff-header-logo {
@@ -5795,6 +5815,12 @@ img, svg { display: block; max-width: 100%; }
     text-overflow: ellipsis;
 }
 
+.ticket-number-link .ticket-cross-department-label {
+    color: #8a5b18;
+    font-size: 0.66rem;
+    font-weight: 700;
+}
+
 .table-requester {
     display: flex;
     align-items: center;
@@ -6964,10 +6990,30 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .ticket-number-tag {
-    color: #3970a5;
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.02em;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 11px;
+    border: 1px solid #b8d2ef;
+    border-radius: 8px;
+    background: #eaf3ff;
+    color: #214f80;
+}
+
+.ticket-number-tag > span {
+    color: #587b9f;
+    font-size: 0.62rem;
+    font-weight: 750;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.ticket-number-tag > strong {
+    color: #174a83;
+    font-size: 1rem;
+    font-weight: 850;
+    letter-spacing: 0.035em;
+    line-height: 1.2;
 }
 
 .preview-ticket-label {
@@ -7973,6 +8019,13 @@ img, svg { display: block; max-width: 100%; }
     border-color: #ead9aa;
     background: #fffaf0;
     color: #795b1e;
+}
+
+.workspace-alert--info {
+    margin-bottom: 16px;
+    border-color: #c9dcef;
+    background: #f1f7fd;
+    color: #355675;
 }
 
 .workspace-alert--warning p {
@@ -9569,40 +9622,153 @@ img, svg { display: block; max-width: 100%; }
     grid-template-columns: minmax(150px, 1fr) minmax(200px, 1.25fr) minmax(150px, 0.8fr) auto;
 }
 
-.admin-user-role-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+.admin-staff-bulk-list {
+    display: grid;
+    gap: 10px;
+}
+
+.admin-staff-bulk-entry {
+    display: grid;
+    align-items: end;
+    grid-template-columns: minmax(160px, 1fr) minmax(190px, 1.15fr) minmax(150px, 0.9fr) auto;
     gap: 12px;
-    min-height: 58px;
-    padding: 9px 12px;
-    border: 1px solid #e8eef4;
-    border-radius: 9px;
-    background: #f8fafc;
-}
-
-.admin-user-role {
+    min-width: 0;
     margin: 0;
-    color: #60758a;
-    font-size: 0.72rem;
-    font-weight: 600;
+    padding: 12px;
+    border: 1px solid #e4ebf1;
+    border-radius: 10px;
 }
 
-.admin-user-role strong {
-    display: inline-flex;
-    margin-left: 5px;
-    padding: 5px 9px;
-    border: 1px solid #dce8f3;
-    border-radius: 999px;
-    background: #fff;
-    color: #365f83;
+.admin-staff-bulk-entry legend {
+    padding: 0 6px;
+    color: #60758a;
     font-size: 0.68rem;
+    font-weight: 700;
+}
+
+.admin-staff-bulk-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 9px;
+    margin-top: 12px;
+}
+
+.admin-staff-bulk-actions .admin-console-button:disabled,
+.admin-staff-bulk-entry .admin-console-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.admin-staff-bulk-feedback {
+    min-height: 1.2em;
+    margin: 7px 0 0;
+    color: #78899b;
+    font-size: 0.68rem;
+}
+
+.admin-staff-directory-wrap {
+    margin-top: 12px;
+    border: 1px solid #e4ebf1;
+    border-radius: 10px;
+    background: #fff;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.admin-user-filter-toolbar {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(150px, 190px) minmax(240px, 1.2fr) auto;
+    align-items: center;
+}
+
+.admin-user-filter-toolbar .admin-search-field,
+.admin-user-filter-toolbar .admin-filter-field {
+    width: 100%;
+    min-width: 0;
+}
+
+.admin-user-filter-toolbar .admin-console-clear {
+    justify-self: center;
+    white-space: nowrap;
+}
+
+.admin-staff-directory {
+    min-width: 760px;
+    table-layout: fixed;
+}
+
+.admin-staff-directory th,
+.admin-staff-directory td {
+    padding-right: 10px;
+    padding-left: 10px;
+}
+
+.admin-staff-directory th:nth-child(1) { width: 40%; }
+.admin-staff-directory th:nth-child(2) { width: 25%; }
+.admin-staff-directory th:nth-child(3) { width: 19%; }
+.admin-staff-directory th:nth-child(4) { width: 16%; }
+
+.admin-staff-directory-user {
+    align-items: center;
+    min-width: 0;
+}
+
+.admin-staff-directory-form {
+    display: grid;
+    flex: 1 1 auto;
+    gap: 7px;
+    min-width: 0;
+}
+
+.admin-staff-directory-form input,
+.admin-staff-directory-form select,
+.admin-staff-directory-status {
+    width: 100%;
+    min-width: 0;
+    min-height: 37px;
+    padding: 0 9px;
+    border: 1px solid #dce5ed;
+    border-radius: 8px;
+    background: #fff;
+    color: #344f69;
+    font: inherit;
+    font-size: 0.68rem;
+}
+
+.admin-staff-directory-status {
+    width: auto;
+    min-width: 120px;
+    cursor: pointer;
+}
+
+.admin-staff-role-cell {
+    display: grid;
+    justify-items: start;
+    gap: 8px;
+}
+
+.admin-staff-directory .admin-user-management-actions {
+    justify-content: flex-start;
+}
+
+.admin-staff-directory .admin-user-management-actions .admin-console-button {
+    white-space: normal;
+}
+
+.admin-staff-directory td:last-child .admin-console-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.admin-staff-directory-unavailable {
+    color: #9aa7b4;
 }
 
 .admin-user-management-actions {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: 8px;
 }
 
@@ -9705,13 +9871,7 @@ img, svg { display: block; max-width: 100%; }
     color: #438363;
 }
 
-.admin-staff-status--retired {
-    border-color: #f0e4c9;
-    background: #fff8e9;
-    color: #92712e;
-}
-
-.admin-staff-status--terminated {
+.admin-staff-status--inactive {
     border-color: #f0d9d6;
     background: #fff3f1;
     color: #a6554d;
@@ -9752,8 +9912,9 @@ img, svg { display: block; max-width: 100%; }
     .moderation-client { align-items: flex-start; flex-direction: column; }
     .admin-staff-create-form,
     .admin-staff-edit-form { grid-template-columns: 1fr; }
-    .admin-user-role-row { align-items: flex-start; }
-    .admin-user-management-actions .admin-readonly-badge { text-align: right; }
+    .admin-staff-bulk-entry { grid-template-columns: 1fr; }
+    .admin-staff-bulk-actions { align-items: stretch; flex-direction: column; }
+    .admin-user-management-actions .admin-readonly-badge { text-align: left; }
 }
 
 @media (max-width: 900px) {
@@ -9871,30 +10032,56 @@ img, svg { display: block; max-width: 100%; }
 .table-footer nav > div:last-child {
     display: flex;
     align-items: center;
-    gap: 4px;
+    justify-content: flex-end;
 }
 
-.table-footer nav a,
-.table-footer nav span {
-    display: inline-grid;
-    min-width: 28px;
-    height: 28px;
-    place-items: center;
-    padding: 0 6px;
+.table-footer nav > div:last-child > div:first-child {
+    display: none;
+}
+
+.table-footer nav > div:last-child > div:last-child {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.table-footer nav > div:last-child > div:last-child > span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: none;
+    border-radius: 0;
+}
+
+.table-footer nav > div:last-child > div:last-child > span > span[aria-disabled],
+.table-footer nav > div:last-child > div:last-child > span > span[aria-current] {
+    display: contents;
+}
+
+.table-footer nav > div:last-child > div:last-child > span > a,
+.table-footer nav > div:last-child > div:last-child > span > span > span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 8px;
     border: 1px solid #e1e8ef;
     border-radius: 6px;
     background: #fff;
     color: #61778c;
-    font-size: 0.68rem;
+    font-size: 0.72rem;
+    line-height: 1;
+    text-decoration: none;
 }
 
-.table-footer nav span[aria-current="page"] {
+.table-footer nav > div:last-child > div:last-child > span > span[aria-current] > span {
     border-color: #0d4ea7;
     background: #0d4ea7;
     color: #fff;
 }
 
-.table-footer nav span[aria-disabled="true"] {
+.table-footer nav > div:last-child > div:last-child > span > span[aria-disabled] > span {
     color: #aab5bf;
 }
 
@@ -11523,5 +11710,140 @@ img, svg { display: block; max-width: 100%; }
     .table-footer nav {
         max-width: 100%;
         overflow-x: auto;
+    }
+}
+
+@media (max-width: 1000px) {
+    .admin-user-filter-toolbar {
+        grid-template-columns: minmax(0, 1fr) minmax(150px, 0.7fr);
+    }
+
+    .admin-user-filter-toolbar .admin-search-field {
+        grid-column: 1 / -1;
+    }
+
+    .admin-user-filter-toolbar .admin-user-filter-department,
+    .admin-user-filter-toolbar .admin-console-clear {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 860px) {
+    .admin-staff-directory {
+        min-width: 0;
+        table-layout: auto;
+    }
+
+    .admin-staff-directory thead {
+        display: none;
+    }
+
+    .admin-staff-directory tbody {
+        display: grid;
+        gap: 10px;
+        padding: 10px;
+    }
+
+    .admin-staff-directory tbody tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        overflow: hidden;
+        border: 1px solid #e4ebf1;
+        border-radius: 9px;
+        background: #fff;
+    }
+
+    .admin-staff-directory tbody tr:hover {
+        background: #fff;
+    }
+
+    .admin-staff-directory td {
+        min-width: 0;
+        padding: 10px;
+        border-bottom: 0;
+    }
+
+    .admin-staff-directory td:first-child,
+    .admin-staff-directory td:last-child,
+    .admin-staff-directory td[colspan] {
+        grid-column: 1 / -1;
+    }
+
+    .admin-staff-directory td:nth-child(2)::before,
+    .admin-staff-directory td:nth-child(3)::before,
+    .admin-staff-directory td:nth-child(4)::before {
+        display: block;
+        margin-bottom: 6px;
+        color: #78889a;
+        font-size: 0.6rem;
+        font-weight: 700;
+        letter-spacing: 0.055em;
+        text-transform: uppercase;
+    }
+
+    .admin-staff-directory td:nth-child(2)::before { content: "Role"; }
+    .admin-staff-directory td:nth-child(3)::before { content: "Account access"; }
+    .admin-staff-directory td:nth-child(4)::before { content: "Actions"; }
+
+    .admin-staff-directory-user {
+        align-items: flex-start;
+    }
+
+    .admin-staff-directory-status {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .admin-staff-directory .admin-user-management-actions,
+    .admin-staff-directory .admin-user-management-actions form,
+    .admin-staff-directory td:last-child .admin-console-button {
+        width: 100%;
+    }
+
+    .admin-staff-directory .admin-user-management-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+
+@media (max-width: 600px) {
+    .admin-user-filter-toolbar {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .admin-user-filter-toolbar .admin-search-field,
+    .admin-user-filter-toolbar .admin-filter-field,
+    .admin-user-filter-toolbar .admin-console-clear {
+        grid-column: 1;
+    }
+
+    .admin-user-filter-toolbar .admin-console-clear {
+        justify-self: start;
+    }
+
+    .admin-staff-directory tbody {
+        padding: 7px;
+    }
+
+    .admin-staff-directory tbody tr {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .admin-staff-directory td,
+    .admin-staff-directory td:first-child,
+    .admin-staff-directory td:last-child,
+    .admin-staff-directory td[colspan] {
+        grid-column: 1;
+    }
+
+    .admin-staff-directory td:nth-child(2),
+    .admin-staff-directory td:nth-child(3),
+    .admin-staff-directory td:nth-child(4) {
+        padding-top: 5px;
+    }
+
+    .admin-staff-directory-form input,
+    .admin-staff-directory-form select {
+        font-size: 0.75rem;
     }
 }
