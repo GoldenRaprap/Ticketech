@@ -15,6 +15,7 @@ class AuthenticationTest extends TestCase
         $this->get(route('login'))
             ->assertOk()
             ->assertSee('<div class="container public-topbar-inner">', false)
+            ->assertSee('<link rel="icon" type="image/png" href="'.asset('images/ticketech-icon.png').'">', false)
             ->assertDontSee('Go Back')
             ->assertSee('Philippine_Christian_University_logo.png')
             ->assertSee('<h1>Staff Sign In</h1>', false)

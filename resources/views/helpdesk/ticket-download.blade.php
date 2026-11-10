@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Ticket {{ $document['ticket_number'] }} | PCU Helpdesk</title>
+    <link rel="icon" type="image/png" href="{{ asset('images/ticketech-icon.png') }}">
     <style>
         :root {
             color-scheme: light;

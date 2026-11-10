@@ -23,6 +23,7 @@ class StaffDashboardTest extends TestCase
 
         $response->assertOk()
             ->assertSee('class="staff-shell sidebar-collapsed"', false)
+            ->assertSee('<link rel="icon" type="image/png" href="'.asset('images/ticketech-icon.png').'">', false)
             ->assertSee('Philippine_Christian_University_logo.png')
             ->assertSee('images/TickeTech_Logo_Transparent.png')
             ->assertSee('alt="Ticketech Edtech Support System"', false)
