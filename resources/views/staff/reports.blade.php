@@ -9,7 +9,7 @@
             <h1>Reports</h1>
             <p>Track helpdesk volume, resolution performance, and staff workload.</p>
         </div>
-        <span class="report-range-badge"><span aria-hidden="true">◷</span> {{ $periodRangeLabel }}</span>
+        <span class="report-range-badge"><span aria-hidden="true">◷</span> {{ $selectedDepartmentName }} · {{ $periodRangeLabel }}</span>
     </header>
 
     @if ($errors->any())
@@ -25,6 +25,23 @@
 
     <form class="workspace-card report-filter-form" method="get" action="{{ route('staff.reports') }}" data-report-period-form>
         <div class="report-filter-fields">
+            @if ($departmentFilterAvailable)
+                <label class="report-department-select" for="report-department">
+                    Department
+                    <select id="report-department" name="department_id" data-report-department>
+                        @if (auth()->user()->isAdmin())
+                            <option value="" @selected($selectedDepartmentId === null)>All departments</option>
+                        @elseif ($selectedDepartmentId === null)
+                            <option value="" selected disabled>Department not assigned</option>
+                        @endif
+                        @foreach ($departments as $department)
+                            <option value="{{ $department->id }}" @selected((string) $selectedDepartmentId === (string) $department->id)>
+                                {{ $department->name }}{{ $department->is_active ? '' : ' (Inactive)' }}
+                            </option>
+                        @endforeach
+                    </select>
+                </label>
+            @endif
             <label class="report-period-select" for="report-period">
                 Reporting period
                 <select id="report-period" name="period" data-report-period>

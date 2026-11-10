@@ -5686,6 +5686,7 @@ img, svg { display: block; max-width: 100%; }
 .ticket-filters select,
 .knowledge-toolbar select,
 .report-period-select select,
+.report-department-select select,
 .workspace-field select {
     min-height: 40px;
     padding: 8px 32px 8px 11px;
@@ -5700,6 +5701,7 @@ img, svg { display: block; max-width: 100%; }
 .ticket-filters select:focus,
 .knowledge-toolbar select:focus,
 .report-period-select select:focus,
+.report-department-select select:focus,
 .workspace-field select:focus,
 .ticket-search-field input:focus,
 .reply-composer textarea:focus {
@@ -6035,7 +6037,8 @@ img, svg { display: block; max-width: 100%; }
     background: #f7f9fb;
 }
 
-.report-period-select {
+.report-period-select,
+.report-department-select {
     display: grid;
     gap: 5px;
     color: #6e8297;
@@ -6473,6 +6476,7 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .report-period-select,
+.report-department-select,
 .report-date-field {
     display: grid;
     min-width: 0;
@@ -6484,6 +6488,7 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .report-period-select select,
+.report-department-select select,
 .report-date-field input {
     width: 100%;
     min-height: 40px;
@@ -6498,6 +6503,7 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .report-period-select select:focus,
+.report-department-select select:focus,
 .report-date-field input:focus {
     border-color: #76a4d5;
     box-shadow: 0 0 0 3px rgba(54, 119, 187, 0.12);

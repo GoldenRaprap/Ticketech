@@ -483,6 +483,7 @@ class DepartmentUserAccessTest extends TestCase
 
     public function test_department_dashboard_and_reports_only_include_department_tickets(): void
     {
+        $this->travelTo(now()->startOfDay()->addHours(12));
         $department = Department::factory()->create();
         $otherDepartment = Department::factory()->create();
         $staff = User::factory()->create([
@@ -505,6 +506,54 @@ class DepartmentUserAccessTest extends TestCase
         ]))
             ->assertOk()
             ->assertViewHas('totalTicketCount', 1);
+    }
+
+    public function test_department_admin_can_select_other_department_reports_but_defaults_to_their_department(): void
+    {
+        $this->travelTo(now()->startOfDay()->addHours(12));
+        $department = Department::factory()->create(['name' => 'EdTech']);
+        $otherDepartment = Department::factory()->create(['name' => 'Registrar']);
+        $departmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $department->id,
+        ]);
+        $this->createTicket($department, 'TKT-EDTECH-REPORT', 'EdTech report ticket');
+        $this->createTicket($otherDepartment, 'TKT-REGISTRAR-REPORT', 'Registrar report ticket');
+        $filters = [
+            'period' => 'daily',
+            'reference_date' => now()->toDateString(),
+        ];
+
+        $this->actingAs($departmentAdmin)
+            ->get(route('staff.reports', $filters))
+            ->assertOk()
+            ->assertViewHas('totalTicketCount', 1)
+            ->assertViewHas('selectedDepartmentId', $department->id);
+
+        $this->get(route('staff.reports', [
+            ...$filters,
+            'department_id' => $otherDepartment->id,
+        ]))
+            ->assertOk()
+            ->assertViewHas('totalTicketCount', 1)
+            ->assertViewHas('selectedDepartmentId', $otherDepartment->id)
+            ->assertViewHas('selectedDepartmentName', 'Registrar');
+    }
+
+    public function test_regular_staff_cannot_choose_a_different_department_for_reports(): void
+    {
+        $department = Department::factory()->create();
+        $otherDepartment = Department::factory()->create();
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+
+        $this->actingAs($staff)
+            ->from(route('staff.reports'))
+            ->get(route('staff.reports', ['department_id' => $otherDepartment->id]))
+            ->assertRedirect(route('staff.reports'))
+            ->assertSessionHasErrors('department_id');
     }
 
     public function test_staff_cannot_read_or_mark_read_notifications_for_another_department(): void

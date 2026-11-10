@@ -625,6 +625,7 @@ document.querySelectorAll('[data-report-period-form]').forEach((form) => {
 	}
 
 	const periodSelect = form.querySelector('[data-report-period]');
+	const departmentSelect = form.querySelector('[data-report-department]');
 	const referenceField = form.querySelector('[data-report-reference-field]');
 	const referenceDateInput = form.querySelector('[data-report-reference-input]');
 	const referenceDateLabel = form.querySelector('[data-report-reference-label]');
@@ -684,6 +685,7 @@ document.querySelectorAll('[data-report-period-form]').forEach((form) => {
 			form.requestSubmit();
 		}
 	});
+	departmentSelect?.addEventListener('change', () => form.requestSubmit());
 	referenceDateInput.addEventListener('change', () => {
 		if (periodSelect.value !== 'custom') {
 			form.requestSubmit();

@@ -991,6 +991,41 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertSee('Urgent');
     }
 
+    public function test_super_admin_can_filter_report_summary_and_export_by_department(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $admin = User::factory()->create(['role' => 'admin']);
+        $selectedDepartment = Department::factory()->create(['name' => 'Network Services']);
+        $otherDepartment = Department::factory()->create(['name' => 'Registrar']);
+        $selectedTicket = $this->createTicket('ED-2026-000309', 'Network department ticket');
+        $selectedTicket->forceFill(['department_id' => $selectedDepartment->id])->save();
+        $otherTicket = $this->createTicket('ED-2026-000310', 'Registrar department ticket');
+        $otherTicket->forceFill(['department_id' => $otherDepartment->id])->save();
+        $filters = [
+            'department_id' => $selectedDepartment->id,
+            'period' => 'daily',
+            'reference_date' => '2026-03-15',
+        ];
+
+        $this->actingAs($admin)
+            ->get(route('staff.reports', $filters))
+            ->assertOk()
+            ->assertViewHas('totalTicketCount', 1)
+            ->assertViewHas('selectedDepartmentId', $selectedDepartment->id)
+            ->assertViewHas('selectedDepartmentName', 'Network Services')
+            ->assertSee('Department')
+            ->assertSee('All departments')
+            ->assertSee('Registrar');
+
+        $ticketSheet = $this->readXlsxEntry(
+            $this->get(route('staff.reports.export', $filters))->assertOk()->streamedContent(),
+            'xl/worksheets/sheet2.xml',
+        );
+
+        $this->assertStringContainsString($selectedTicket->ticket_number, $ticketSheet);
+        $this->assertStringNotContainsString($otherTicket->ticket_number, $ticketSheet);
+    }
+
     public function test_weekly_reports_include_the_selected_dates_monday_through_sunday(): void
     {
         $this->travelTo(Carbon::parse('2026-03-04 12:00:00'));
@@ -1105,6 +1140,74 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         }
     }
 
+    public function test_ticket_statuses_have_consistent_colors_in_both_report_exports(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $admin = User::factory()->create(['role' => 'admin']);
+        $staff = $this->createStaffUser();
+        $statuses = [
+            'New' => 'FFDDEBF7',
+            'Assigned' => 'FFDDEFF2',
+            'In Progress' => 'FFFFF2CC',
+            'Waiting for User' => 'FFFCE4D6',
+            'On Hold' => 'FFE2E8F0',
+            'Resolved' => 'FFE2F0D9',
+            'Closed' => 'FFE7E6E6',
+        ];
+
+        foreach (array_keys($statuses) as $index => $status) {
+            $ticket = $this->createTicket(
+                'ED-2026-'.str_pad((string) (400 + $index), 6, '0', STR_PAD_LEFT),
+                $status.' status style ticket',
+                $staff->id,
+            );
+            $ticket->forceFill(['status' => $status])->save();
+        }
+
+        $filters = [
+            'period' => 'daily',
+            'reference_date' => '2026-03-15',
+        ];
+        $standardWorkbook = $this->actingAs($admin)
+            ->get(route('staff.reports.export', $filters))
+            ->assertOk()
+            ->streamedContent();
+        $staffPerformanceWorkbook = $this->get(route('admin.reports.staff-performance.export', [
+            ...$filters,
+            'staff_ids' => [$staff->id],
+        ]))
+            ->assertOk()
+            ->streamedContent();
+
+        $assertStatusColors = function (string $workbook) use ($statuses): void {
+            $worksheet = new \DOMDocument;
+            $styles = new \DOMDocument;
+            $this->assertTrue($worksheet->loadXML($this->readXlsxEntry($workbook, 'xl/worksheets/sheet2.xml')));
+            $this->assertTrue($styles->loadXML($this->readXlsxEntry($workbook, 'xl/styles.xml')));
+            $worksheetXPath = new \DOMXPath($worksheet);
+            $stylesXPath = new \DOMXPath($styles);
+            $worksheetXPath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+            $stylesXPath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+            $cellFormats = $stylesXPath->query('//x:cellXfs/x:xf');
+            $fills = $stylesXPath->query('//x:fills/x:fill');
+
+            foreach (array_values($statuses) as $index => $expectedColor) {
+                $statusCell = $worksheetXPath->query('//x:c[@r="F'.($index + 2).'"]')->item(0);
+                $this->assertNotNull($statusCell, 'Expected a status cell for each ticket row.');
+                $style = $cellFormats->item((int) $statusCell->getAttribute('s'));
+                $this->assertNotNull($style);
+                $fill = $fills->item((int) $style->getAttribute('fillId'));
+                $this->assertNotNull($fill);
+                $color = $stylesXPath->query('x:patternFill/x:fgColor', $fill)->item(0);
+                $this->assertNotNull($color);
+                $this->assertSame($expectedColor, $color->getAttribute('rgb'));
+            }
+        };
+
+        $assertStatusColors($standardWorkbook);
+        $assertStatusColors($staffPerformanceWorkbook);
+    }
+
     public function test_admin_can_export_selected_staff_progress_and_resolution_for_a_report_period(): void
     {
         $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
@@ -1202,6 +1305,56 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->assertSame('1', $ticketXPath->query('//x:c[@r="I4"]/x:v')->item(0)?->textContent);
         $this->assertSame('3', $ticketXPath->query('//x:c[@r="I5"]/x:v')->item(0)?->textContent);
         $this->assertSame('4', $ticketXPath->query('//x:c[@r="I6"]/x:v')->item(0)?->textContent);
+    }
+
+    public function test_admin_staff_performance_export_is_limited_to_the_selected_department(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $admin = User::factory()->create(['role' => 'admin']);
+        $selectedDepartment = Department::factory()->create(['name' => 'Network Services']);
+        $otherDepartment = Department::factory()->create(['name' => 'Registrar']);
+        $selectedStaff = User::factory()->create([
+            'name' => 'Network Staff',
+            'role' => 'staff',
+            'department_id' => $selectedDepartment->id,
+        ]);
+        User::factory()->create([
+            'name' => 'Registrar Staff',
+            'role' => 'staff',
+            'department_id' => $otherDepartment->id,
+        ]);
+        $selectedTicket = $this->createTicket('ED-2026-000368', 'Network ticket', $selectedStaff->id);
+        $selectedTicket->forceFill(['department_id' => $selectedDepartment->id])->save();
+        $otherTicket = $this->createTicket('ED-2026-000369', 'Other department ticket', $selectedStaff->id);
+        $otherTicket->forceFill(['department_id' => $otherDepartment->id])->save();
+        $filters = [
+            'department_id' => $selectedDepartment->id,
+            'period' => 'daily',
+            'reference_date' => '2026-03-15',
+        ];
+
+        $this->actingAs($admin)
+            ->get(route('staff.reports', $filters))
+            ->assertOk()
+            ->assertSee('Network Staff')
+            ->assertDontSee('Registrar Staff');
+
+        $ticketSheet = $this->readXlsxEntry(
+            $this->get(route('admin.reports.staff-performance.export', [
+                ...$filters,
+                'staff_ids' => [$selectedStaff->id],
+            ]))->assertOk()->streamedContent(),
+            'xl/worksheets/sheet2.xml',
+        );
+
+        $this->assertStringContainsString($selectedTicket->ticket_number, $ticketSheet);
+        $this->assertStringNotContainsString($otherTicket->ticket_number, $ticketSheet);
+
+        $this->from(route('staff.reports'))->get(route('admin.reports.staff-performance.export', [
+            ...$filters,
+            'staff_ids' => [$selectedStaff->id, User::query()->where('name', 'Registrar Staff')->value('id')],
+        ]))->assertRedirect(route('staff.reports'))
+            ->assertSessionHasErrors('staff_ids.1');
     }
 
     public function test_admin_staff_performance_export_rejects_non_staff_selections(): void

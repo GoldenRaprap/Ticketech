@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -30,11 +31,13 @@ class StaffReportsController extends Controller
     {
         $filters = $this->validatedFilters($request);
         $period = $filters['period'] ?? 'weekly';
+        $user = $request->user();
+        $selectedDepartmentId = $this->selectedDepartmentId($user, $filters);
         [$periodStart, $periodEnd] = $this->periodRange($filters, $period);
-        $baseQuery = $this->ticketsInPeriod($request->user(), $periodStart, $periodEnd);
+        $baseQuery = $this->ticketsInPeriod($user, $periodStart, $periodEnd, $selectedDepartmentId);
         $summary = $this->summary(clone $baseQuery);
-        $trendBuckets = collect($this->trendBuckets($request->user(), $period, $periodStart, $periodEnd));
-        $staffWorkload = $this->staffWorkload(clone $baseQuery, $request->user());
+        $trendBuckets = collect($this->trendBuckets($user, $period, $periodStart, $periodEnd, $selectedDepartmentId));
+        $staffWorkload = $this->staffWorkload(clone $baseQuery, $user, $selectedDepartmentId);
 
         return view('staff.reports', [
             ...$summary,
@@ -46,13 +49,20 @@ class StaffReportsController extends Controller
             'periodStart' => $periodStart,
             'periodEnd' => $periodEnd,
             'periodRangeLabel' => $this->formatPeriodRange($periodStart, $periodEnd),
+            'departmentFilterAvailable' => $user->isAdmin() || $user->isDepartmentAdmin(),
+            'departments' => $user->isAdmin() || $user->isDepartmentAdmin()
+                ? Department::query()->orderBy('name')->get(['id', 'name', 'is_active'])
+                : collect(),
+            'selectedDepartmentId' => $selectedDepartmentId,
+            'selectedDepartmentName' => $this->departmentLabel($user, $selectedDepartmentId),
             'trendBuckets' => $trendBuckets,
             'staffWorkload' => $staffWorkload,
-            'staffMembers' => $request->user()->isAdmin()
+            'staffMembers' => $user->isAdmin()
                 ? User::query()
                     ->where('role', 'staff')
                     ->where('employment_status', 'active')
                     ->where('staff_approval_status', 'approved')
+                    ->when($selectedDepartmentId !== null, fn ($query) => $query->where('department_id', $selectedDepartmentId))
                     ->orderBy('name')
                     ->get(['id', 'name', 'nickname', 'email'])
                 : collect(),
@@ -73,8 +83,11 @@ class StaffReportsController extends Controller
     {
         $filters = $this->validatedFilters($request);
         $period = $filters['period'] ?? 'weekly';
+        $user = $request->user();
+        $selectedDepartmentId = $this->selectedDepartmentId($user, $filters);
+        $departmentLabel = $this->departmentLabel($user, $selectedDepartmentId);
         [$periodStart, $periodEnd] = $this->periodRange($filters, $period);
-        $periodTickets = $this->ticketsInPeriod($request->user(), $periodStart, $periodEnd);
+        $periodTickets = $this->ticketsInPeriod($user, $periodStart, $periodEnd, $selectedDepartmentId);
         $summary = $this->summary(clone $periodTickets);
         $priorityCounts = (clone $periodTickets)
             ->selectRaw('priority, COUNT(*) as total')
@@ -88,14 +101,16 @@ class StaffReportsController extends Controller
             ->pluck('total', 'status');
         $tickets = (clone $periodTickets)->with('assignedTo:id,name');
         $filename = sprintf(
-            'ticketech-report-%s-%s-to-%s.xlsx',
+            'ticketech-report-%s-%s-%s-to-%s.xlsx',
             $period,
+            str($departmentLabel)->slug(),
             $periodStart->format('Y-m-d'),
             $periodEnd->format('Y-m-d'),
         );
 
         return response()->streamDownload(function () use (
             $period,
+            $departmentLabel,
             $periodStart,
             $periodEnd,
             $summary,
@@ -175,7 +190,8 @@ class StaffReportsController extends Controller
                     $writer->addRow($this->styledRow(['Ticketech Helpdesk Report'], $titleStyle, 34));
                     $writer->addRow($this->styledRow([
                         'STAFF PERFORMANCE  |  '.strtoupper($period).' REPORT  |  '
-                            .$periodStart->format('M j, Y').' - '.$periodEnd->format('M j, Y'),
+                            .$periodStart->format('M j, Y').' - '.$periodEnd->format('M j, Y')
+                            .'  |  '.strtoupper($departmentLabel),
                     ], $subtitleStyle, 24));
                     $writer->addRow(Row::fromValues());
 
@@ -267,12 +283,7 @@ class StaffReportsController extends Controller
                         'Medium' => (new Style)->setFontBold()->setFontColor(Color::toARGB('7F6000'))->setBackgroundColor(Color::toARGB('FFF2CC')),
                         'Low' => (new Style)->setFontBold()->setFontColor(Color::toARGB('22612A'))->setBackgroundColor(Color::toARGB('E2F0D9')),
                     ];
-                    $statusStyles = [
-                        'New' => (new Style)->setFontBold()->setFontColor(Color::toARGB('1F4E79'))->setBackgroundColor(Color::toARGB('DDEBF7')),
-                        'In Progress' => (new Style)->setFontBold()->setFontColor(Color::toARGB('7F6000'))->setBackgroundColor(Color::toARGB('FFF2CC')),
-                        'Resolved' => (new Style)->setFontBold()->setFontColor(Color::toARGB('2E7D32'))->setBackgroundColor(Color::toARGB('E2F0D9')),
-                        'Closed' => (new Style)->setFontBold()->setFontColor(Color::toARGB('595959'))->setBackgroundColor(Color::toARGB('E7E6E6')),
-                    ];
+                    $statusStyles = $this->ticketStatusStyles();
                     $writer->addRow($this->styledRow([
                         'Ticket number',
                         'Subject',
@@ -326,6 +337,9 @@ class StaffReportsController extends Controller
     public function exportStaffPerformance(Request $request): StreamedResponse
     {
         $filters = $this->validatedFilters($request);
+        $user = $request->user();
+        $selectedDepartmentId = $this->selectedDepartmentId($user, $filters);
+        $departmentLabel = $this->departmentLabel($user, $selectedDepartmentId);
         $validatedStaff = $request->validate([
             'staff_ids' => ['required', 'array', 'min:1'],
             'staff_ids.*' => [
@@ -333,9 +347,11 @@ class StaffReportsController extends Controller
                 'integer',
                 'distinct',
                 Rule::exists('users', 'id')
-                    ->where('role', 'staff')
-                    ->where('employment_status', 'active')
-                    ->where('staff_approval_status', 'approved'),
+                    ->where(fn ($query) => $query
+                        ->where('role', 'staff')
+                        ->where('employment_status', 'active')
+                        ->where('staff_approval_status', 'approved')
+                        ->when($selectedDepartmentId !== null, fn ($query) => $query->where('department_id', $selectedDepartmentId))),
             ],
         ]);
         $period = $filters['period'] ?? 'weekly';
@@ -344,6 +360,7 @@ class StaffReportsController extends Controller
             ->where('role', 'staff')
             ->where('employment_status', 'active')
             ->where('staff_approval_status', 'approved')
+            ->when($selectedDepartmentId !== null, fn ($query) => $query->where('department_id', $selectedDepartmentId))
             ->whereKey($validatedStaff['staff_ids'])
             ->orderBy('name')
             ->get(['id', 'name', 'nickname', 'email']);
@@ -364,6 +381,7 @@ class StaffReportsController extends Controller
 
         $ticketQuery = Ticket::query()
             ->whereBetween('tickets.created_at', [$periodStart->utc(), $periodEnd->utc()])
+            ->when($selectedDepartmentId !== null, fn ($query) => $query->where('tickets.department_id', $selectedDepartmentId))
             ->whereIn('assigned_to_user_id', $staffMembers->modelKeys())
             ->select([
                 'id',
@@ -399,14 +417,16 @@ class StaffReportsController extends Controller
 
         $ticketCount = array_sum(array_column($staffStats, 'ticket_count'));
         $filename = sprintf(
-            'ticketech-staff-performance-%s-%s-to-%s.xlsx',
+            'ticketech-staff-performance-%s-%s-%s-to-%s.xlsx',
             $period,
+            str($departmentLabel)->slug(),
             $periodStart->format('Y-m-d'),
             $periodEnd->format('Y-m-d'),
         );
 
         return response()->streamDownload(function () use (
             $period,
+            $departmentLabel,
             $periodStart,
             $periodEnd,
             $staffMembers,
@@ -445,10 +465,14 @@ class StaffReportsController extends Controller
                     $subtitleStyle = (new Style)->setFontColor(Color::toARGB('40566D'));
                     $percentStyle = (new Style)->setFormat('0.0%');
                     $numberStyle = (new Style)->setFormat('0.0');
+                    $ticketStripeStyle = (new Style)->setBackgroundColor(Color::toARGB('F3F6F9'));
+                    $ticketStatusStyles = $this->ticketStatusStyles();
+                    $unknownStatusStyle = (new Style)->setCellAlignment(CellAlignment::CENTER);
 
                     $writer->addRow(Row::fromValues(['STAFF PERFORMANCE SUMMARY'], $titleStyle));
                     $writer->addRow(Row::fromValues([
-                        strtoupper($period).' REPORT  |  '.$periodStart->format('M j, Y').' - '.$periodEnd->format('M j, Y'),
+                        strtoupper($period).' REPORT  |  '.$periodStart->format('M j, Y').' - '.$periodEnd->format('M j, Y')
+                            .'  |  '.strtoupper($departmentLabel),
                     ], $subtitleStyle));
                     $writer->addRow(Row::fromValues());
                     $writer->addRow(Row::fromValues([
@@ -509,13 +533,16 @@ class StaffReportsController extends Controller
                         'Resolution time (hours)',
                     ], $headerStyle));
 
+                    $ticketRow = 0;
+
                     foreach ((clone $ticketQuery)->with('assignedTo:id,name,nickname,email')->lazyById(500) as $ticket) {
+                        $ticketRow++;
                         $durationHours = in_array($ticket->status, ['Resolved', 'Closed'], true)
                             && $ticket->resolved_at !== null
                             ? round($ticket->created_at->diffInMinutes($ticket->resolved_at) / 60, 1)
                             : null;
 
-                        $writer->addRow(Row::fromValues([
+                        $writer->addRow(Row::fromValuesWithStyles([
                             $this->spreadsheetSafeValue($ticket->ticket_number),
                             $this->spreadsheetSafeValue($ticket->subject),
                             $this->spreadsheetSafeValue($ticket->assignedTo?->displayName()),
@@ -525,6 +552,8 @@ class StaffReportsController extends Controller
                             $ticket->created_at?->copy()->timezone(config('app.display_timezone'))->toDateTimeString() ?? '',
                             $ticket->resolved_at?->copy()->timezone(config('app.display_timezone'))->toDateTimeString() ?? '',
                             $durationHours,
+                        ], $ticketRow % 2 === 0 ? $ticketStripeStyle : null, [
+                            5 => $ticketStatusStyles[$ticket->status] ?? $unknownStatusStyle,
                         ]));
                     }
                 } finally {
@@ -554,7 +583,53 @@ class StaffReportsController extends Controller
             'reference_date' => ['nullable', 'date_format:Y-m-d'],
             'start_date' => ['nullable', 'required_if:period,custom', 'date_format:Y-m-d'],
             'end_date' => ['nullable', 'required_if:period,custom', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+            'department_id' => $request->user()->isAdmin() || $request->user()->isDepartmentAdmin()
+                ? ['nullable', 'integer', Rule::exists('departments', 'id')]
+                : ['prohibited'],
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function selectedDepartmentId(User $user, array $filters): ?int
+    {
+        if ($user->isAdmin()) {
+            return isset($filters['department_id']) ? (int) $filters['department_id'] : null;
+        }
+
+        if ($user->isDepartmentAdmin() && isset($filters['department_id'])) {
+            return (int) $filters['department_id'];
+        }
+
+        return $user->department_id;
+    }
+
+    private function departmentLabel(User $user, ?int $departmentId): string
+    {
+        if ($departmentId === null) {
+            return $user->isAdmin() ? 'All departments' : 'Unassigned';
+        }
+
+        return Department::query()->whereKey($departmentId)->value('name') ?? 'Unassigned';
+    }
+
+    private function ticketsForDepartment(User $user, ?int $departmentId): Builder
+    {
+        $tickets = Ticket::query();
+
+        if ($user->isAdmin()) {
+            return $tickets->when(
+                $departmentId !== null,
+                fn (Builder $query) => $query->where('tickets.department_id', $departmentId),
+            );
+        }
+
+        if ($user->isDepartmentAdmin()) {
+            return $tickets->where('tickets.department_id', $departmentId ?? $user->department_id);
+        }
+
+        return $tickets->visibleTo($user);
     }
 
     /**
@@ -592,9 +667,9 @@ class StaffReportsController extends Controller
         User $user,
         CarbonImmutable $periodStart,
         CarbonImmutable $periodEnd,
+        ?int $departmentId,
     ): Builder {
-        return Ticket::query()
-            ->visibleTo($user)
+        return $this->ticketsForDepartment($user, $departmentId)
             ->whereBetween('tickets.created_at', [$periodStart->utc(), $periodEnd->utc()]);
     }
 
@@ -638,15 +713,16 @@ class StaffReportsController extends Controller
         string $period,
         CarbonImmutable $periodStart,
         CarbonImmutable $periodEnd,
+        ?int $departmentId,
     ): array {
         $bucketRanges = $this->trendBucketRanges($period, $periodStart, $periodEnd);
         $receivedCounts = $this->countsByTrendBucket(
-            Ticket::query()->visibleTo($user),
+            $this->ticketsForDepartment($user, $departmentId),
             'tickets.created_at',
             $bucketRanges,
         );
         $resolvedCounts = $this->countsByTrendBucket(
-            Ticket::query()->visibleTo($user)
+            $this->ticketsForDepartment($user, $departmentId)
                 ->whereIn('status', ['Resolved', 'Closed'])
                 ->whereNotNull('resolved_at'),
             'tickets.resolved_at',
@@ -776,13 +852,13 @@ class StaffReportsController extends Controller
     /**
      * @return Collection<int, object>
      */
-    private function staffWorkload(Builder $tickets, User $user): Collection
+    private function staffWorkload(Builder $tickets, User $user, ?int $departmentId): Collection
     {
         $rows = $tickets
-            ->leftJoin('users as assigned_staff', function (JoinClause $join) use ($user): void {
+            ->leftJoin('users as assigned_staff', function (JoinClause $join) use ($user, $departmentId): void {
                 $join->on('tickets.assigned_to_user_id', '=', 'assigned_staff.id');
 
-                if (! $user->isAdmin()) {
+                if (! $user->isAdmin() || $departmentId !== null) {
                     $join->on('assigned_staff.department_id', '=', 'tickets.department_id');
                 }
             })
@@ -870,5 +946,49 @@ class StaffReportsController extends Controller
         }
 
         return $value ?? '';
+    }
+
+    /**
+     * @return array<string, Style>
+     */
+    private function ticketStatusStyles(): array
+    {
+        return [
+            'New' => (new Style)
+                ->setFontBold()
+                ->setFontColor(Color::toARGB('1F4E79'))
+                ->setBackgroundColor(Color::toARGB('DDEBF7'))
+                ->setCellAlignment(CellAlignment::CENTER),
+            'Assigned' => (new Style)
+                ->setFontBold()
+                ->setFontColor(Color::toARGB('0F6B78'))
+                ->setBackgroundColor(Color::toARGB('DDEFF2'))
+                ->setCellAlignment(CellAlignment::CENTER),
+            'In Progress' => (new Style)
+                ->setFontBold()
+                ->setFontColor(Color::toARGB('7F6000'))
+                ->setBackgroundColor(Color::toARGB('FFF2CC'))
+                ->setCellAlignment(CellAlignment::CENTER),
+            'Waiting for User' => (new Style)
+                ->setFontBold()
+                ->setFontColor(Color::toARGB('9C5700'))
+                ->setBackgroundColor(Color::toARGB('FCE4D6'))
+                ->setCellAlignment(CellAlignment::CENTER),
+            'On Hold' => (new Style)
+                ->setFontBold()
+                ->setFontColor(Color::toARGB('44546A'))
+                ->setBackgroundColor(Color::toARGB('E2E8F0'))
+                ->setCellAlignment(CellAlignment::CENTER),
+            'Resolved' => (new Style)
+                ->setFontBold()
+                ->setFontColor(Color::toARGB('2E7D32'))
+                ->setBackgroundColor(Color::toARGB('E2F0D9'))
+                ->setCellAlignment(CellAlignment::CENTER),
+            'Closed' => (new Style)
+                ->setFontBold()
+                ->setFontColor(Color::toARGB('595959'))
+                ->setBackgroundColor(Color::toARGB('E7E6E6'))
+                ->setCellAlignment(CellAlignment::CENTER),
+        ];
     }
 }
