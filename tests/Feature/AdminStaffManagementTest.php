@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\User;
-use Illuminate\Auth\Notifications\ResetPassword;
+use App\Notifications\StaffPasswordReset;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -37,7 +37,7 @@ class AdminStaffManagementTest extends TestCase
             $this->assertSame('approved', $staff->staff_approval_status);
             $this->assertNull($staff->email_verified_at);
             $this->assertFalse(Hash::check('password12345', $staff->password));
-            Notification::assertSentTo($staff, ResetPassword::class);
+            Notification::assertSentTo($staff, StaffPasswordReset::class);
             $this->assertDatabaseHas('ticket_events', [
                 'actor_id' => $admin->id,
                 'event' => 'staff_account_created',
@@ -49,8 +49,8 @@ class AdminStaffManagementTest extends TestCase
         $setupToken = null;
         Notification::assertSentTo(
             $firstHire,
-            ResetPassword::class,
-            function (ResetPassword $notification) use (&$setupToken): bool {
+            StaffPasswordReset::class,
+            function (StaffPasswordReset $notification) use (&$setupToken): bool {
                 $setupToken = $notification->token;
 
                 return true;
@@ -195,14 +195,15 @@ class AdminStaffManagementTest extends TestCase
         $this->get(route('admin.users'))
             ->assertOk()
             ->assertSee($anotherAdmin->name)
-            ->assertSee('Promote to department admin')
+            ->assertSee('value="department_admin"', false)
             ->assertSee('data-auto-submit-on-change', false)
             ->assertSee('admin-user-filter-toolbar')
             ->assertSee('admin-user-filter-department')
             ->assertDontSee('Apply filters')
             ->assertSee('Deactivate my account')
             ->assertSee('data-confirm-submit', false)
-            ->assertSee('Change to staff');
+            ->assertSee('value="staff"', false)
+            ->assertSee('Staff</option>', false);
     }
 
     public function test_user_directory_orders_super_admins_then_department_admins_then_staff(): void
@@ -377,6 +378,119 @@ class AdminStaffManagementTest extends TestCase
             'id' => $staff->id,
             'role' => 'staff',
         ]);
+    }
+
+    public function test_user_access_offers_super_admin_promotion_for_active_staff_and_department_admins(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $department = Department::factory()->create();
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+        $departmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $department->id,
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.users'))->assertOk();
+        $this->assertSame(2, substr_count($response->getContent(), 'data-role-change-form'));
+        $response->assertSee('value="admin"', false)
+            ->assertSee('Super Admin</option>', false)
+            ->assertSee('value="department_admin"', false)
+            ->assertSee('Department Admin</option>', false);
+
+        $this->patch(route('admin.users.role.update', $staff), [
+            'role' => 'admin',
+        ])->assertRedirect(route('admin.users'))
+            ->assertSessionHas('status', $staff->name.' is now a Super Admin.');
+
+        $this->patch(route('admin.users.role.update', $departmentAdmin), [
+            'role' => 'admin',
+        ])->assertRedirect(route('admin.users'))
+            ->assertSessionHas('status', $departmentAdmin->name.' is now a Super Admin.');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $staff->id,
+            'role' => 'admin',
+            'department_id' => null,
+        ]);
+        $this->assertDatabaseHas('users', [
+            'id' => $departmentAdmin->id,
+            'role' => 'admin',
+            'department_id' => null,
+        ]);
+        $this->assertDatabaseHas('ticket_events', [
+            'actor_id' => $admin->id,
+            'event' => 'user_role_updated',
+            'subject_type' => 'User',
+            'subject_id' => (string) $staff->id,
+        ]);
+        $this->assertDatabaseHas('ticket_events', [
+            'actor_id' => $admin->id,
+            'event' => 'user_role_updated',
+            'subject_type' => 'User',
+            'subject_id' => (string) $departmentAdmin->id,
+        ]);
+    }
+
+    public function test_super_admin_can_move_staff_to_another_department_from_user_access(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $originalDepartment = Department::factory()->create(['name' => 'Original Department']);
+        $newDepartment = Department::factory()->create(['name' => 'New Department']);
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $originalDepartment->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.users'))
+            ->assertOk()
+            ->assertSee('data-auto-submit-on-change', false)
+            ->assertSee('name="staff['.$staff->id.'][department_id]"', false);
+
+        $this->put(route('admin.users.update', $staff), [
+            'staff' => [
+                $staff->id => [
+                    'name' => $staff->name,
+                    'email' => $staff->email,
+                    'department_id' => $newDepartment->id,
+                ],
+            ],
+        ])->assertRedirect(route('admin.users'))
+            ->assertSessionHas('status', 'Staff account details updated.');
+
+        $this->assertSame($newDepartment->id, $staff->fresh()->department_id);
+        $this->assertDatabaseHas('ticket_events', [
+            'actor_id' => $admin->id,
+            'event' => 'staff_account_updated',
+            'subject_type' => 'User',
+            'subject_id' => (string) $staff->id,
+        ]);
+    }
+
+    public function test_super_admin_can_remove_a_staff_department_assignment(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $department = Department::factory()->create();
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+
+        $this->actingAs($admin)->put(route('admin.users.update', $staff), [
+            'staff' => [
+                $staff->id => [
+                    'name' => $staff->name,
+                    'email' => $staff->email,
+                    'department_id' => '',
+                ],
+            ],
+        ])->assertRedirect(route('admin.users'))
+            ->assertSessionHas('status', 'Staff account details updated.');
+
+        $this->assertNull($staff->fresh()->department_id);
     }
 
     public function test_admin_cannot_change_own_role_and_can_demote_another_admin(): void

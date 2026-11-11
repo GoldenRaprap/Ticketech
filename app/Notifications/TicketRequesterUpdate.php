@@ -5,17 +5,13 @@ namespace App\Notifications;
 use App\Services\EmailBranding;
 use App\Services\SystemMailSettings;
 use App\Services\TicketEmailAvailability;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Symfony\Component\Mime\Email;
 use Throwable;
 
-class TicketRequesterUpdate extends Notification implements ShouldQueue
+class TicketRequesterUpdate extends Notification
 {
-    use Queueable;
-
     public function __construct(
         public string $requesterName,
         public string $ticketNumber,
@@ -23,9 +19,7 @@ class TicketRequesterUpdate extends Notification implements ShouldQueue
         public string $updateMessage,
         public string $emailSubject,
         public ?string $ticketPdf = null,
-    ) {
-        $this->afterCommit();
-    }
+    ) {}
 
     /**
      * @return array<int, string>

@@ -187,6 +187,11 @@ class RegistrationTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
         $user = $this->createPendingStaff(unverified: true);
 
+        $this->actingAs($admin)->get(route('admin.users'))
+            ->assertOk()
+            ->assertSee($user->email)
+            ->assertSee('<button class="admin-console-button" type="submit" disabled>', false);
+
         $this->actingAs($admin)->post(route('admin.users.approve', $user))
             ->assertRedirect(route('admin.users'))
             ->assertSessionHas('warning');
@@ -319,6 +324,8 @@ class RegistrationTest extends TestCase
 
     public function test_registration_rejects_mismatched_password_confirmation(): void
     {
+        Notification::fake();
+
         $this->from(route('register'))->post(route('register.store'), [
             'name' => 'Jamie Staff',
             'email' => 'jamie.staff@pcu.edu.ph',
@@ -328,6 +335,7 @@ class RegistrationTest extends TestCase
             ->assertSessionHasErrors(['password']);
 
         $this->assertDatabaseCount('users', 0);
+        Notification::assertNothingSent();
     }
 
     /**

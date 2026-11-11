@@ -9,6 +9,7 @@ use App\Models\TicketEvent;
 use App\Models\User;
 use App\Models\WorkspaceNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -51,6 +52,97 @@ class DepartmentUserAccessTest extends TestCase
             'role' => 'staff',
             'department_id' => $department->id,
         ]);
+    }
+
+    public function test_department_admin_can_find_and_assign_unassigned_staff_and_applicants(): void
+    {
+        $department = Department::factory()->create(['name' => 'Edtech']);
+        $otherDepartment = Department::factory()->create(['name' => 'Registrar']);
+        $departmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $department->id,
+        ]);
+        $unassignedApplicant = User::factory()->unverified()->create([
+            'name' => 'Unassigned Applicant',
+            'role' => 'staff',
+            'department_id' => null,
+            'staff_approval_status' => 'pending',
+        ]);
+        $unassignedStaff = User::factory()->create([
+            'name' => 'Unassigned Approved Staff',
+            'role' => 'staff',
+            'department_id' => null,
+        ]);
+        $otherDepartmentStaff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $otherDepartment->id,
+        ]);
+
+        $this->actingAs($departmentAdmin)
+            ->get(route('admin.users'))
+            ->assertOk()
+            ->assertSee($unassignedApplicant->email)
+            ->assertSee($unassignedStaff->email)
+            ->assertDontSee($otherDepartmentStaff->email)
+            ->assertSee('name="staff['.$unassignedApplicant->id.'][department_id]"', false)
+            ->assertSee('name="staff['.$unassignedStaff->id.'][department_id]"', false);
+
+        foreach ([$unassignedApplicant, $unassignedStaff] as $staff) {
+            $this->put(route('admin.users.update', $staff), [
+                'staff' => [
+                    $staff->id => [
+                        'name' => $staff->name,
+                        'email' => $staff->email,
+                        'department_id' => $otherDepartment->id,
+                    ],
+                ],
+            ])->assertNotFound();
+
+            $this->assertNull($staff->fresh()->department_id);
+
+            $this->put(route('admin.users.update', $staff), [
+                'staff' => [
+                    $staff->id => [
+                        'name' => $staff->name,
+                        'email' => $staff->email,
+                        'department_id' => $department->id,
+                    ],
+                ],
+            ])->assertRedirect(route('admin.users'))
+                ->assertSessionHas('status', 'Staff account details updated.');
+
+            $this->assertSame($department->id, $staff->fresh()->department_id);
+        }
+    }
+
+    public function test_super_admin_can_find_and_assign_an_unassigned_staff_applicant(): void
+    {
+        $superAdmin = User::factory()->create(['role' => 'admin']);
+        $department = Department::factory()->create();
+        $unassignedApplicant = User::factory()->unverified()->create([
+            'name' => 'Unassigned Applicant',
+            'role' => 'staff',
+            'department_id' => null,
+            'staff_approval_status' => 'pending',
+        ]);
+
+        $this->actingAs($superAdmin)
+            ->get(route('admin.users'))
+            ->assertOk()
+            ->assertSee($unassignedApplicant->email)
+            ->assertSee('name="staff['.$unassignedApplicant->id.'][department_id]"', false);
+
+        $this->put(route('admin.users.update', $unassignedApplicant), [
+            'staff' => [
+                $unassignedApplicant->id => [
+                    'name' => $unassignedApplicant->name,
+                    'email' => $unassignedApplicant->email,
+                    'department_id' => $department->id,
+                ],
+            ],
+        ])->assertRedirect(route('admin.users'));
+
+        $this->assertSame($department->id, $unassignedApplicant->fresh()->department_id);
     }
 
     public function test_department_admin_cannot_manage_another_department_or_change_roles(): void
@@ -184,6 +276,133 @@ class DepartmentUserAccessTest extends TestCase
             ->assertDontSee('Submit report for review');
     }
 
+    public function test_department_admin_can_transfer_an_assigned_ticket_from_another_department(): void
+    {
+        $adminDepartment = Department::factory()->create(['name' => 'Edtech']);
+        $ticketDepartment = Department::factory()->create(['name' => 'Registrar']);
+        $receivingDepartment = Department::factory()->create(['name' => 'Admissions']);
+        $departmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $adminDepartment->id,
+        ]);
+        $assignedStaff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $ticketDepartment->id,
+        ]);
+        $ticket = $this->createTicket(
+            $ticketDepartment,
+            'TKT-CROSS-DEPARTMENT-HANDOFF',
+            'Assigned registrar request',
+            $assignedStaff->id,
+        );
+
+        $this->actingAs($departmentAdmin)
+            ->get(route('staff.ticket-detail', $ticket))
+            ->assertOk()
+            ->assertSee('Transfer ticket')
+            ->assertSee($receivingDepartment->name);
+
+        $this->post(route('staff.ticket-transfer', $ticket), [
+            'department_id' => $receivingDepartment->id,
+            'handoff_note' => 'Admissions needs to review the request.',
+        ])->assertRedirect(route('staff.ticket-detail', $ticket));
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'department_id' => $receivingDepartment->id,
+            'assigned_to_user_id' => null,
+        ]);
+        $this->assertDatabaseHas('ticket_events', [
+            'ticket_id' => $ticket->id,
+            'event' => 'department_transferred',
+            'description' => 'Ticket transferred from Registrar to Admissions.',
+        ]);
+    }
+
+    public function test_staff_can_claim_an_unassigned_ticket_and_endorse_it_to_a_department_peer(): void
+    {
+        $department = Department::factory()->create();
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+        $peer = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+        $ticket = $this->createTicket($department, 'TKT-STAFF-CLAIM', 'Unassigned department request');
+
+        $this->actingAs($staff)
+            ->get(route('staff.ticket-detail', $ticket))
+            ->assertOk()
+            ->assertSee('name="assigned_to_user_id"', false)
+            ->assertSee('Take this ticket', false);
+
+        $this->put(route('staff.ticket-update', $ticket), [
+            'status' => 'New',
+            'assigned_to_user_id' => $staff->id,
+        ])->assertRedirect(route('staff.ticket-detail', $ticket))
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'assigned_to_user_id' => $staff->id,
+        ]);
+        $this->assertDatabaseHas('ticket_events', [
+            'ticket_id' => $ticket->id,
+            'actor_id' => $staff->id,
+            'event' => 'assignment_changed',
+            'description' => "Assigned to {$staff->name}.",
+        ]);
+
+        $this->put(route('staff.ticket-update', $ticket), [
+            'status' => 'In Progress',
+            'assigned_to_user_id' => $peer->id,
+        ])->assertRedirect(route('staff.ticket-detail', $ticket));
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'assigned_to_user_id' => $peer->id,
+        ]);
+        $this->assertDatabaseHas('workspace_notifications', [
+            'user_id' => $peer->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'assignment',
+            'title' => 'Ticket assigned to you',
+        ]);
+    }
+
+    public function test_staff_cannot_reassign_a_ticket_assigned_to_a_department_peer(): void
+    {
+        $department = Department::factory()->create();
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+        $currentAssignee = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+        $ticket = $this->createTicket(
+            $department,
+            'TKT-PEER-ASSIGNMENT',
+            'Assigned department request',
+            $currentAssignee->id,
+        );
+
+        $this->actingAs($staff)
+            ->put(route('staff.ticket-update', $ticket), [
+                'status' => 'In Progress',
+                'assigned_to_user_id' => $staff->id,
+            ])->assertForbidden();
+
+        $this->assertSame($currentAssignee->id, $ticket->fresh()->assigned_to_user_id);
+        $this->assertDatabaseMissing('ticket_events', [
+            'ticket_id' => $ticket->id,
+            'event' => 'assignment_changed',
+        ]);
+    }
+
     public function test_super_admin_can_filter_ticket_queue_and_staff_by_department(): void
     {
         $department = Department::factory()->create(['name' => 'EdTech']);
@@ -199,12 +418,12 @@ class DepartmentUserAccessTest extends TestCase
             'department_id' => $otherDepartment->id,
             'name' => 'Registrar Staff',
         ]);
-        User::factory()->create([
+        $departmentAdminAssignee = User::factory()->create([
             'role' => 'department_admin',
             'department_id' => $department->id,
             'name' => 'EdTech Admin',
         ]);
-        $departmentTicket = $this->createTicket($department, 'TKT-EDTECH-QUEUE', 'EdTech request');
+        $departmentTicket = $this->createTicket($department, 'TKT-EDTECH-QUEUE', 'EdTech request', $departmentAdminAssignee->id);
         $otherDepartmentTicket = $this->createTicket($otherDepartment, 'TKT-REGISTRAR-QUEUE', 'Registrar request');
 
         $this->actingAs($admin)
@@ -213,31 +432,47 @@ class DepartmentUserAccessTest extends TestCase
             ->assertSee($departmentTicket->ticket_number)
             ->assertDontSee($otherDepartmentTicket->ticket_number)
             ->assertSee('Filter by department')
-            ->assertSee('Filter by staff')
+            ->assertSee('Filter by assignee')
             ->assertSee('EdTech Staff')
+            ->assertSee('EdTech Admin (Department admin)')
             ->assertDontSee('Registrar Staff')
-            ->assertDontSee('EdTech Admin')
             ->assertViewHas('ticketCount', 1)
             ->assertViewHas('selectedDepartmentId', $department->id)
-            ->assertViewHas('assignees', fn ($assignees): bool => $assignees->modelKeys() === [$departmentStaff->id]);
+            ->assertViewHas('assignees', function ($assignees) use ($departmentStaff, $departmentAdminAssignee): bool {
+                $actualIds = $assignees->modelKeys();
+                sort($actualIds);
+                $expectedIds = [$departmentStaff->id, $departmentAdminAssignee->id];
+                sort($expectedIds);
+
+                return $actualIds === $expectedIds;
+            });
+
+        $this->get(route('staff.tickets', [
+            'department_id' => $department->id,
+            'assignee' => $departmentAdminAssignee->id,
+        ]))
+            ->assertOk()
+            ->assertSee($departmentTicket->ticket_number)
+            ->assertDontSee($otherDepartmentTicket->ticket_number);
 
         $this->get(route('staff.tickets'))
             ->assertOk()
             ->assertSee($departmentTicket->ticket_number)
             ->assertSee($otherDepartmentTicket->ticket_number)
-            ->assertSee('disabled', false)
-            ->assertSee('Select department first');
+            ->assertDontSee('Select department first')
+            ->assertSee('Assignee: All');
     }
 
-    public function test_department_admin_can_view_another_department_queue_without_working_its_tickets(): void
+    public function test_department_admin_can_view_and_manage_tickets_across_all_departments(): void
     {
+        Notification::fake();
         $department = Department::factory()->create(['name' => 'EdTech']);
         $otherDepartment = Department::factory()->create(['name' => 'Registrar']);
         $departmentAdmin = User::factory()->create([
             'role' => 'department_admin',
             'department_id' => $department->id,
         ]);
-        User::factory()->create([
+        $departmentStaff = User::factory()->create([
             'role' => 'staff',
             'department_id' => $department->id,
             'name' => 'EdTech Staff',
@@ -247,33 +482,125 @@ class DepartmentUserAccessTest extends TestCase
             'department_id' => $otherDepartment->id,
             'name' => 'Registrar Staff',
         ]);
-        $departmentTicket = $this->createTicket($department, 'TKT-EDTECH-OWN', 'EdTech request');
-        $otherDepartmentTicket = $this->createTicket($otherDepartment, 'TKT-REGISTRAR-READONLY', 'Registrar request');
+        $otherDepartmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $otherDepartment->id,
+            'name' => 'Registrar Admin',
+        ]);
+        $departmentTicket = $this->createTicket($department, 'TKT-EDTECH-OWN', 'EdTech request', $departmentStaff->id);
+        $otherDepartmentTicket = $this->createTicket($otherDepartment, 'TKT-REGISTRAR-MANAGE', 'Registrar request');
+        $unassignedTicket = $this->createTicket(null, 'TKT-UNASSIGNED', 'Request needs triage');
 
         $this->actingAs($departmentAdmin)
-            ->get(route('staff.tickets', ['department_id' => $otherDepartment->id]))
+            ->get(route('staff.tickets'))
+            ->assertOk()
+            ->assertSee($departmentTicket->ticket_number)
+            ->assertSee($otherDepartmentTicket->ticket_number)
+            ->assertSee($unassignedTicket->ticket_number)
+            ->assertSee('Department: All')
+            ->assertViewHas('ticketCount', 3)
+            ->assertViewHas('selectedDepartmentId', null)
+            ->assertViewHas('assignees', function ($assignees) use ($departmentAdmin, $departmentStaff, $otherDepartmentStaff, $otherDepartmentAdmin): bool {
+                $actualIds = $assignees->modelKeys();
+                sort($actualIds);
+                $expectedIds = [$departmentAdmin->id, $departmentStaff->id, $otherDepartmentStaff->id, $otherDepartmentAdmin->id];
+                sort($expectedIds);
+
+                return $actualIds === $expectedIds;
+            });
+
+        $this->get(route('staff.tickets', [
+            'department_id' => '',
+            'assignee' => $departmentStaff->id,
+        ]))
+            ->assertOk()
+            ->assertSee($departmentTicket->ticket_number)
+            ->assertDontSee($otherDepartmentTicket->ticket_number);
+
+        $this->get(route('staff.tickets', ['department_id' => $otherDepartment->id]))
             ->assertOk()
             ->assertDontSee($departmentTicket->ticket_number)
             ->assertSee($otherDepartmentTicket->ticket_number)
-            ->assertSee('View only · Registrar')
+            ->assertDontSee($unassignedTicket->ticket_number)
             ->assertSee('Registrar Staff')
+            ->assertSee('Registrar Admin (Department admin)')
             ->assertDontSee('EdTech Staff')
             ->assertViewHas('ticketCount', 1)
             ->assertViewHas('selectedDepartmentId', $otherDepartment->id)
-            ->assertViewHas('assignees', fn ($assignees): bool => $assignees->modelKeys() === [$otherDepartmentStaff->id]);
+            ->assertViewHas('assignees', function ($assignees) use ($otherDepartmentStaff, $otherDepartmentAdmin): bool {
+                $actualIds = $assignees->modelKeys();
+                sort($actualIds);
+                $expectedIds = [$otherDepartmentStaff->id, $otherDepartmentAdmin->id];
+                sort($expectedIds);
 
-        $this->get(route('staff.tickets'))
+                return $actualIds === $expectedIds;
+            });
+
+        $this->actingAs($departmentAdmin)
+            ->get(route('staff.ticket-detail', $otherDepartmentTicket))
             ->assertOk()
-            ->assertSee($departmentTicket->ticket_number)
-            ->assertDontSee($otherDepartmentTicket->ticket_number)
-            ->assertSee('EdTech Staff')
-            ->assertDontSee('Registrar Staff');
+            ->assertDontSee('Read-only view')
+            ->assertSee('name="status"', false)
+            ->assertSee('name="assigned_to_user_id"', false)
+            ->assertSee('Registrar Admin (Department admin)');
 
         $this->put(route('staff.ticket-update', $otherDepartmentTicket), [
             'status' => 'In Progress',
-        ])->assertNotFound();
+            'priority' => 'High',
+            'assigned_to_user_id' => $otherDepartmentAdmin->id,
+        ])->assertRedirect(route('staff.ticket-detail', $otherDepartmentTicket));
 
-        $this->assertSame('New', $otherDepartmentTicket->fresh()->status);
+        $this->assertSame('In Progress', $otherDepartmentTicket->fresh()->status);
+        $this->assertSame('High', $otherDepartmentTicket->fresh()->priority);
+        $this->assertSame($otherDepartmentAdmin->id, $otherDepartmentTicket->fresh()->assigned_to_user_id);
+
+        $this->get(route('staff.tickets', [
+            'department_id' => $otherDepartment->id,
+            'assignee' => $otherDepartmentAdmin->id,
+        ]))
+            ->assertOk()
+            ->assertSee($otherDepartmentTicket->ticket_number);
+
+        $this->from(route('staff.ticket-detail', $otherDepartmentTicket))
+            ->put(route('staff.ticket-update', $otherDepartmentTicket), [
+                'status' => 'In Progress',
+                'assigned_to_user_id' => $departmentAdmin->id,
+            ])
+            ->assertRedirect(route('staff.ticket-detail', $otherDepartmentTicket))
+            ->assertSessionHasErrors('assigned_to_user_id');
+        $this->assertSame($otherDepartmentAdmin->id, $otherDepartmentTicket->fresh()->assigned_to_user_id);
+
+        $this->actingAs($otherDepartmentAdmin)
+            ->put(route('staff.ticket-update', $otherDepartmentTicket), [
+                'status' => 'Waiting for User',
+                'priority' => 'High',
+            ])
+            ->assertRedirect(route('staff.ticket-detail', $otherDepartmentTicket));
+        $this->assertSame('Waiting for User', $otherDepartmentTicket->fresh()->status);
+
+        $this->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertViewHas('openTicketCount', 3)
+            ->assertViewHas('recentTickets', fn ($tickets): bool => $tickets->modelKeys() === [
+                $unassignedTicket->id,
+                $otherDepartmentTicket->id,
+                $departmentTicket->id,
+            ]);
+
+        $crossDepartmentNotification = WorkspaceNotification::query()->create([
+            'user_id' => $departmentAdmin->id,
+            'ticket_id' => $otherDepartmentTicket->id,
+            'type' => 'status_update',
+            'title' => 'Cross-department ticket updated',
+            'message' => 'This ticket is visible to every department admin.',
+        ]);
+        $this->actingAs($departmentAdmin)
+            ->get(route('staff.notifications'))
+            ->assertOk()
+            ->assertSee($crossDepartmentNotification->message);
+        $this->patch(route('staff.notifications.read', $crossDepartmentNotification))
+            ->assertRedirect(route('staff.ticket-detail', $otherDepartmentTicket));
+        $this->assertNotNull($crossDepartmentNotification->fresh()->read_at);
 
         $this->from(route('staff.tickets', ['department_id' => $otherDepartment->id]))
             ->get(route('staff.tickets', [
@@ -285,6 +612,32 @@ class DepartmentUserAccessTest extends TestCase
             ]))
             ->assertRedirect(route('staff.tickets', ['department_id' => $otherDepartment->id]))
             ->assertSessionHasErrors('assignee');
+
+        $response = $this->get(route('staff.ticket-detail', $unassignedTicket))
+            ->assertOk()
+            ->assertSee('Assign department')
+            ->assertDontSee('name="handoff_note"', false);
+        $document = new \DOMDocument;
+        $this->assertTrue($document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING));
+        $handoffPanel = (new \DOMXPath($document))
+            ->query('//details[contains(@class, "ticket-transfer-card")]')
+            ->item(0);
+        $this->assertTrue($handoffPanel instanceof \DOMElement);
+        $this->assertTrue($handoffPanel->hasAttribute('open'));
+
+        $this->post(route('staff.ticket-transfer', $unassignedTicket), [
+            'department_id' => $otherDepartment->id,
+        ])->assertRedirect(route('staff.ticket-detail', $unassignedTicket));
+
+        $this->assertSame($otherDepartment->id, $unassignedTicket->fresh()->department_id);
+        $this->assertDatabaseMissing('ticket_comments', [
+            'ticket_id' => $unassignedTicket->id,
+        ]);
+        $this->assertDatabaseHas('ticket_events', [
+            'ticket_id' => $unassignedTicket->id,
+            'event' => 'department_transferred',
+            'description' => 'Ticket assigned to Registrar.',
+        ]);
     }
 
     public function test_regular_staff_cannot_filter_other_departments_and_only_sees_local_staff_filters(): void
@@ -306,6 +659,10 @@ class DepartmentUserAccessTest extends TestCase
             'department_id' => $otherDepartment->id,
             'name' => 'Registrar Staff',
         ]);
+        $departmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $department->id,
+        ]);
         $this->createTicket($department, 'TKT-STAFF-LOCAL', 'EdTech request');
 
         $this->actingAs($staff)
@@ -314,13 +671,20 @@ class DepartmentUserAccessTest extends TestCase
             ->assertDontSee('Filter by department')
             ->assertSee('EdTech Staff')
             ->assertDontSee('Registrar Staff')
-            ->assertViewHas('assignees', fn ($assignees): bool => $assignees->modelKeys() === [$staff->id, $departmentStaff->id]);
+            ->assertViewHas('assignees', function ($assignees) use ($staff, $departmentStaff, $departmentAdmin): bool {
+                $actualIds = $assignees->modelKeys();
+                sort($actualIds);
+                $expectedIds = [$staff->id, $departmentStaff->id, $departmentAdmin->id];
+                sort($expectedIds);
+
+                return $actualIds === $expectedIds;
+            });
 
         $this->get(route('staff.tickets', ['department_id' => $otherDepartment->id]))
             ->assertSessionHasErrors('department_id');
     }
 
-    public function test_regular_staff_cannot_assign_tickets(): void
+    public function test_regular_staff_can_only_claim_unassigned_tickets_for_themselves(): void
     {
         $department = Department::factory()->create();
         $staff = User::factory()->create([
@@ -338,7 +702,7 @@ class DepartmentUserAccessTest extends TestCase
                 'status' => 'Assigned',
                 'assigned_to_user_id' => $anotherStaff->id,
             ])
-            ->assertForbidden();
+            ->assertSessionHasErrors('assigned_to_user_id');
 
         $this->assertNull($ticket->fresh()->assigned_to_user_id);
     }
@@ -370,12 +734,19 @@ class DepartmentUserAccessTest extends TestCase
             $sourceStaff->id,
         );
 
-        $this->actingAs($sourceAdmin)
+        $response = $this->actingAs($sourceAdmin)
             ->get(route('staff.ticket-detail', $ticket))
             ->assertOk()
-            ->assertSeeInOrder(['Ownership', 'Transfer ticket'])
-            ->assertSee('<details class="workspace-card ticket-collapsible-card ticket-transfer-card"', false)
+            ->assertSeeInOrder(['Transfer ticket', 'Problem description'])
+            ->assertSee('name="handoff_note"', false)
             ->assertSee('<summary class="workspace-card-heading ticket-collapsible-heading"', false);
+        $document = new \DOMDocument;
+        $this->assertTrue($document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING));
+        $handoffPanel = (new \DOMXPath($document))
+            ->query('//details[contains(@class, "ticket-transfer-card")]')
+            ->item(0);
+        $this->assertTrue($handoffPanel instanceof \DOMElement);
+        $this->assertFalse($handoffPanel->hasAttribute('open'));
 
         $this->actingAs($sourceAdmin)
             ->post(route('staff.ticket-transfer', $ticket), [
@@ -445,7 +816,7 @@ class DepartmentUserAccessTest extends TestCase
         $this->assertSame($receivingStaff->id, $ticket->fresh()->assigned_to_user_id);
     }
 
-    public function test_department_admin_cannot_transfer_ticket_without_a_handoff_note(): void
+    public function test_department_admin_transfer_uses_a_default_note_when_handoff_note_is_blank(): void
     {
         $department = Department::factory()->create();
         $otherDepartment = Department::factory()->create();
@@ -454,17 +825,26 @@ class DepartmentUserAccessTest extends TestCase
             'department_id' => $department->id,
         ]);
         $ticket = $this->createTicket($department, 'TKT-MISSING-HANDOFF', 'Missing handoff note');
+        $defaultNote = 'This ticket is being routed to your department for review and appropriate follow-up. Please review the request and take the next appropriate action.';
 
         $this->actingAs($departmentAdmin)
-            ->from(route('staff.ticket-detail', $ticket))
+            ->get(route('staff.ticket-detail', $ticket))
+            ->assertOk()
+            ->assertSee($defaultNote);
+
+        $this->actingAs($departmentAdmin)
             ->post(route('staff.ticket-transfer', $ticket), [
                 'department_id' => $otherDepartment->id,
                 'handoff_note' => '',
             ])
-            ->assertRedirect(route('staff.ticket-detail', $ticket))
-            ->assertSessionHasErrors('handoff_note');
+            ->assertRedirect(route('staff.ticket-detail', $ticket));
 
-        $this->assertSame($department->id, $ticket->fresh()->department_id);
+        $this->assertSame($otherDepartment->id, $ticket->fresh()->department_id);
+        $this->assertDatabaseHas('ticket_comments', [
+            'ticket_id' => $ticket->id,
+            'is_internal' => true,
+            'body' => "Handoff to {$otherDepartment->name}:\n\n{$defaultNote}",
+        ]);
     }
 
     public function test_super_admin_can_view_tickets_across_departments(): void
@@ -478,7 +858,9 @@ class DepartmentUserAccessTest extends TestCase
         $this->actingAs($admin)->get(route('staff.tickets'))
             ->assertOk()
             ->assertSee($firstTicket->ticket_number)
-            ->assertSee($secondTicket->ticket_number);
+            ->assertSee($secondTicket->ticket_number)
+            ->assertDontSee('Select department first')
+            ->assertDontSee('disabled', false);
     }
 
     public function test_department_dashboard_and_reports_only_include_department_tickets(): void
@@ -508,7 +890,7 @@ class DepartmentUserAccessTest extends TestCase
             ->assertViewHas('totalTicketCount', 1);
     }
 
-    public function test_department_admin_can_select_other_department_reports_but_defaults_to_their_department(): void
+    public function test_department_admin_reports_default_to_all_departments_and_can_filter(): void
     {
         $this->travelTo(now()->startOfDay()->addHours(12));
         $department = Department::factory()->create(['name' => 'EdTech']);
@@ -527,8 +909,9 @@ class DepartmentUserAccessTest extends TestCase
         $this->actingAs($departmentAdmin)
             ->get(route('staff.reports', $filters))
             ->assertOk()
-            ->assertViewHas('totalTicketCount', 1)
-            ->assertViewHas('selectedDepartmentId', $department->id);
+            ->assertViewHas('totalTicketCount', 2)
+            ->assertViewHas('selectedDepartmentId', null)
+            ->assertViewHas('selectedDepartmentName', 'All departments');
 
         $this->get(route('staff.reports', [
             ...$filters,
@@ -637,14 +1020,14 @@ class DepartmentUserAccessTest extends TestCase
     }
 
     private function createTicket(
-        Department $department,
+        ?Department $department,
         string $ticketNumber,
         string $subject,
         ?int $assigneeId = null,
     ): Ticket {
         return Ticket::query()->create([
             'ticket_number' => $ticketNumber,
-            'department_id' => $department->id,
+            'department_id' => $department?->id,
             'assigned_to_user_id' => $assigneeId,
             'requester_name' => 'Requester',
             'student_id' => 'STU-001',

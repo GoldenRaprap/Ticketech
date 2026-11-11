@@ -2,9 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Models\WorkspaceNotification;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -17,7 +15,8 @@ class StaffNotificationController extends Controller
             'read' => ['nullable', 'in:all,unread,read'],
         ])['read'] ?? 'all';
 
-        $notifications = $this->visibleNotifications($request->user())
+        $notifications = WorkspaceNotification::query()
+            ->visibleTo($request->user())
             ->with('ticket:id,ticket_number')
             ->when($filter === 'unread', fn ($query) => $query->whereNull('read_at'))
             ->when($filter === 'read', fn ($query) => $query->whereNotNull('read_at'))
@@ -28,7 +27,8 @@ class StaffNotificationController extends Controller
         return view('staff.notifications', [
             'notifications' => $notifications,
             'filter' => $filter,
-            'unreadCount' => $this->visibleNotifications($request->user())
+            'unreadCount' => WorkspaceNotification::query()
+                ->visibleTo($request->user())
                 ->whereNull('read_at')
                 ->count(),
         ]);
@@ -36,7 +36,8 @@ class StaffNotificationController extends Controller
 
     public function markAllRead(Request $request): RedirectResponse
     {
-        $this->visibleNotifications($request->user())
+        WorkspaceNotification::query()
+            ->visibleTo($request->user())
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
@@ -61,18 +62,5 @@ class StaffNotificationController extends Controller
         return $notification->ticket
             ? to_route('staff.ticket-detail', $notification->ticket)
             : to_route('staff.notifications');
-    }
-
-    /**
-     * @return Builder<WorkspaceNotification>
-     */
-    private function visibleNotifications(User $user): Builder
-    {
-        return WorkspaceNotification::query()
-            ->where('user_id', $user->id)
-            ->where(function (Builder $query) use ($user): void {
-                $query->whereNull('ticket_id')
-                    ->orWhereHas('ticket', fn (Builder $tickets) => $tickets->visibleTo($user));
-            });
     }
 }

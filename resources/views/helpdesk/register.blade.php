@@ -36,7 +36,7 @@
                     <h1>Register for staff access</h1>
                     <p>Verify your university email, then an administrator will review your request before staff access is enabled.</p>
 
-                    <form class="password-form" action="{{ route('register.store') }}" method="post">
+                    <form class="password-form" action="{{ route('register.store') }}" method="post" data-password-confirmation>
                         @csrf
                         @if ($errors->any())
                             <ul class="form-validation-errors" role="alert">

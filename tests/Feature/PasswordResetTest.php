@@ -3,11 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use Illuminate\Auth\Notifications\ResetPassword;
+use App\Notifications\StaffPasswordReset;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class PasswordResetTest extends TestCase
@@ -36,7 +39,35 @@ class PasswordResetTest extends TestCase
             ->assertRedirect(route('password.request'))
             ->assertSessionHas('status', 'If an account exists for that email, a reset link has been sent.');
 
-        Notification::assertSentTo($user, ResetPassword::class);
+        Notification::assertSentTo($user, StaffPasswordReset::class);
+    }
+
+    public function test_reset_link_uses_saved_mail_settings_and_sends_without_a_queue_worker(): void
+    {
+        $user = User::factory()->create(['email' => 'jamie@example.edu', 'role' => 'staff']);
+        $timestamp = now();
+        DB::table('system_settings')->insert([
+            ['setting' => 'mail.default', 'value' => 'array', 'created_at' => $timestamp, 'updated_at' => $timestamp],
+            ['setting' => 'mail.from.address', 'value' => 'helpdesk@example.edu', 'created_at' => $timestamp, 'updated_at' => $timestamp],
+            ['setting' => 'mail.from.name', 'value' => 'PCU Helpdesk', 'created_at' => $timestamp, 'updated_at' => $timestamp],
+        ]);
+        config(['mail.default' => 'log', 'mail.default_fallback' => 'log']);
+        Mail::purge('array');
+        Queue::fake();
+
+        $this->from(route('password.request'))
+            ->post(route('password.email'), ['email' => $user->email])
+            ->assertRedirect(route('password.request'))
+            ->assertSessionHas('status', 'If an account exists for that email, a reset link has been sent.');
+
+        $transport = Mail::mailer('array')->getSymfonyTransport();
+        $this->assertCount(1, $transport->messages());
+        $email = $transport->messages()->first()->getOriginalMessage();
+        $this->assertSame('helpdesk@example.edu', $email->getFrom()[0]->getAddress());
+        $this->assertSame('PCU Helpdesk', $email->getFrom()[0]->getName());
+        $this->assertStringContainsString('/reset-password/', $email->getHtmlBody());
+        $this->assertStringContainsString('pcu-logo@ticketech', $email->getHtmlBody());
+        Queue::assertNothingPushed();
     }
 
     public function test_reset_link_response_is_the_same_for_unknown_email(): void

@@ -466,35 +466,48 @@ document.querySelectorAll('[data-auto-submit-on-change]').forEach((form) => {
 	});
 });
 
-document.querySelectorAll('[data-ticket-assignee]').forEach((assigneeSelect) => {
-	if (!(assigneeSelect instanceof HTMLSelectElement)) {
-		console.error('Ticket assignee control is not a select element.');
+document.querySelectorAll('[data-role-change-form]').forEach((form) => {
+	if (!(form instanceof HTMLFormElement)) {
+		console.error('Role change target is not a form.');
 		return;
 	}
 
-	const form = assigneeSelect.form;
-	const priorityField = form?.querySelector('[data-priority-field]');
-	const prioritySelect = priorityField?.querySelector('select[name="priority"]');
-	const automaticPriorityNote = form?.querySelector('[data-automatic-priority-note]');
+	const roleSelect = form.querySelector('[data-role-change-select]');
 
-	if (
-		!(priorityField instanceof HTMLElement) ||
-		!(prioritySelect instanceof HTMLSelectElement) ||
-		!(automaticPriorityNote instanceof HTMLElement)
-	) {
-		console.error('Ticket assignment form is missing priority controls.');
+	if (!(roleSelect instanceof HTMLSelectElement)) {
+		console.error('Role change form is missing its role selector.');
 		return;
 	}
 
-	const updatePriorityControls = () => {
-		const isAssigned = assigneeSelect.value !== '';
-
-		prioritySelect.disabled = !isAssigned;
-		automaticPriorityNote.hidden = isAssigned;
+	let currentRole = roleSelect.value;
+	const roleLabels = {
+		staff: 'Staff',
+		department_admin: 'Department Admin',
+		admin: 'Super Admin',
 	};
 
-	assigneeSelect.addEventListener('change', updatePriorityControls);
-	updatePriorityControls();
+	roleSelect.addEventListener('change', () => {
+		const selectedRole = roleSelect.value;
+		const selectedRoleLabel = roleLabels[selectedRole];
+
+		if (!selectedRoleLabel || selectedRole === currentRole) {
+			return;
+		}
+
+		void requestConfirmation({
+			titleText: `Change this account to ${selectedRoleLabel}?`,
+			messageText: `This account's access will change to ${selectedRoleLabel}.`,
+			confirmText: `Change to ${selectedRoleLabel}`,
+			isDangerous: selectedRole !== 'admin',
+		}).then((confirmed) => {
+			if (!confirmed) {
+				roleSelect.value = currentRole;
+				return;
+			}
+
+			HTMLFormElement.prototype.submit.call(form);
+		});
+	});
 });
 
 document.querySelectorAll('.public-review-choices').forEach((choices) => {
@@ -803,6 +816,36 @@ document.querySelectorAll('[data-password-toggle]').forEach((toggle) => {
 		toggle.setAttribute('aria-pressed', String(!isVisible));
 		toggle.setAttribute('aria-label', `${isVisible ? 'Show' : 'Hide'} password`);
 	});
+});
+
+document.querySelectorAll('[data-password-confirmation]').forEach((form) => {
+	const password = form.querySelector('input[name="password"]');
+	const confirmation = form.querySelector('input[name="password_confirmation"]');
+
+	if (!(password instanceof HTMLInputElement) || !(confirmation instanceof HTMLInputElement)) {
+		throw new Error('Password confirmation form is missing its password fields.');
+	}
+
+	const validateConfirmation = () => {
+		confirmation.setCustomValidity(
+			confirmation.value !== '' && confirmation.value !== password.value
+				? 'Passwords do not match.'
+				: '',
+		);
+	};
+
+	password.addEventListener('input', validateConfirmation);
+	confirmation.addEventListener('input', validateConfirmation);
+	form.addEventListener('submit', (event) => {
+		validateConfirmation();
+
+		if (!form.checkValidity()) {
+			event.preventDefault();
+			form.reportValidity();
+		}
+	});
+
+	validateConfirmation();
 });
 
 document.querySelectorAll('[data-message-counter]').forEach((textarea) => {

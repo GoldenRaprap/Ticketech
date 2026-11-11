@@ -29,6 +29,38 @@
         </div>
     @endif
 
+    @if ($canTransferTicket && $departments->isNotEmpty())
+        <details class="workspace-card ticket-collapsible-card ticket-transfer-card" @if ($ticket->department_id === null || $errors->hasAny(['department_id', 'handoff_note'])) open @endif>
+            <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">{{ $ticket->department_id === null ? 'Department triage' : 'Department handoff' }}</span><h2>{{ $ticket->department_id === null ? 'Assign department' : 'Transfer ticket' }}</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>
+            <div class="ticket-collapsible-content">
+                <p class="client-report-intro">{{ $ticket->department_id === null ? 'Choose the department responsible for this request.' : "The ticket will move to the receiving department's queue and become unassigned. Include completed checks, findings, and the next action needed." }}</p>
+                <form action="{{ route('staff.ticket-transfer', $ticket) }}" method="post">
+                    @csrf
+                    <div class="ticket-property-fields">
+                        <label class="workspace-field">
+                            <span>{{ $ticket->department_id === null ? 'Responsible department' : 'Receiving department' }}</span>
+                            <select name="department_id" required>
+                                <option value="">Select a department</option>
+                                @foreach ($departments as $department)
+                                    <option value="{{ $department->id }}" @selected((string) old('department_id') === (string) $department->id)>{{ $department->name }}</option>
+                                @endforeach
+                            </select>
+                            @error('department_id')<span class="form-field-error">{{ $message }}</span>@enderror
+                        </label>
+                        @if ($ticket->department_id !== null)
+                            <label class="workspace-field">
+                                <span>Handoff note</span>
+                                <textarea name="handoff_note" maxlength="5000" placeholder="Summarize the issue, work completed, findings, and what the receiving team should do next.">{{ old('handoff_note', $defaultHandoffNote) }}</textarea>
+                                @error('handoff_note')<span class="form-field-error">{{ $message }}</span>@enderror
+                            </label>
+                        @endif
+                    </div>
+                    <button class="workspace-button workspace-button--secondary workspace-button--full" type="submit">{{ $ticket->department_id === null ? 'Assign department' : 'Transfer to department' }}</button>
+                </form>
+            </div>
+        </details>
+    @endif
+
     <div class="ticket-detail-layout">
         <div class="ticket-detail-main">
             <section class="workspace-card ticket-description-card">
@@ -157,31 +189,27 @@
                                 <option value="{{ $status }}" @selected(old('status', $ticket->status) === $status)>{{ $status }}</option>
                             @endforeach
                         </select></label>
-                        @if ($ticket->assigned_to_user_id || $canManageTickets)
-                            <label class="workspace-field" data-priority-field>
-                                <span>Priority</span>
-                                <select name="priority" @disabled(! $ticket->assigned_to_user_id && ! old('assigned_to_user_id'))>
-                                    @foreach (['Urgent', 'High', 'Medium', 'Low'] as $priority)
-                                        <option value="{{ $priority }}" @selected(old('priority', $ticket->priority) === $priority)>{{ $priority }}</option>
+                        <label class="workspace-field">
+                            <span>Priority</span>
+                            <select name="priority">
+                                @foreach (['Urgent', 'High', 'Medium', 'Low'] as $priority)
+                                    <option value="{{ $priority }}" @selected(old('priority', $ticket->priority) === $priority)>{{ $priority }}</option>
+                                @endforeach
+                            </select>
+                            @error('priority')<span class="form-field-error">{{ $message }}</span>@enderror
+                        </label>
+                        @if ($canChangeAssignment)
+                            <label class="workspace-field">
+                                <span>{{ $canManageTickets ? 'Assigned to' : ($ticket->assigned_to_user_id === null ? 'Take ticket' : 'Endorse to') }}</span>
+                                <select name="assigned_to_user_id">
+                                    <option value="">Unassigned</option>
+                                    @foreach ($staffUsers as $staffUser)
+                                        <option value="{{ $staffUser->id }}" @selected((string) old('assigned_to_user_id', $ticket->assigned_to_user_id) === (string) $staffUser->id)>{{ $staffUser->id === auth()->id() && $ticket->assigned_to_user_id === null ? 'Take this ticket' : $staffUser->displayName() }}{{ $staffUser->isDepartmentAdmin() ? ' (Department admin)' : '' }}</option>
                                     @endforeach
                                 </select>
-                                @error('priority')<span class="form-field-error">{{ $message }}</span>@enderror
                             </label>
-                        @endif
-                        @if ($canManageTickets)
-                            @if (! $ticket->assigned_to_user_id)
-                                <p class="workspace-field" data-automatic-priority-note>
-                                    <span>Assign this ticket to enable priority changes.</span>
-                                </p>
-                            @endif
-                            <label class="workspace-field"><span>Assigned to</span><select name="assigned_to_user_id" data-ticket-assignee>
-                                <option value="">Unassigned</option>
-                                @foreach ($staffUsers as $staffUser)
-                                    <option value="{{ $staffUser->id }}" @selected((string) old('assigned_to_user_id', $ticket->assigned_to_user_id) === (string) $staffUser->id)>{{ $staffUser->displayName() }}</option>
-                                @endforeach
-                            </select></label>
                         @else
-                            <p class="workspace-field"><span>Assignment is managed by your department admin.</span></p>
+                            <p class="workspace-field"><span>Only the assigned staff member or a department admin can change this assignment.</span></p>
                         @endif
                     </div>
                     <button class="workspace-button workspace-button--primary workspace-button--full" type="submit">Save changes</button>
@@ -210,36 +238,6 @@
                     <div class="ticket-assignment-meta"><span>Assigned</span><strong>{{ $ticket->assigned_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</strong></div>
                 @endif
             </section>
-
-            @if ($canTransferTicket && $departments->isNotEmpty())
-                <details class="workspace-card ticket-collapsible-card ticket-transfer-card" @if ($errors->hasAny(['department_id', 'handoff_note'])) open @endif>
-                    <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">Department handoff</span><h2>Transfer ticket</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>
-                    <div class="ticket-collapsible-content">
-                        <p class="client-report-intro">The ticket will move to the receiving department's queue and become unassigned. Include completed checks, findings, and the next action needed.</p>
-                        <form action="{{ route('staff.ticket-transfer', $ticket) }}" method="post">
-                            @csrf
-                            <div class="ticket-property-fields">
-                                <label class="workspace-field">
-                                    <span>Receiving department</span>
-                                    <select name="department_id" required>
-                                        <option value="">Select a department</option>
-                                        @foreach ($departments as $department)
-                                            <option value="{{ $department->id }}" @selected((string) old('department_id') === (string) $department->id)>{{ $department->name }}</option>
-                                        @endforeach
-                                    </select>
-                                    @error('department_id')<span class="form-field-error">{{ $message }}</span>@enderror
-                                </label>
-                                <label class="workspace-field">
-                                    <span>Handoff note</span>
-                                    <textarea name="handoff_note" maxlength="5000" required placeholder="Summarize the issue, work completed, findings, and what the receiving team should do next.">{{ old('handoff_note') }}</textarea>
-                                    @error('handoff_note')<span class="form-field-error">{{ $message }}</span>@enderror
-                                </label>
-                            </div>
-                            <button class="workspace-button workspace-button--secondary workspace-button--full" type="submit">Transfer to department</button>
-                        </form>
-                    </div>
-                </details>
-            @endif
 
             <details class="workspace-card ticket-collapsible-card client-report-card" @if ($errors->has('reason') || $errors->has('details')) open @endif>
                 <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">CLIENT CONDUCT</span><h2>Report client</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>

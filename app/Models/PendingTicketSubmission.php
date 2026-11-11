@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
     'attachments',
     'verification_token_hash',
     'expires_at',
+    'completed_ticket_number',
 ])]
 class PendingTicketSubmission extends Model
 {

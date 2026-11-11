@@ -26,7 +26,7 @@ class UserPolicy
                 $actor->isDepartmentAdmin()
                 && $target->role === 'staff'
                 && $actor->department_id !== null
-                && $actor->department_id === $target->department_id
+                && ($actor->department_id === $target->department_id || $target->department_id === null)
             );
     }
 

@@ -34,7 +34,8 @@
 
             <label class="field-label" for="ticket-student-id">
                 <span class="field-text">Student or Employee ID:<span class="required-mark">*</span></span>
-                <input id="ticket-student-id" name="student_id" type="text" value="{{ old('student_id') }}" placeholder="2023******" required>
+                <input id="ticket-student-id" name="student_id" type="text" inputmode="numeric" pattern="[0-9]{10}" minlength="10" maxlength="10" value="{{ old('student_id') }}" placeholder="10 digits" aria-describedby="ticket-student-id-hint" required>
+                <small id="ticket-student-id-hint" class="field-hint">Enter exactly 10 digits.</small>
             </label>
 
             <label class="field-label" for="ticket-email">
@@ -44,17 +45,8 @@
 
             <label class="field-label" for="ticket-phone">
                 <span class="field-text">Phone Number:</span>
-                <input id="ticket-phone" name="phone" type="tel" value="{{ old('phone') }}" placeholder="e.g. 09171234567" autocomplete="tel">
-            </label>
-
-            <label class="field-label" for="ticket-department">
-                <span class="field-text">Department:<span class="required-mark">*</span></span>
-                <select id="ticket-department" name="department_id" required>
-                    <option value="">Select a department</option>
-                    @foreach ($departments as $department)
-                        <option value="{{ $department->id }}" @selected((string) old('department_id') === (string) $department->id)>{{ $department->name }}</option>
-                    @endforeach
-                </select>
+                <input id="ticket-phone" name="phone" type="tel" inputmode="numeric" pattern="09[0-9]{9}" minlength="11" maxlength="11" value="{{ old('phone') }}" placeholder="e.g. 09171234567" autocomplete="tel" aria-describedby="ticket-phone-hint">
+                <small id="ticket-phone-hint" class="field-hint">Optional. Enter 11 digits starting with 09.</small>
             </label>
 
             <label class="field-label" for="ticket-category">

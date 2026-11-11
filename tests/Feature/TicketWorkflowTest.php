@@ -32,9 +32,12 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('No account is needed.')
             ->assertSee('e.g. James Smith')
             ->assertSee('Student or Employee ID:')
-            ->assertSee('placeholder="2023******"', false)
+            ->assertSee('pattern="[0-9]{10}"', false)
+            ->assertSee('Enter exactly 10 digits.')
             ->assertSee('example@pcu.edu.ph')
             ->assertSee('e.g. 09171234567')
+            ->assertSee('pattern="09[0-9]{9}"', false)
+            ->assertSee('11 digits starting with 09.')
             ->assertSee('Write like an email')
             ->assertDontSee('name="priority"', false)
             ->assertDontSee('Urgent — Critical issue')
@@ -42,9 +45,8 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('0</span> / 5 files selected', false)
             ->assertSee('Attach up to 5')
             ->assertSee('multiple', false)
-            ->assertSee('name="department_id"', false)
+            ->assertDontSee('name="department_id"', false)
             ->assertSee('name="category_id"', false)
-            ->assertSee('>Student Services</option>', false)
             ->assertSee('>Portal access</option>', false);
 
         $this->get(route('ticket.check'))
@@ -81,7 +83,7 @@ class TicketWorkflowTest extends TestCase
         Notification::fake();
         $response = $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
-            'student_id' => 'PCU-2026-001',
+            'student_id' => '2023000001',
             'email' => 'jamie@example.edu',
             'phone' => '09171234567',
             'department_id' => $department->id,
@@ -105,7 +107,7 @@ class TicketWorkflowTest extends TestCase
         $this->assertDatabaseHas('tickets', [
             'id' => $ticket->id,
             'requester_email' => 'jamie@example.edu',
-            'department_id' => $department->id,
+            'department_id' => null,
             'category_id' => $category->id,
             'priority' => 'Low',
             'status' => 'New',
@@ -120,7 +122,7 @@ class TicketWorkflowTest extends TestCase
             'ticket_id' => $ticket->id,
             'type' => 'new_ticket',
         ]);
-        $this->assertDatabaseMissing('workspace_notifications', [
+        $this->assertDatabaseHas('workspace_notifications', [
             'user_id' => $otherDepartmentAdmin->id,
             'ticket_id' => $ticket->id,
             'type' => 'new_ticket',
@@ -146,6 +148,13 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('Download ticket')
             ->assertSee('Check Ticket Status');
 
+        $this->get(route('ticket.check'))
+            ->assertOk()
+            ->assertSee('value="'.$ticket->ticket_number.'"', false)
+            ->assertSee('value="jamie@example.edu"', false)
+            ->assertViewHas('lookupTicketNumber', $ticket->ticket_number)
+            ->assertViewHas('lookupEmail', 'jamie@example.edu');
+
         $downloadResponse = $this->post(route('ticket.download'), [
             'ticket' => $ticket->ticket_number,
             'email' => 'jamie@example.edu',
@@ -157,7 +166,7 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('Ticket details')
             ->assertSee('Client information')
             ->assertSee('Ticket conversation')
-            ->assertSee($ticket->department->name)
+            ->assertSee('Not available')
             ->assertSee('Cannot access Bluebook')
             ->assertSee('October 27, 2026 at 6:00 PM')
             ->assertSee('The course page returns an error during an urgent outage.')
@@ -312,7 +321,7 @@ class TicketWorkflowTest extends TestCase
         $this->from(route('ticket.create'))
             ->post(route('ticket.store'), [
                 'name' => 'Jamie Student',
-                'student_id' => 'PCU-2026-001',
+                'student_id' => '2023000001',
                 'email' => 'jamie@example.edu',
                 'department_id' => $department->id,
                 'subject' => 'Cannot access Bluebook',
@@ -339,7 +348,7 @@ class TicketWorkflowTest extends TestCase
         $this->from(route('ticket.create'))
             ->post(route('ticket.store'), [
                 'name' => 'Jamie Student',
-                'student_id' => 'PCU-2026-001',
+                'student_id' => '2023000001',
                 'email' => 'jamie@example.edu',
                 'department_id' => $department->id,
                 'subject' => 'Cannot access Bluebook',
@@ -368,7 +377,7 @@ class TicketWorkflowTest extends TestCase
         Notification::fake();
         $response = $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
-            'student_id' => 'PCU-2026-001',
+            'student_id' => '2023000001',
             'email' => 'jamie@example.edu',
             'department_id' => $department->id,
             'subject' => 'Campus portal outage',
@@ -382,7 +391,7 @@ class TicketWorkflowTest extends TestCase
             'requester_email' => 'jamie@example.edu',
             'subject' => 'Campus portal outage',
             'priority' => 'Urgent',
-            'department_id' => $department->id,
+            'department_id' => null,
             'category_id' => null,
         ]);
     }
@@ -400,7 +409,7 @@ class TicketWorkflowTest extends TestCase
             Notification::fake();
             $this->post(route('ticket.store'), [
                 'name' => 'Jamie Student',
-                'student_id' => 'PCU-2026-001',
+                'student_id' => '2023000001',
                 'email' => "jamie{$index}@example.edu",
                 'department_id' => $department->id,
                 'subject' => $case['subject'],
@@ -420,8 +429,68 @@ class TicketWorkflowTest extends TestCase
         $response = $this->from(route('ticket.create'))->post(route('ticket.store'), []);
 
         $response->assertRedirect(route('ticket.create'));
-        $response->assertSessionHasErrors(['name', 'student_id', 'email', 'department_id', 'subject', 'message']);
+        $response->assertSessionHasErrors(['name', 'student_id', 'email', 'subject', 'message']);
         $this->assertDatabaseCount('tickets', 0);
+    }
+
+    public function test_ticket_submission_requires_a_ten_digit_id_and_valid_phone_number(): void
+    {
+        $this->from(route('ticket.create'))
+            ->post(route('ticket.store'), [
+                'name' => 'Jamie Student',
+                'student_id' => 'PCU-2026-001',
+                'email' => 'jamie@example.edu',
+                'phone' => '0917123456A',
+                'subject' => 'Cannot access Bluebook',
+                'message' => 'The course page returns an error.',
+            ])
+            ->assertRedirect(route('ticket.create'))
+            ->assertSessionHasErrors([
+                'student_id' => 'Student or employee ID must contain exactly 10 digits.',
+                'phone' => 'Phone number must be 11 digits and start with 09.',
+            ]);
+
+        $this->assertDatabaseCount('pending_ticket_submissions', 0);
+        $this->assertDatabaseCount('tickets', 0);
+    }
+
+    public function test_ticket_submission_rejects_numeric_ids_and_phone_numbers_with_wrong_lengths(): void
+    {
+        $this->from(route('ticket.create'))
+            ->post(route('ticket.store'), [
+                'name' => 'Jamie Student',
+                'student_id' => '123456789',
+                'email' => 'jamie@example.edu',
+                'phone' => '0917123456',
+                'subject' => 'Cannot access Bluebook',
+                'message' => 'The course page returns an error.',
+            ])
+            ->assertRedirect(route('ticket.create'))
+            ->assertSessionHasErrors([
+                'student_id' => 'Student or employee ID must contain exactly 10 digits.',
+                'phone' => 'Phone number must be 11 digits and start with 09.',
+            ]);
+
+        $this->assertDatabaseCount('pending_ticket_submissions', 0);
+    }
+
+    public function test_ticket_submission_requires_phone_number_to_start_with_zero_nine(): void
+    {
+        $this->from(route('ticket.create'))
+            ->post(route('ticket.store'), [
+                'name' => 'Jamie Student',
+                'student_id' => '2023000001',
+                'email' => 'jamie@example.edu',
+                'phone' => '08171234567',
+                'subject' => 'Cannot access Bluebook',
+                'message' => 'The course page returns an error.',
+            ])
+            ->assertRedirect(route('ticket.create'))
+            ->assertSessionHasErrors([
+                'phone' => 'Phone number must be 11 digits and start with 09.',
+            ]);
+
+        $this->assertDatabaseCount('pending_ticket_submissions', 0);
     }
 
     public function test_blocked_client_email_cannot_submit_a_ticket_until_admin_clears_the_block(): void
@@ -438,7 +507,7 @@ class TicketWorkflowTest extends TestCase
         $this->from(route('ticket.create'))
             ->post(route('ticket.store'), [
                 'name' => 'Jamie Student',
-                'student_id' => 'PCU-2026-001',
+                'student_id' => '2023000001',
                 'email' => 'JAMIE@example.edu',
                 'department_id' => $department->id,
                 'subject' => 'Another test ticket',
@@ -456,7 +525,7 @@ class TicketWorkflowTest extends TestCase
         Notification::fake();
         $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
-            'student_id' => 'PCU-2026-001',
+            'student_id' => '2023000001',
             'email' => 'jamie@example.edu',
             'department_id' => $department->id,
             'subject' => 'Legitimate support request',
@@ -471,7 +540,7 @@ class TicketWorkflowTest extends TestCase
     {
         $ticket = Ticket::create([
             'requester_name' => 'Jamie Student',
-            'student_id' => 'PCU-2026-001',
+            'student_id' => '2023000001',
             'requester_email' => 'jamie@example.edu',
             'subject' => 'Cannot access Bluebook',
             'description' => 'The course page returns an error.',
@@ -631,12 +700,12 @@ class TicketWorkflowTest extends TestCase
             'ticket_id' => $ticket->id,
             'type' => 'requester_reply',
         ]);
-        $this->assertDatabaseMissing('workspace_notifications', [
+        $this->assertDatabaseHas('workspace_notifications', [
             'user_id' => $otherDepartmentAdmin->id,
             'ticket_id' => $ticket->id,
             'type' => 'requester_reply',
         ]);
-        $this->assertDatabaseMissing('workspace_notifications', [
+        $this->assertDatabaseHas('workspace_notifications', [
             'user_id' => $staff->id,
             'ticket_id' => $ticket->id,
             'type' => 'requester_reply',
@@ -942,7 +1011,7 @@ class TicketWorkflowTest extends TestCase
         $secondTicket = Ticket::create([
             'ticket_number' => 'ED-2026-000043',
             'requester_name' => 'Morgan Student',
-            'student_id' => 'PCU-2026-002',
+            'student_id' => '2023000002',
             'requester_email' => 'morgan@example.edu',
             'subject' => 'Cannot connect to campus Wi-Fi',
             'description' => 'The wireless network is missing.',
@@ -973,7 +1042,7 @@ class TicketWorkflowTest extends TestCase
         return Ticket::create([
             'ticket_number' => 'ED-2026-000042',
             'requester_name' => 'Jamie Student',
-            'student_id' => 'PCU-2026-001',
+            'student_id' => '2023000001',
             'requester_email' => 'jamie@example.edu',
             'subject' => 'Cannot access Bluebook',
             'description' => 'The course page returns an error.',

@@ -26,7 +26,15 @@ class UpdateStaffTicketRequest extends FormRequest
         );
 
         return $user->isStaff()
-            && (! $this->exists('assigned_to_user_id') || $user->canManageDepartmentTickets());
+            && (
+                ! $this->exists('assigned_to_user_id')
+                || $user->canManageDepartmentTickets()
+                || (
+                    $user->role === 'staff'
+                    && $ticket->department_id === $user->department_id
+                    && ($ticket->assigned_to_user_id === null || $ticket->assigned_to_user_id === $user->id)
+                )
+            );
     }
 
     /**
@@ -38,14 +46,10 @@ class UpdateStaffTicketRequest extends FormRequest
     {
         $ticket = $this->route('ticket');
         $user = $this->user();
-        $assigneeId = $this->input('assigned_to_user_id', $ticket?->assigned_to_user_id);
-        $willBeAssigned = filled($assigneeId);
 
         return [
             'status' => ['required', Rule::in(['New', 'Assigned', 'In Progress', 'Waiting for User', 'On Hold', 'Resolved', 'Closed'])],
-            'priority' => $willBeAssigned
-                ? ['sometimes', 'required', Rule::in(['Urgent', 'High', 'Medium', 'Low'])]
-                : ['prohibited'],
+            'priority' => ['sometimes', 'required', Rule::in(['Urgent', 'High', 'Medium', 'Low'])],
             'assigned_to_user_id' => [
                 'nullable',
                 Rule::exists('users', 'id')->where(function ($query) use ($ticket, $user): void {
@@ -53,13 +57,17 @@ class UpdateStaffTicketRequest extends FormRequest
                         ->where('employment_status', 'active')
                         ->where('staff_approval_status', 'approved')
                         ->where(function ($query) use ($ticket, $user): void {
-                            $query->where(function ($query) use ($ticket): void {
+                            $query->where(function ($query) use ($ticket, $user): void {
                                 if ($ticket?->department_id === null) {
                                     $query->whereRaw('1 = 0');
                                 } else {
                                     $query
-                                        ->where('role', 'staff')
+                                        ->whereIn('role', ['staff', 'department_admin'])
                                         ->where('department_id', $ticket->department_id);
+                                }
+
+                                if ($user?->role === 'staff' && $ticket?->assigned_to_user_id === null) {
+                                    $query->where('id', $user->id);
                                 }
                             });
 

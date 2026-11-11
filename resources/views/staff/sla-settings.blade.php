@@ -91,7 +91,7 @@
             <div>
                 <span class="admin-page-eyebrow">TICKET CLASSIFICATION</span>
                 <h2>Departments and categories</h2>
-                <p>Active departments and categories appear on the Submit a ticket form. Department is required; category is optional.</p>
+                <p>Active categories appear on the Submit a ticket form. Helpdesk staff assign each ticket to the appropriate department after submission.</p>
             </div>
         </header>
 

@@ -25,14 +25,9 @@ class StoreTicketRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'student_id' => ['required', 'string', 'max:100'],
+            'student_id' => ['required', 'string', 'regex:/^[0-9]{10}$/'],
             'email' => ['required', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'department_id' => [
-                'required',
-                'integer',
-                Rule::exists('departments', 'id')->where(fn ($query) => $query->where('is_active', true)),
-            ],
+            'phone' => ['nullable', 'string', 'regex:/^09[0-9]{9}$/'],
             'category_id' => [
                 'nullable',
                 'integer',
@@ -53,6 +48,8 @@ class StoreTicketRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'student_id.regex' => 'Student or employee ID must contain exactly 10 digits.',
+            'phone.regex' => 'Phone number must be 11 digits and start with 09.',
             'attachment.array' => 'Attachments must be submitted as separate files.',
             'attachment.max' => 'You can attach up to 5 files to a ticket.',
             'attachment.*.file' => 'File :position could not be uploaded. Please choose the file again.',

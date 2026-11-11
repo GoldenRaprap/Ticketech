@@ -7,7 +7,7 @@
         <div>
             <span class="workspace-eyebrow">Performance insights</span>
             <h1>Reports</h1>
-            <p>Track helpdesk volume, resolution performance, and staff workload.</p>
+            <p>Track helpdesk volume, resolution performance, and assignee workload.</p>
         </div>
         <span class="report-range-badge"><span aria-hidden="true">◷</span> {{ $selectedDepartmentName }} · {{ $periodRangeLabel }}</span>
     </header>
@@ -29,7 +29,7 @@
                 <label class="report-department-select" for="report-department">
                     Department
                     <select id="report-department" name="department_id" data-report-department>
-                        @if (auth()->user()->isAdmin())
+                        @if (auth()->user()->isAdmin() || auth()->user()->isDepartmentAdmin())
                             <option value="" @selected($selectedDepartmentId === null)>All departments</option>
                         @elseif ($selectedDepartmentId === null)
                             <option value="" selected disabled>Department not assigned</option>
@@ -72,18 +72,18 @@
         </div>
         @if (auth()->user()->isAdmin())
             <details class="report-staff-export" @if ($errors->has('staff_ids') || $errors->has('staff_ids.*')) open @endif>
-                <summary>Individual staff performance export</summary>
-                <p>Select one or more staff members. The workbook includes per-staff progress and resolution metrics, plus ticket details for this reporting period.</p>
+                <summary>Individual assignee performance export</summary>
+                <p>Select staff, department admins, or Super Admins to include their progress and resolution metrics, plus ticket details for this reporting period.</p>
                 <div class="report-staff-export-options">
-                    @foreach ($staffMembers as $staffMember)
+                    @foreach ($assignees as $assignee)
                         <label>
-                            <input type="checkbox" name="staff_ids[]" value="{{ $staffMember->id }}" @checked(is_array(old('staff_ids')) && in_array((string) $staffMember->id, old('staff_ids'), true))>
-                            <span>{{ $staffMember->displayName() }}</span>
+                            <input type="checkbox" name="staff_ids[]" value="{{ $assignee->id }}" @checked(is_array(old('staff_ids')) && in_array((string) $assignee->id, old('staff_ids'), true))>
+                            <span>{{ $assignee->displayName() }} · {{ $assignee->role === 'admin' ? 'Super Admin' : ucwords(str_replace('_', ' ', $assignee->role)) }}</span>
                         </label>
                     @endforeach
                 </div>
                 <div class="report-staff-export-actions">
-                    <button class="workspace-button workspace-button--export" type="submit" formaction="{{ route('admin.reports.staff-performance.export') }}">Export staff performance (.xlsx) <span aria-hidden="true">↓</span></button>
+                    <button class="workspace-button workspace-button--export" type="submit" formaction="{{ route('admin.reports.staff-performance.export') }}">Export assignee performance (.xlsx) <span aria-hidden="true">↓</span></button>
                 </div>
             </details>
         @endif
@@ -223,19 +223,19 @@
             <div class="workspace-card-heading">
                 <div>
                     <span class="workspace-eyebrow">Team workload</span>
-                    <h2>Tickets by staff</h2>
+                    <h2>Tickets by assignee</h2>
                     <p>Current assignments for tickets created in this period.</p>
                 </div>
             </div>
             <div class="report-workload-list">
-                @forelse ($staffWorkload as $staffMember)
+                @forelse ($assigneeWorkload as $assignee)
                     <div class="report-workload-row">
                         <div class="report-workload-heading">
-                            <strong>{{ $staffMember->staff_name }}</strong>
-                            <span>{{ $staffMember->total_tickets }} tickets</span>
+                            <strong>{{ $assignee->assignee_name }}@if ($assignee->assignee_role_label !== '') · {{ $assignee->assignee_role_label }}@endif</strong>
+                            <span>{{ $assignee->total_tickets }} tickets</span>
                         </div>
-                        <div class="report-bar-track report-workload-track" aria-hidden="true"><span style="width:{{ $staffMember->workloadWidth }}%"></span></div>
-                        <div class="report-workload-meta"><span>{{ $staffMember->open_tickets }} open</span><span>{{ $staffMember->completed_tickets }} resolved / closed</span></div>
+                        <div class="report-bar-track report-workload-track" aria-hidden="true"><span style="width:{{ $assignee->workloadWidth }}%"></span></div>
+                        <div class="report-workload-meta"><span>{{ $assignee->open_tickets }} open</span><span>{{ $assignee->completed_tickets }} resolved / closed</span></div>
                     </div>
                 @empty
                     <div class="workspace-empty-state workspace-empty-state--compact">

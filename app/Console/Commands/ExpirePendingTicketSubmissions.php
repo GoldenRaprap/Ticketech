@@ -24,9 +24,11 @@ class ExpirePendingTicketSubmissions extends Command
                 foreach ($submissions as $submission) {
                     $disk = Storage::disk('private');
 
-                    foreach ($submission->attachments as $attachment) {
-                        if ($disk->exists($attachment['path']) && ! $disk->delete($attachment['path'])) {
-                            throw new RuntimeException('Unable to remove an expired pending ticket attachment.');
+                    if ($submission->completed_ticket_number === null) {
+                        foreach ($submission->attachments as $attachment) {
+                            if ($disk->exists($attachment['path']) && ! $disk->delete($attachment['path'])) {
+                                throw new RuntimeException('Unable to remove an expired pending ticket attachment.');
+                            }
                         }
                     }
 

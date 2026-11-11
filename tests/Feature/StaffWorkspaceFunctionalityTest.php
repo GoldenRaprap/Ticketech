@@ -8,6 +8,7 @@ use App\Models\KnowledgeArticle;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
 use App\Models\TicketEvent;
+use App\Models\TicketMisuseReport;
 use App\Models\User;
 use App\Models\WorkspaceNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,6 +16,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -100,7 +102,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         ]);
     }
 
-    public function test_staff_cannot_change_priority_until_a_ticket_is_assigned(): void
+    public function test_staff_can_change_priority_while_a_ticket_is_unassigned(): void
     {
         $staff = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000322', 'Unassigned ticket', null, 'High');
@@ -108,14 +110,36 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->actingAs($staff)
             ->get(route('staff.ticket-detail', $ticket))
             ->assertOk()
-            ->assertDontSee('data-priority-field', false)
-            ->assertDontSee('data-automatic-priority-note', false)
-            ->assertSee('Assignment is managed by your department admin.');
+            ->assertSee('name="priority"', false)
+            ->assertDontSee('Assign this ticket to enable priority changes')
+            ->assertSee('name="assigned_to_user_id"', false)
+            ->assertSee('Take this ticket');
 
-        $this->from(route('staff.ticket-detail', $ticket))
+        $this->put(route('staff.ticket-update', $ticket), [
+            'status' => 'New',
+            'priority' => 'Urgent',
+        ])
+            ->assertRedirect(route('staff.ticket-detail', $ticket));
+
+        $this->assertSame('Urgent', $ticket->fresh()->priority);
+        $this->assertSame('New', $ticket->fresh()->status);
+        $this->assertDatabaseHas('ticket_events', [
+            'ticket_id' => $ticket->id,
+            'event' => 'priority_changed',
+            'description' => 'Priority changed to Urgent.',
+        ]);
+    }
+
+    public function test_staff_cannot_set_an_invalid_priority_for_an_unassigned_ticket(): void
+    {
+        $staff = $this->createStaffUser();
+        $ticket = $this->createTicket('ED-2026-000323', 'Invalid priority ticket', null, 'High');
+
+        $this->actingAs($staff)
+            ->from(route('staff.ticket-detail', $ticket))
             ->put(route('staff.ticket-update', $ticket), [
-                'status' => 'In Progress',
-                'priority' => 'Urgent',
+                'status' => 'New',
+                'priority' => 'Critical',
             ])
             ->assertRedirect(route('staff.ticket-detail', $ticket))
             ->assertSessionHasErrors('priority');
@@ -141,7 +165,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         ]);
         $ticket = $this->createTicket('ED-2026-000319', 'Assignment options ticket');
 
-        $expectedAssigneeIds = [$staff->id, $approvedStaff->id];
+        $expectedAssigneeIds = [$departmentAdmin->id, $staff->id, $approvedStaff->id];
         sort($expectedAssigneeIds);
 
         $this->actingAs($departmentAdmin)
@@ -158,10 +182,9 @@ class StaffWorkspaceFunctionalityTest extends TestCase
 
         $this->get(route('staff.ticket-detail', $ticket))
             ->assertOk()
-            ->assertSee('data-priority-field', false)
-            ->assertSee('data-automatic-priority-note', false)
-            ->assertViewHas('staffUsers', function ($staffUsers) use ($staff, $approvedStaff): bool {
-                $expectedIds = [$staff->id, $approvedStaff->id];
+            ->assertSee('name="priority"', false)
+            ->assertViewHas('staffUsers', function ($staffUsers) use ($departmentAdmin, $staff, $approvedStaff): bool {
+                $expectedIds = [$departmentAdmin->id, $staff->id, $approvedStaff->id];
                 $actualIds = $staffUsers->modelKeys();
                 sort($expectedIds);
                 sort($actualIds);
@@ -387,7 +410,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->from(route('ticket.create'))
             ->post(route('ticket.store'), [
                 'name' => 'Jamie Student',
-                'student_id' => '2023******',
+                'student_id' => '2023000001',
                 'email' => 'JAMIE@example.edu',
                 'department_id' => $department->id,
                 'subject' => 'Blocked submission',
@@ -487,9 +510,10 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         ]);
     }
 
-    public function test_staff_can_add_internal_ticket_notes_without_assignment_notification(): void
+    public function test_staff_internal_notes_notify_ticket_access_staff_without_exposing_note_content(): void
     {
         Storage::fake('private');
+        Notification::fake();
         $staff = $this->createStaffUser();
         $assignee = $this->createStaffUser();
         $ticket = $this->createTicket('ED-2026-000305', 'Portal access issue', $assignee->id);
@@ -512,7 +536,17 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             'ticket_id' => $ticket->id,
             'event' => 'internal_note_added',
         ]);
-        $this->assertDatabaseCount('workspace_notifications', 0);
+        $this->assertDatabaseHas('workspace_notifications', [
+            'user_id' => $assignee->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'internal_note',
+            'message' => $ticket->ticket_number.' · '.$ticket->subject.' received a staff note.',
+        ]);
+        $this->assertDatabaseMissing('workspace_notifications', [
+            'user_id' => $assignee->id,
+            'ticket_id' => $ticket->id,
+            'message' => 'Escalated to the platform team.',
+        ]);
         $this->assertDatabaseHas('ticket_attachments', [
             'ticket_id' => $ticket->id,
             'comment_id' => $ticket->comments()->firstOrFail()->id,
@@ -986,9 +1020,32 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertSee('Incoming vs. resolved')
             ->assertSee('data-report-period-form', false)
             ->assertSee('Export Excel (.xlsx)')
-            ->assertDontSee('Individual staff performance export')
+            ->assertDontSee('Individual assignee performance export')
             ->assertDontSee('Apply period')
             ->assertSee('Urgent');
+    }
+
+    public function test_report_resolution_trend_includes_tickets_resolved_before_reopening(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $staff = $this->createStaffUser();
+        $reopenedTicket = $this->createTicket('ED-2026-000373', 'Previously resolved ticket', null, 'Low', 'In Progress');
+        $reopenedTicket->forceFill([
+            'created_at' => Carbon::parse('2026-03-15 08:00:00'),
+            'resolved_at' => null,
+            'last_resolved_at' => Carbon::parse('2026-03-15 09:00:00'),
+            'last_reopened_at' => Carbon::parse('2026-03-15 10:00:00'),
+        ])->save();
+
+        $this->actingAs($staff)
+            ->get(route('staff.reports', [
+                'period' => 'daily',
+                'reference_date' => '2026-03-15',
+            ]))
+            ->assertOk()
+            ->assertViewHas('openTicketCount', 1)
+            ->assertViewHas('resolvedTicketCount', 0)
+            ->assertViewHas('trendBuckets', fn (Collection $buckets): bool => $buckets->sum('resolved') === 1);
     }
 
     public function test_super_admin_can_filter_report_summary_and_export_by_department(): void
@@ -1261,7 +1318,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->actingAs($admin)
             ->get(route('staff.reports', $filters))
             ->assertOk()
-            ->assertSee('Individual staff performance export')
+            ->assertSee('Individual assignee performance export')
             ->assertSee('name="staff_ids[]"', false)
             ->assertSee($firstStaff->name)
             ->assertSee($secondStaff->name)
@@ -1291,20 +1348,84 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $ticketXPath = new \DOMXPath($ticketDocument);
         $ticketXPath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
 
-        $this->assertStringContainsString('name="Staff Summary"', $workbookXml);
+        $this->assertStringContainsString('name="Assignee Summary"', $workbookXml);
         $this->assertStringContainsString('name="Ticket Details"', $workbookXml);
-        $this->assertStringContainsString('autoFilter ref="A4:I6"', $summarySheet);
-        $this->assertStringContainsString('autoFilter ref="A1:I7"', $ticketSheet);
-        $this->assertSame('0.5', $xpath->query('//x:c[@r="H5"]/x:v')->item(0)?->textContent);
-        $this->assertSame('2', $xpath->query('//x:c[@r="I5"]/x:v')->item(0)?->textContent);
-        $this->assertSame('0.5', $xpath->query('//x:c[@r="H6"]/x:v')->item(0)?->textContent);
-        $this->assertSame('4', $xpath->query('//x:c[@r="I6"]/x:v')->item(0)?->textContent);
+        $this->assertStringContainsString('autoFilter ref="A4:L6"', $summarySheet);
+        $this->assertStringContainsString('autoFilter ref="A1:J7"', $ticketSheet);
+        $this->assertSame('0.5', $xpath->query('//x:c[@r="J5"]/x:v')->item(0)?->textContent);
+        $this->assertSame('2', $xpath->query('//x:c[@r="K5"]/x:v')->item(0)?->textContent);
+        $this->assertSame('0.5', $xpath->query('//x:c[@r="J6"]/x:v')->item(0)?->textContent);
+        $this->assertSame('4', $xpath->query('//x:c[@r="K6"]/x:v')->item(0)?->textContent);
         $this->assertStringContainsString('ED-2026-000363', $ticketSheet);
         $this->assertStringContainsString('ED-2026-000365', $ticketSheet);
         $this->assertStringNotContainsString($unselectedTicket->ticket_number, $ticketSheet);
         $this->assertSame('1', $ticketXPath->query('//x:c[@r="I4"]/x:v')->item(0)?->textContent);
         $this->assertSame('3', $ticketXPath->query('//x:c[@r="I5"]/x:v')->item(0)?->textContent);
         $this->assertSame('4', $ticketXPath->query('//x:c[@r="I6"]/x:v')->item(0)?->textContent);
+    }
+
+    public function test_reports_include_department_admin_and_super_admin_assignees_and_current_statuses(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $admin = User::factory()->create(['role' => 'admin']);
+        $department = $this->defaultDepartment();
+        $departmentAdmin = User::factory()->create([
+            'name' => 'Alex Assignee',
+            'role' => 'department_admin',
+            'department_id' => $department->id,
+        ]);
+        $superAdmin = User::factory()->create([
+            'name' => 'Alex Assignee',
+            'role' => 'admin',
+        ]);
+        $this->createTicket('ED-2026-000370', 'Waiting ticket', $departmentAdmin->id, 'Low', 'Waiting for User');
+        $this->createTicket('ED-2026-000371', 'On hold ticket', $departmentAdmin->id, 'Low', 'On Hold');
+        $this->createTicket('ED-2026-000372', 'Super Admin ticket', $superAdmin->id);
+        $filters = [
+            'department_id' => $department->id,
+            'period' => 'daily',
+            'reference_date' => '2026-03-15',
+        ];
+
+        $this->actingAs($admin)
+            ->get(route('staff.reports', $filters))
+            ->assertOk()
+            ->assertSee('Alex Assignee · Department Admin')
+            ->assertSee('Alex Assignee · Super Admin')
+            ->assertViewHas('assigneeWorkload', function (Collection $workload): bool {
+                return $workload->contains(fn (object $row): bool => $row->assignee_name === 'Alex Assignee'
+                        && $row->assignee_role_label === 'Department Admin'
+                        && (int) $row->total_tickets === 2)
+                    && $workload->contains(fn (object $row): bool => $row->assignee_name === 'Alex Assignee'
+                        && $row->assignee_role_label === 'Super Admin'
+                        && (int) $row->total_tickets === 1);
+            });
+
+        $standardTicketSheet = $this->readXlsxEntry(
+            $this->get(route('staff.reports.export', $filters))->assertOk()->streamedContent(),
+            'xl/worksheets/sheet2.xml',
+        );
+        $this->assertStringContainsString('autoFilter ref="A1:J4"', $standardTicketSheet);
+        $this->assertStringContainsString('Department Admin', $standardTicketSheet);
+        $this->assertStringContainsString('Super Admin', $standardTicketSheet);
+
+        $workbook = $this->get(route('admin.reports.staff-performance.export', [
+            ...$filters,
+            'staff_ids' => [$departmentAdmin->id, $superAdmin->id],
+        ]))->assertOk()->streamedContent();
+        $summarySheet = $this->readXlsxEntry($workbook, 'xl/worksheets/sheet1.xml');
+        $summaryDocument = new \DOMDocument;
+        $this->assertTrue($summaryDocument->loadXML($summarySheet));
+        $summaryXPath = new \DOMXPath($summaryDocument);
+        $summaryXPath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+
+        $this->assertStringContainsString('Department Admin', $summarySheet);
+        $this->assertStringContainsString('Super Admin', $summarySheet);
+        $this->assertSame('2', $summaryXPath->query('//x:c[@r="C5"]/x:v')->item(0)?->textContent);
+        $this->assertSame('1', $summaryXPath->query('//x:c[@r="G5"]/x:v')->item(0)?->textContent);
+        $this->assertSame('1', $summaryXPath->query('//x:c[@r="H5"]/x:v')->item(0)?->textContent);
+        $this->assertSame('1', $summaryXPath->query('//x:c[@r="C6"]/x:v')->item(0)?->textContent);
+        $this->assertSame('1', $summaryXPath->query('//x:c[@r="D6"]/x:v')->item(0)?->textContent);
     }
 
     public function test_admin_staff_performance_export_is_limited_to_the_selected_department(): void
@@ -1510,7 +1631,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->assertStringContainsString('name="Summary"', $workbookXml);
         $this->assertStringContainsString('name="Tickets"', $workbookXml);
         $this->assertStringContainsString('Custom', $summarySheet);
-        $this->assertStringContainsString('autoFilter ref="A1:I2"', $ticketsSheet);
+        $this->assertStringContainsString('autoFilter ref="A1:J2"', $ticketsSheet);
         $this->assertStringContainsString('topLeftCell="A2"', $ticketsSheet);
         $this->assertStringContainsString('<cols>', $ticketsSheet);
         $this->assertStringContainsString('FFFCE4E4', $styles);
@@ -1678,6 +1799,114 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->patch(route('staff.notifications.read', $notification))
             ->assertRedirect(route('staff.notifications'));
         $this->assertNotNull($notification->fresh()->read_at);
+    }
+
+    public function test_sidebar_notification_badge_shows_unread_count_and_caps_at_nine_plus(): void
+    {
+        Notification::fake();
+        $staff = $this->createStaffUser();
+
+        $this->actingAs($staff)
+            ->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertDontSee('sidebar-notification-badge');
+
+        foreach (range(1, 9) as $index) {
+            WorkspaceNotification::create([
+                'user_id' => $staff->id,
+                'type' => 'new_ticket',
+                'title' => 'New support ticket '.$index,
+                'message' => 'A ticket needs review.',
+            ]);
+        }
+
+        $this->actingAs($staff)
+            ->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertSee(
+                '<span class="sidebar-notification-badge sidebar-notification-badge--blue" aria-label="9 unread notifications">9</span>',
+                false,
+            );
+
+        WorkspaceNotification::create([
+            'user_id' => $staff->id,
+            'type' => 'new_ticket',
+            'title' => 'New support ticket 10',
+            'message' => 'Another ticket needs review.',
+        ]);
+
+        $this->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertSee(
+                '<span class="sidebar-notification-badge sidebar-notification-badge--blue" aria-label="10 unread notifications">9+</span>',
+                false,
+            );
+    }
+
+    public function test_admin_sidebar_shows_blue_pending_user_and_report_badges(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        User::factory()->count(10)->create([
+            'role' => 'staff',
+            'staff_approval_status' => 'pending',
+        ]);
+        User::factory()->create(['role' => 'staff']);
+
+        foreach ([
+            ['ED-2026-001001', 'Pending report one', 'pending'],
+            ['ED-2026-001002', 'Pending report two', 'pending'],
+            ['ED-2026-001003', 'Reviewed report', 'reviewed'],
+        ] as [$ticketNumber, $subject, $status]) {
+            $ticket = $this->createTicket($ticketNumber, $subject);
+            TicketMisuseReport::create([
+                'ticket_id' => $ticket->id,
+                'reporter_id' => $admin->id,
+                'reason' => 'spam',
+                'status' => $status,
+            ]);
+        }
+
+        $this->actingAs($admin)
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee(
+                '<span class="sidebar-notification-badge sidebar-notification-badge--blue" aria-label="10 pending staff applications">9+</span>',
+                false,
+            )
+            ->assertSee(
+                '<span class="sidebar-notification-badge sidebar-notification-badge--blue" aria-label="2 pending reports">2</span>',
+                false,
+            );
+    }
+
+    public function test_department_admin_user_access_badge_counts_only_pending_users_in_their_department(): void
+    {
+        $departmentAdmin = $this->createDepartmentAdmin();
+        $otherDepartment = Department::factory()->create();
+        User::factory()->count(2)->create([
+            'role' => 'staff',
+            'department_id' => $departmentAdmin->department_id,
+            'staff_approval_status' => 'pending',
+        ]);
+        User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $otherDepartment->id,
+            'staff_approval_status' => 'pending',
+        ]);
+        User::factory()->create([
+            'role' => 'staff',
+            'department_id' => null,
+            'staff_approval_status' => 'pending',
+        ]);
+
+        $this->actingAs($departmentAdmin)
+            ->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertSee(
+                '<span class="sidebar-notification-badge sidebar-notification-badge--blue" aria-label="3 pending staff applications">3</span>',
+                false,
+            )
+            ->assertDontSee('pending reports');
     }
 
     public function test_ticket_notifications_render_as_clickable_rows_without_an_open_button(): void
@@ -1864,11 +2093,13 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->actingAs($staff->fresh())
             ->get(route('staff.profile'))
             ->assertOk()
+            ->assertSee('class="profile-photo-image" src="'.$photoUrl.'"', false)
             ->assertSee($photoUrl, false);
 
         $this->actingAs($staff->fresh())
             ->get(route('staff.dashboard'))
             ->assertOk()
+            ->assertSee('class="profile-photo-image" src="'.$photoUrl.'"', false)
             ->assertSee($photoUrl, false);
     }
 

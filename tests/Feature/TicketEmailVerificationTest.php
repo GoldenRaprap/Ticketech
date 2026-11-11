@@ -50,6 +50,11 @@ class TicketEmailVerificationTest extends TestCase
             ->assertSeeText('Email Verified')
             ->assertSeeText($ticket->ticket_number);
 
+        $this->get(route('ticket.check'))
+            ->assertOk()
+            ->assertSee('value="'.$ticket->ticket_number.'"', false)
+            ->assertSee('value="jamie@example.edu"', false);
+
         $ticket->refresh();
         $this->assertNotNull($ticket->requester_email_verified_at);
         $this->assertNull($ticket->requester_email_verification_token_hash);
@@ -157,6 +162,38 @@ class TicketEmailVerificationTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_revisiting_a_completed_pending_submission_link_reports_the_ticket_as_already_approved(): void
+    {
+        Notification::fake();
+        $token = Str::random(64);
+        $submission = $this->createPendingSubmission($token);
+        $verificationUrl = $this->pendingVerificationUrl($submission, $token, now()->addHour());
+
+        $this->get($verificationUrl)
+            ->assertOk()
+            ->assertSeeText('Confirm Your Email');
+
+        $this->post($verificationUrl)
+            ->assertRedirect(route('ticket.submitted'));
+
+        $ticket = Ticket::query()->firstOrFail();
+        $this->assertSame($ticket->ticket_number, $submission->fresh()->completed_ticket_number);
+        Notification::assertSentOnDemandTimes(TicketRequesterUpdate::class, 1);
+
+        $this->get($verificationUrl)
+            ->assertOk()
+            ->assertSeeText('Ticket Already Approved')
+            ->assertSeeText($ticket->ticket_number);
+
+        $this->post($verificationUrl)
+            ->assertOk()
+            ->assertSeeText('Ticket Already Approved')
+            ->assertSeeText($ticket->ticket_number);
+
+        $this->assertDatabaseCount('tickets', 1);
+        Notification::assertSentOnDemandTimes(TicketRequesterUpdate::class, 1);
+    }
+
     public function test_expired_pending_submission_cannot_create_a_ticket(): void
     {
         Notification::fake();
@@ -190,6 +227,40 @@ class TicketEmailVerificationTest extends TestCase
 
         $this->assertDatabaseMissing('pending_ticket_submissions', ['id' => $submission->id]);
         Storage::disk('private')->assertMissing($attachmentPath);
+    }
+
+    public function test_expired_completed_submission_cleanup_preserves_ticket_attachments(): void
+    {
+        Storage::fake('private');
+        $attachmentPath = 'ticket-attachments/verified-evidence.pdf';
+        Storage::disk('private')->put($attachmentPath, 'verified ticket evidence');
+        $ticket = $this->createPendingTicket(Str::random(64));
+        $ticket->attachments()->create([
+            'original_name' => 'evidence.pdf',
+            'disk' => 'private',
+            'path' => $attachmentPath,
+            'mime_type' => 'application/pdf',
+            'size_bytes' => 24,
+        ]);
+        $submission = $this->createPendingSubmission(Str::random(64), now()->subMinute(), [
+            [
+                'original_name' => 'evidence.pdf',
+                'path' => $attachmentPath,
+                'mime_type' => 'application/pdf',
+                'size_bytes' => 24,
+            ],
+        ]);
+        $submission->forceFill(['completed_ticket_number' => $ticket->ticket_number])->save();
+
+        $this->artisan('tickets:expire-pending-email-verifications')
+            ->assertSuccessful();
+
+        $this->assertDatabaseMissing('pending_ticket_submissions', ['id' => $submission->id]);
+        Storage::disk('private')->assertExists($attachmentPath);
+        $this->assertDatabaseHas('ticket_attachments', [
+            'ticket_id' => $ticket->id,
+            'path' => $attachmentPath,
+        ]);
     }
 
     private function createPendingSubmission(string $token, ?Carbon $expiresAt = null, array $attachments = []): PendingTicketSubmission

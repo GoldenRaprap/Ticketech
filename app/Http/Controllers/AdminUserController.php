@@ -99,6 +99,7 @@ class AdminUserController extends Controller
         $departmentId = $request->user()->isAdmin()
             ? ($filters['department_id'] ?? null)
             : $request->user()->department_id;
+        $canViewUnassignedStaff = $request->user()->isDepartmentAdmin();
         $activeSuperAdminCount = User::query()
             ->where('role', 'admin')
             ->where('employment_status', 'active')
@@ -116,7 +117,17 @@ class AdminUserController extends Controller
             ->with('department')
             ->whereIn('role', ['staff', 'department_admin', 'admin'])
             ->where('staff_approval_status', 'approved')
-            ->when($departmentId !== null, fn ($query) => $query->where('department_id', $departmentId))
+            ->when($departmentId !== null, function ($query) use ($departmentId, $canViewUnassignedStaff): void {
+                $query->where(function ($query) use ($departmentId, $canViewUnassignedStaff): void {
+                    $query->where('department_id', $departmentId);
+
+                    if ($canViewUnassignedStaff) {
+                        $query->orWhere(fn ($query) => $query
+                            ->where('role', 'staff')
+                            ->whereNull('department_id'));
+                    }
+                });
+            })
             ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($query) use ($search): void {
                     $query->where('name', 'like', '%'.$search.'%')
@@ -135,9 +146,18 @@ class AdminUserController extends Controller
         return view('staff.users', [
             'directoryUsers' => $directoryUsers,
             'pendingStaffApplications' => User::query()
+                ->with('department')
                 ->where('role', 'staff')
                 ->where('staff_approval_status', 'pending')
-                ->when($departmentId !== null, fn ($query) => $query->where('department_id', $departmentId))
+                ->when($departmentId !== null, function ($query) use ($departmentId, $canViewUnassignedStaff): void {
+                    $query->where(function ($query) use ($departmentId, $canViewUnassignedStaff): void {
+                        $query->where('department_id', $departmentId);
+
+                        if ($canViewUnassignedStaff) {
+                            $query->orWhereNull('department_id');
+                        }
+                    });
+                })
                 ->orderBy('created_at')
                 ->get(),
             'deniedUnverifiedApplications' => User::query()
@@ -149,6 +169,9 @@ class AdminUserController extends Controller
                 ->get(),
             'departments' => Department::query()->orderBy('name')->get(),
             'activeDepartments' => Department::query()->where('is_active', true)->orderBy('name')->get(),
+            'departmentAssignmentOptions' => $request->user()->isAdmin()
+                ? Department::query()->where('is_active', true)->orderBy('name')->get(['id', 'name'])
+                : Department::query()->whereKey($request->user()->department_id)->get(['id', 'name']),
             'filters' => $filters,
             'activeSuperAdminCount' => $activeSuperAdminCount,
             'activeCount' => (clone $staff)->where('employment_status', 'active')->count(),
@@ -250,12 +273,15 @@ class AdminUserController extends Controller
         ]);
 
         $validated = $staffDetails['staff'][$user->id];
-        $validated['department_id'] = $request->user()->isAdmin()
-            ? ($validated['department_id'] ?? $user->department_id)
+        $canChangeDepartment = $request->user()->isAdmin()
+            || ($request->user()->isDepartmentAdmin() && $user->department_id === null);
+        $validated['department_id'] = $canChangeDepartment
+            && array_key_exists('department_id', $validated)
+            ? $validated['department_id']
             : $user->department_id;
         if ($validated['department_id'] !== null) {
             $department = Department::query()->findOrFail($validated['department_id']);
-            abort_unless($request->user()->can('createInDepartment', $department), 404);
+            abort_unless($request->user()->can('createInDepartment', [User::class, $department]), 404);
         }
         $previousDetails = [
             'name' => $user->name,

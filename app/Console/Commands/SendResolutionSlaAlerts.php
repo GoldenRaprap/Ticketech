@@ -3,8 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Models\Ticket;
-use App\Models\User;
 use App\Models\WorkspaceNotification;
+use App\Services\TicketNotificationRecipients;
 use App\Services\TicketResolutionSla;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -16,33 +16,26 @@ use LogicException;
 #[Description('Notify ticket owners when resolution targets are nearing or past due')]
 class SendResolutionSlaAlerts extends Command
 {
-    public function handle(TicketResolutionSla $resolutionSla): int
-    {
+    public function handle(
+        TicketResolutionSla $resolutionSla,
+        TicketNotificationRecipients $notificationRecipients,
+    ): int {
         $resolutionSla->initializeMissingDeadlines();
 
-        $adminIds = User::query()
-            ->where('role', 'admin')
-            ->where('employment_status', 'active')
-            ->where('staff_approval_status', 'approved')
-            ->pluck('id')
-            ->all();
         $notificationCount = 0;
 
         Ticket::query()
             ->whereIn('status', ['New', 'Assigned', 'In Progress'])
             ->whereNotNull('resolution_warning_at')
             ->where('resolution_warning_at', '<=', now())
-            ->chunkById(100, function (EloquentCollection $tickets) use ($adminIds, &$notificationCount): void {
+            ->chunkById(100, function (EloquentCollection $tickets) use ($notificationRecipients, &$notificationCount): void {
                 foreach ($tickets as $ticket) {
                     if ($ticket->resolution_due_at === null) {
                         throw new LogicException("Ticket [{$ticket->id}] has an alert time but no resolution deadline.");
                     }
 
                     $cycleStart = $ticket->last_reopened_at ?? $ticket->created_at;
-                    $recipientIds = array_values(array_unique([
-                        ...$adminIds,
-                        ...($ticket->assigned_to_user_id ? [(int) $ticket->assigned_to_user_id] : []),
-                    ]));
+                    $recipientIds = $notificationRecipients->forTicket($ticket)->modelKeys();
 
                     if ($recipientIds === []) {
                         $this->warn("Ticket [{$ticket->ticket_number}] has an SLA warning but no active assignee or administrator to notify.");

@@ -7,21 +7,14 @@ use App\Models\WorkspaceNotification;
 use App\Services\EmailBranding;
 use App\Services\SystemMailSettings;
 use App\Services\TicketEmailAvailability;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Symfony\Component\Mime\Email;
 use Throwable;
 
-class WorkspaceAlert extends Notification implements ShouldQueue
+class WorkspaceAlert extends Notification
 {
-    use Queueable;
-
-    public function __construct(public WorkspaceNotification $workspaceNotification)
-    {
-        $this->afterCommit();
-    }
+    public function __construct(public WorkspaceNotification $workspaceNotification) {}
 
     /**
      * @return array<int, string>

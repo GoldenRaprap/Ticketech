@@ -7,7 +7,6 @@ use App\Http\Requests\StoreRequesterTicketReplyRequest;
 use App\Http\Requests\StoreTicketRequest;
 use App\Models\Category;
 use App\Models\ClientModeration;
-use App\Models\Department;
 use App\Models\PendingTicketSubmission;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
@@ -15,8 +14,10 @@ use App\Models\User;
 use App\Models\WorkspaceNotification;
 use App\Notifications\TicketEmailVerification;
 use App\Notifications\TicketRequesterUpdate;
+use App\Services\ImmediateNotificationSender;
 use App\Services\PublicFeatureAvailability;
 use App\Services\RequesterTicketDocument;
+use App\Services\TicketNotificationRecipients;
 use App\Services\TicketPdf;
 use App\Services\TicketPriorityClassifier;
 use App\Services\TicketResolutionSla;
@@ -24,7 +25,6 @@ use App\Services\TicketSubmissionSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -40,14 +40,13 @@ class TicketController extends Controller
     public function create(TicketSubmissionSettings $submissionSettings): View
     {
         return view('helpdesk.create-ticket', [
-            'departments' => Department::query()->where('is_active', true)->orderBy('name')->get(),
             'categories' => Category::query()->where('is_active', true)->orderBy('name')->get(),
             'ticketSubmissionOpen' => $submissionSettings->isOpen(),
             'ticketSubmissionMessage' => $submissionSettings->closedMessage(),
         ]);
     }
 
-    public function store(StoreTicketRequest $request): RedirectResponse
+    public function store(StoreTicketRequest $request, ImmediateNotificationSender $notificationSender): RedirectResponse
     {
         $validated = $request->validated();
         $uploads = $request->file('attachment', []) ?? [];
@@ -90,7 +89,7 @@ class TicketController extends Controller
                     'payload' => [
                         'student_id' => $validated['student_id'],
                         'requester_phone' => $validated['phone'] ?? null,
-                        'department_id' => $validated['department_id'],
+                        'department_id' => null,
                         'category_id' => $validated['category_id'] ?? null,
                         'subject' => $validated['subject'],
                         'description' => $validated['message'],
@@ -131,14 +130,7 @@ class TicketController extends Controller
                 ->format('F j, Y g:i A'),
         );
 
-        try {
-            Notification::route('mail', $submission->requester_email)
-                ->notifyNow($verificationNotification);
-        } catch (Throwable $exception) {
-            $verificationNotification->failed($exception);
-
-            throw $exception;
-        }
+        $notificationSender->sendToEmail($submission->requester_email, $verificationNotification);
 
         $request->session()->flash('submitted_ticket', [
             'email' => $submission->requester_email,
@@ -156,6 +148,16 @@ class TicketController extends Controller
             return to_route('ticket.create');
         }
 
+        if (
+            is_string($submittedTicket['ticket_number'] ?? null)
+            && is_string($submittedTicket['email'] ?? null)
+        ) {
+            $request->session()->put('ticket_lookup_prefill', [
+                'ticket' => $submittedTicket['ticket_number'],
+                'email' => $submittedTicket['email'],
+            ]);
+        }
+
         return view('helpdesk.ticket-submitted', ['submittedTicket' => $submittedTicket]);
     }
 
@@ -167,7 +169,10 @@ class TicketController extends Controller
             403,
         );
 
-        return view('helpdesk.ticket-email-confirm', ['submission' => $submission]);
+        return view('helpdesk.ticket-email-confirm', [
+            'submission' => $submission,
+            'alreadyApproved' => $submission->completed_ticket_number !== null,
+        ]);
     }
 
     public function completePendingSubmission(
@@ -177,9 +182,12 @@ class TicketController extends Controller
         TicketPriorityClassifier $priorityClassifier,
         TicketResolutionSla $resolutionSla,
         TicketPdf $ticketPdf,
+        ImmediateNotificationSender $notificationSender,
+        TicketNotificationRecipients $notificationRecipients,
     ): View|RedirectResponse {
         $moderationWarning = false;
-        $ticket = DB::transaction(function () use ($submission, $token, $priorityClassifier, $resolutionSla, &$moderationWarning): ?Ticket {
+        $alreadyApproved = false;
+        $ticket = DB::transaction(function () use ($submission, $token, $priorityClassifier, $resolutionSla, $notificationRecipients, &$moderationWarning, &$alreadyApproved): ?Ticket {
             $lockedSubmission = PendingTicketSubmission::query()
                 ->lockForUpdate()
                 ->findOrFail($submission->id);
@@ -189,6 +197,14 @@ class TicketController extends Controller
                     && hash_equals($lockedSubmission->verification_token_hash, hash('sha256', $token)),
                 403,
             );
+
+            if ($lockedSubmission->completed_ticket_number !== null) {
+                $alreadyApproved = true;
+
+                return Ticket::query()
+                    ->where('ticket_number', $lockedSubmission->completed_ticket_number)
+                    ->first();
+            }
 
             $moderation = ClientModeration::query()
                 ->where('email', Str::lower(trim($lockedSubmission->requester_email)))
@@ -243,36 +259,29 @@ class TicketController extends Controller
                 ]);
             }
 
-            User::query()
-                ->whereIn('role', ['admin', 'department_admin'])
-                ->where('employment_status', 'active')
-                ->where('staff_approval_status', 'approved')
-                ->where(function ($query) use ($ticket): void {
-                    $query->where('role', 'admin');
+            $notificationRecipients->forTicket($ticket, $requesterUserId)
+                ->each(fn (User $user) => WorkspaceNotification::create([
+                    'user_id' => $user->id,
+                    'ticket_id' => $ticket->id,
+                    'actor_id' => $requesterUserId,
+                    'type' => 'new_ticket',
+                    'title' => 'New support ticket',
+                    'message' => "{$ticket->ticket_number} · {$ticket->subject}",
+                ]));
 
-                    if ($ticket->department_id !== null) {
-                        $query->orWhere(function ($query) use ($ticket): void {
-                            $query->where('role', 'department_admin')
-                                ->where('department_id', $ticket->department_id);
-                        });
-                    }
-                })
-                ->get(['id'])
-                ->each(
-                    fn (User $user) => WorkspaceNotification::create([
-                        'user_id' => $user->id,
-                        'ticket_id' => $ticket->id,
-                        'actor_id' => $requesterUserId,
-                        'type' => 'new_ticket',
-                        'title' => 'New support ticket',
-                        'message' => "{$ticket->ticket_number} · {$ticket->subject}",
-                    ]),
-                );
-
-            $lockedSubmission->delete();
+            $lockedSubmission->update([
+                'completed_ticket_number' => $ticket->ticket_number,
+            ]);
 
             return $ticket;
         });
+
+        if ($alreadyApproved) {
+            return view('helpdesk.ticket-email-confirm', [
+                'submission' => $submission,
+                'alreadyApproved' => true,
+            ]);
+        }
 
         if ($ticket === null) {
             foreach ($submission->attachments as $attachment) {
@@ -287,7 +296,7 @@ class TicketController extends Controller
         }
 
         $ticket->load('department', 'category');
-        Notification::route('mail', $ticket->requester_email)->notify(new TicketRequesterUpdate(
+        $notificationSender->sendToEmail($ticket->requester_email, new TicketRequesterUpdate(
             $ticket->requester_name,
             $ticket->ticket_number,
             $ticket->subject,
@@ -310,8 +319,13 @@ class TicketController extends Controller
         return to_route('ticket.submitted');
     }
 
-    public function verifyEmail(Ticket $ticket, string $token, TicketPdf $ticketPdf): View
-    {
+    public function verifyEmail(
+        Request $request,
+        Ticket $ticket,
+        string $token,
+        TicketPdf $ticketPdf,
+        ImmediateNotificationSender $notificationSender,
+    ): View {
         $emailWasJustVerified = DB::transaction(function () use ($ticket, $token): bool {
             $lockedTicket = Ticket::query()->lockForUpdate()->findOrFail($ticket->id);
 
@@ -346,7 +360,7 @@ class TicketController extends Controller
         if ($emailWasJustVerified) {
             $ticket->refresh()->load('department', 'category');
 
-            Notification::route('mail', $ticket->requester_email)->notify(new TicketRequesterUpdate(
+            $notificationSender->sendToEmail($ticket->requester_email, new TicketRequesterUpdate(
                 $ticket->requester_name,
                 $ticket->ticket_number,
                 $ticket->subject,
@@ -355,8 +369,13 @@ class TicketController extends Controller
                 $ticketPdf->generate($ticket),
             ));
 
-            $this->notifyRequesterOfPendingStaffUpdates($ticket);
+            $this->notifyRequesterOfPendingStaffUpdates($ticket, $notificationSender);
         }
+
+        $request->session()->put('ticket_lookup_prefill', [
+            'ticket' => $ticket->ticket_number,
+            'email' => $ticket->requester_email,
+        ]);
 
         return view('helpdesk.ticket-email-verified', [
             'ticketNumber' => $ticket->ticket_number,
@@ -364,8 +383,10 @@ class TicketController extends Controller
         ]);
     }
 
-    private function notifyRequesterOfPendingStaffUpdates(Ticket $ticket): void
-    {
+    private function notifyRequesterOfPendingStaffUpdates(
+        Ticket $ticket,
+        ImmediateNotificationSender $notificationSender,
+    ): void {
         $updates = [];
 
         foreach (
@@ -402,7 +423,7 @@ class TicketController extends Controller
             ?: $first['id'] <=> $second['id']);
 
         foreach ($updates as $update) {
-            Notification::route('mail', $ticket->requester_email)->notify(new TicketRequesterUpdate(
+            $notificationSender->sendToEmail($ticket->requester_email, new TicketRequesterUpdate(
                 $ticket->requester_name,
                 $ticket->ticket_number,
                 $ticket->subject,
@@ -417,10 +438,18 @@ class TicketController extends Controller
         PublicFeatureAvailability $availability,
         RequesterTicketDocument $ticketDocument,
     ): View {
-        $lookupContext = $request->session()->get('ticket_lookup_context');
+        $lookupPrefill = $request->session()->pull('ticket_lookup_prefill');
+        $hasLookupPrefill = is_array($lookupPrefill)
+            && is_string($lookupPrefill['ticket'] ?? null)
+            && is_string($lookupPrefill['email'] ?? null);
+        $lookupContext = $hasLookupPrefill
+            ? null
+            : $request->session()->get('ticket_lookup_context');
         $ticket = null;
 
-        if (
+        if ($hasLookupPrefill) {
+            $request->session()->forget(['ticket_lookup_context', 'ticket_lookup_failed']);
+        } elseif (
             is_array($lookupContext)
             && is_string($lookupContext['ticket'] ?? null)
             && is_string($lookupContext['email'] ?? null)
@@ -435,10 +464,14 @@ class TicketController extends Controller
         return view('helpdesk.check-ticket', [
             'ticket' => $ticket,
             'ticketDocument' => $ticket ? $ticketDocument->forRequester($ticket) : null,
-            'lookupAttempted' => $request->session()->get('ticket_lookup_failed', false),
+            'lookupAttempted' => ! $hasLookupPrefill && $request->session()->get('ticket_lookup_failed', false),
             'rememberedEmail' => $request->session()->get('ticket_lookup_email', ''),
-            'lookupTicketNumber' => $ticket ? $lookupContext['ticket'] : '',
-            'lookupEmail' => $ticket ? $lookupContext['email'] : '',
+            'lookupTicketNumber' => $hasLookupPrefill
+                ? $lookupPrefill['ticket']
+                : ($ticket ? $lookupContext['ticket'] : ''),
+            'lookupEmail' => $hasLookupPrefill
+                ? $lookupPrefill['email']
+                : ($ticket ? $lookupContext['email'] : ''),
             'moderationWarning' => $ticket && $this->hasActiveClientWarning($lookupContext['email']),
             'ticketRepliesEnabled' => $availability->ticketRepliesAreEnabled(),
             'ticketRepliesMessage' => $availability->ticketRepliesMessage(),
@@ -509,6 +542,8 @@ class TicketController extends Controller
     public function reply(
         StoreRequesterTicketReplyRequest $request,
         TicketResolutionSla $resolutionSla,
+        TicketNotificationRecipients $notificationRecipients,
+        ImmediateNotificationSender $notificationSender,
     ): RedirectResponse {
         $validated = $request->validated();
         $ticket = $this->findRequesterTicket($validated['ticket'], $validated['email']);
@@ -528,6 +563,8 @@ class TicketController extends Controller
                 $validated,
                 $uploads,
                 $resolutionSla,
+                $notificationRecipients,
+                $notificationSender,
                 &$storedAttachments,
             ): ?bool {
                 $lockedTicket = Ticket::query()->lockForUpdate()->findOrFail($ticket->getKey());
@@ -595,44 +632,16 @@ class TicketController extends Controller
                     'description' => "{$lockedTicket->requester_name} replied to the ticket.",
                 ]);
 
-                User::query()
-                    ->where('employment_status', 'active')
-                    ->where('staff_approval_status', 'approved')
-                    ->where(function ($query) use ($lockedTicket): void {
-                        $query->where('role', 'admin');
+                $notificationRecipients->forTicket($lockedTicket)
+                    ->each(fn (User $user) => WorkspaceNotification::create([
+                        'user_id' => $user->id,
+                        'ticket_id' => $lockedTicket->id,
+                        'type' => 'requester_reply',
+                        'title' => 'New requester reply',
+                        'message' => "{$lockedTicket->ticket_number} · {$lockedTicket->subject}",
+                    ]));
 
-                        if ($lockedTicket->department_id !== null) {
-                            $query->orWhere(function ($query) use ($lockedTicket): void {
-                                $query->where('role', 'department_admin')
-                                    ->where('department_id', $lockedTicket->department_id);
-                            });
-                        }
-
-                        if ($lockedTicket->assigned_to_user_id !== null) {
-                            $query->orWhere(function ($query) use ($lockedTicket): void {
-                                $query->whereKey($lockedTicket->assigned_to_user_id)
-                                    ->where(function ($query) use ($lockedTicket): void {
-                                        $query->where('role', 'admin');
-
-                                        if ($lockedTicket->department_id !== null) {
-                                            $query->orWhere('department_id', $lockedTicket->department_id);
-                                        }
-                                    });
-                            });
-                        }
-                    })
-                    ->get(['id'])
-                    ->each(
-                        fn (User $user) => WorkspaceNotification::create([
-                            'user_id' => $user->id,
-                            'ticket_id' => $lockedTicket->id,
-                            'type' => 'requester_reply',
-                            'title' => 'New requester reply',
-                            'message' => "{$lockedTicket->ticket_number} · {$lockedTicket->subject}",
-                        ]),
-                    );
-
-                Notification::route('mail', $lockedTicket->requester_email)->notify(new TicketRequesterUpdate(
+                $notificationSender->sendToEmail($lockedTicket->requester_email, new TicketRequesterUpdate(
                     $lockedTicket->requester_name,
                     $lockedTicket->ticket_number,
                     $lockedTicket->subject,

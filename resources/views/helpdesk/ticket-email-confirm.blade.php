@@ -1,5 +1,5 @@
 @extends('layouts.public')
-@section('title', 'Confirm Ticket Submission')
+@section('title', $alreadyApproved ? 'Ticket Already Approved' : 'Confirm Ticket Submission')
 @section('content')
 <section class="help-scene ticket-submitted-page">
     <div class="scene-shapes" aria-hidden="true">
@@ -16,12 +16,17 @@
             <svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <p class="ticket-confirmation-eyebrow">PCU Helpdesk</p>
-        <h1>Confirm Your Email</h1>
-        <p class="ticket-confirmation-intro">Confirm that you can receive email at <strong>{{ $submission->requester_email }}</strong>. We will create and send your ticket to staff only after you confirm.</p>
-        <form action="{{ request()->fullUrl() }}" method="post">
-            @csrf
-            <button class="view-ticket-button ticket-confirmation-button" type="submit">Confirm Email and Submit Ticket</button>
-        </form>
+        @if ($alreadyApproved)
+            <h1>Ticket Already Approved</h1>
+            <p class="ticket-confirmation-intro">Your email was already confirmed and ticket <strong>{{ $submission->completed_ticket_number }}</strong> has been submitted. No additional ticket was created.</p>
+        @else
+            <h1>Confirm Your Email</h1>
+            <p class="ticket-confirmation-intro">Confirm that you can receive email at <strong>{{ $submission->requester_email }}</strong>. We will create and send your ticket to staff only after you confirm.</p>
+            <form action="{{ request()->fullUrl() }}" method="post">
+                @csrf
+                <button class="view-ticket-button ticket-confirmation-button" type="submit">Confirm Email and Submit Ticket</button>
+            </form>
+        @endif
         <a class="ticket-confirmation-home" href="{{ route('home') }}">Return to Helpdesk</a>
     </div>
 </section>

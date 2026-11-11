@@ -39,7 +39,7 @@ class Ticket extends Model
 {
     public function scopeVisibleTo(Builder $query, User $user): Builder
     {
-        if ($user->isAdmin()) {
+        if ($user->isAdmin() || ($user->isDepartmentAdmin() && $user->department_id !== null)) {
             return $query;
         }
 
@@ -56,6 +56,7 @@ class Ticket extends Model
     public function isVisibleTo(User $user): bool
     {
         return $user->isAdmin()
+            || ($user->isDepartmentAdmin() && $user->department_id !== null)
             || ($user->department_id !== null && $this->department_id === $user->department_id);
     }
 

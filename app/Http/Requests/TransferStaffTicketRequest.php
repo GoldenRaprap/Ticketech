@@ -10,6 +10,8 @@ use Illuminate\Validation\Rule;
 
 class TransferStaffTicketRequest extends FormRequest
 {
+    public const DEFAULT_HANDOFF_NOTE = 'This ticket is being routed to your department for review and appropriate follow-up. Please review the request and take the next appropriate action.';
+
     public function authorize(): bool
     {
         $user = $this->user();
@@ -25,6 +27,20 @@ class TransferStaffTicketRequest extends FormRequest
         return $user->isStaff()
             && $user->hasPermissionTo(UserPermission::ManageDepartmentTickets)
             && ! in_array($ticket->status, ['Resolved', 'Closed'], true);
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $handoffNote = $this->input('handoff_note');
+        $ticket = $this->route('ticket');
+
+        if (
+            $ticket instanceof Ticket
+            && $ticket->department_id !== null
+            && ($handoffNote === null || (is_string($handoffNote) && trim($handoffNote) === ''))
+        ) {
+            $this->merge(['handoff_note' => self::DEFAULT_HANDOFF_NOTE]);
+        }
     }
 
     public function rules(): array
@@ -43,7 +59,9 @@ class TransferStaffTicketRequest extends FormRequest
                     }
                 }),
             ],
-            'handoff_note' => ['required', 'string', 'max:5000'],
+            'handoff_note' => $ticket instanceof Ticket && $ticket->department_id === null
+                ? ['prohibited']
+                : ['required', 'string', 'max:5000'],
         ];
     }
 
@@ -54,7 +72,6 @@ class TransferStaffTicketRequest extends FormRequest
     {
         return [
             'department_id.exists' => "Select an active department other than the ticket's current department.",
-            'handoff_note.required' => 'Add a handoff note so the receiving department has the necessary context.',
         ];
     }
 }

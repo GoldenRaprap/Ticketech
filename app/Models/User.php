@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Enums\UserPermission;
 use App\Enums\UserRole;
+use App\Notifications\StaffPasswordReset;
+use App\Services\ImmediateNotificationSender;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -115,5 +117,13 @@ class User extends Authenticatable implements MustVerifyEmail
     public function displayName(): string
     {
         return filled($this->nickname) ? $this->nickname : $this->name;
+    }
+
+    /**
+     * @param  string  $token
+     */
+    public function sendPasswordResetNotification(#[\SensitiveParameter] mixed $token): void
+    {
+        app(ImmediateNotificationSender::class)->send($this, new StaffPasswordReset($token));
     }
 }

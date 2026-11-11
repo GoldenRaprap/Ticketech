@@ -42,6 +42,9 @@
         <a class="sidebar-link {{ request()->routeIs('staff.notifications') ? 'active' : '' }}" href="{{ route('staff.notifications') }}" title="Notifications">
             <span class="sidebar-icon" aria-hidden="true">◌</span>
             <span class="sidebar-link-label">Notifications</span>
+            @if ($sidebarUnreadNotificationCount > 0)
+                <span class="sidebar-notification-badge sidebar-notification-badge--blue" aria-label="{{ $sidebarUnreadNotificationCount }} unread notifications">{{ $sidebarUnreadNotificationCount > 9 ? '9+' : $sidebarUnreadNotificationCount }}</span>
+            @endif
         </a>
 
         @unless (auth()->user()->isAdmin())
@@ -70,16 +73,22 @@
             <a class="sidebar-link {{ request()->routeIs('admin.users') ? 'active' : '' }}" href="{{ route('admin.users') }}" title="User Access">
                 <span class="sidebar-icon" aria-hidden="true">♙</span>
                 <span class="sidebar-link-label">User Access</span>
+                @if ($sidebarPendingStaffApplicationCount > 0)
+                    <span class="sidebar-notification-badge sidebar-notification-badge--blue" aria-label="{{ $sidebarPendingStaffApplicationCount }} pending staff applications">{{ $sidebarPendingStaffApplicationCount > 9 ? '9+' : $sidebarPendingStaffApplicationCount }}</span>
+                @endif
             </a>
 
             <a class="sidebar-link {{ request()->routeIs('admin.moderation*') ? 'active' : '' }}" href="{{ route('admin.moderation') }}" title="Client Moderation">
                 <span class="sidebar-icon" aria-hidden="true">⚑</span>
                 <span class="sidebar-link-label">Client Moderation</span>
+                @if ($sidebarPendingReportCount > 0)
+                    <span class="sidebar-notification-badge sidebar-notification-badge--blue" aria-label="{{ $sidebarPendingReportCount }} pending reports">{{ $sidebarPendingReportCount > 9 ? '9+' : $sidebarPendingReportCount }}</span>
+                @endif
             </a>
 
-            <a class="sidebar-link {{ request()->routeIs('admin.sla-settings*') ? 'active' : '' }}" href="{{ route('admin.sla-settings') }}" title="Ticket Options">
+            <a class="sidebar-link {{ request()->routeIs('admin.sla-settings*') ? 'active' : '' }}" href="{{ route('admin.sla-settings') }}" title="Tools">
                 <span class="sidebar-icon" aria-hidden="true">◷</span>
-                <span class="sidebar-link-label">Ticket Options</span>
+                <span class="sidebar-link-label">Tools</span>
             </a>
 
             <a class="sidebar-link {{ request()->routeIs('admin.audit-logs') ? 'active' : '' }}" href="{{ route('admin.audit-logs') }}" title="Audit Logs">
@@ -103,6 +112,9 @@
             <a class="sidebar-link {{ request()->routeIs('admin.users*') ? 'active' : '' }}" href="{{ route('admin.users') }}" title="User Access">
                 <span class="sidebar-icon" aria-hidden="true">♙</span>
                 <span class="sidebar-link-label">User Access</span>
+                @if ($sidebarPendingStaffApplicationCount > 0)
+                    <span class="sidebar-notification-badge sidebar-notification-badge--blue" aria-label="{{ $sidebarPendingStaffApplicationCount }} pending staff applications">{{ $sidebarPendingStaffApplicationCount > 9 ? '9+' : $sidebarPendingStaffApplicationCount }}</span>
+                @endif
             </a>
         @endif
     </nav>
@@ -112,7 +124,7 @@
             <a class="user-mini-profile {{ request()->routeIs('staff.profile') ? 'active' : '' }}" href="{{ route('staff.profile') }}" aria-label="View {{ auth()->user()->displayName() }}'s profile" title="Profile">
                 <span class="user-mini-avatar">
                     @if (auth()->user()->profile_photo_path)
-                        <img src="{{ route('public-images.show', ['path' => auth()->user()->profile_photo_path]) }}" alt="">
+                        <img class="profile-photo-image" src="{{ route('public-images.show', ['path' => auth()->user()->profile_photo_path]) }}" alt="">
                     @else
                         <span aria-hidden="true">{{ strtoupper(substr(auth()->user()->displayName(), 0, 1)) }}</span>
                     @endif

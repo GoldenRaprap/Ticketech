@@ -2,12 +2,12 @@
 @section('title', 'User Access')
 @section('heading', 'User Access')
 @section('content')
-<div class="admin-console-page">
+<div class="admin-console-page admin-user-access-page">
     <header class="admin-page-header">
         <div>
             <span class="admin-page-eyebrow">ADMINISTRATION / ACCESS CONTROL</span>
             <h1>User access</h1>
-            <p>Assign staff to departments and grant scoped department-admin access. Super Admins retain global administration.</p>
+            <p>Assign staff to departments, grant Department Admin access, or promote active accounts to Super Admin for global administration.</p>
         </div>
         <span class="admin-page-context"><span aria-hidden="true">●</span> User directory</span>
     </header>
@@ -143,6 +143,28 @@
                                 {{ $application->hasVerifiedEmail() ? 'Email verified' : 'Email not verified' }}
                             </span>
                         </header>
+                        @if ($application->department_id === null || auth()->user()->isAdmin())
+                            <form
+                                class="admin-staff-directory-form"
+                                action="{{ route('admin.users.update', $application) }}"
+                                method="post"
+                                data-auto-submit-on-change
+                            >
+                                @csrf
+                                @method('put')
+                                <input type="hidden" name="staff[{{ $application->id }}][name]" value="{{ $application->name }}">
+                                <input type="hidden" name="staff[{{ $application->id }}][email]" value="{{ $application->email }}">
+                                <label class="admin-staff-field" for="pending-staff-{{ $application->id }}-department">Department</label>
+                                <select id="pending-staff-{{ $application->id }}-department" name="staff[{{ $application->id }}][department_id]">
+                                    <option value="">Unassigned</option>
+                                    @foreach ($departmentAssignmentOptions as $department)
+                                        <option value="{{ $department->id }}" @selected((string) $application->department_id === (string) $department->id)>{{ $department->name }}</option>
+                                    @endforeach
+                                </select>
+                            </form>
+                        @else
+                            <p class="admin-staff-directory-department">{{ $application->department?->name ?? 'Unassigned' }}</p>
+                        @endif
                         <div class="admin-staff-card-actions">
                             <form action="{{ route('admin.users.approve', $application) }}" method="post">
                                 @csrf
@@ -281,7 +303,7 @@
                                 <div class="admin-user-cell admin-staff-directory-user">
                                     <span class="admin-user-avatar" aria-hidden="true">{{ strtoupper(substr($directoryUser->name, 0, 1)) }}</span>
                                     @if ($directoryUser->role === 'staff')
-                                        <form id="staff-update-{{ $directoryUser->id }}" class="admin-staff-directory-form" action="{{ route('admin.users.update', $directoryUser) }}" method="post">
+                                        <form id="staff-update-{{ $directoryUser->id }}" class="admin-staff-directory-form" action="{{ route('admin.users.update', $directoryUser) }}" method="post" @if (auth()->user()->isAdmin() || ($directoryUser->department_id === null && auth()->user()->isDepartmentAdmin())) data-auto-submit-on-change @endif>
                                             @csrf
                                             @method('put')
                                             <label class="visually-hidden" for="staff-{{ $directoryUser->id }}-name">Full name</label>
@@ -294,6 +316,14 @@
                                                     <option value="">Unassigned</option>
                                                     @foreach ($departments as $department)
                                                         <option value="{{ $department->id }}" @selected((string) old('staff.'.$directoryUser->id.'.department_id', $directoryUser->department_id) === (string) $department->id)>{{ $department->name }}{{ $department->is_active ? '' : ' (Inactive)' }}</option>
+                                                    @endforeach
+                                                </select>
+                                            @elseif ($directoryUser->department_id === null)
+                                                <label class="visually-hidden" for="staff-{{ $directoryUser->id }}-department">Assign {{ $directoryUser->name }} to your department</label>
+                                                <select id="staff-{{ $directoryUser->id }}-department" name="staff[{{ $directoryUser->id }}][department_id]">
+                                                    <option value="">Unassigned</option>
+                                                    @foreach ($departmentAssignmentOptions as $department)
+                                                        <option value="{{ $department->id }}" @selected((string) old('staff.'.$directoryUser->id.'.department_id', $directoryUser->department_id) === (string) $department->id)>{{ $department->name }}</option>
                                                     @endforeach
                                                 </select>
                                             @else
@@ -330,20 +360,21 @@
                                     </span>
                                     <div class="admin-user-management-actions">
                                         @can('manage-user-roles')
-                                            @if ($directoryUser->role === 'staff' && $directoryUser->employment_status === 'active' && $directoryUser->department_id !== null)
-                                                <form action="{{ route('admin.users.role.update', $directoryUser) }}" method="post">
+                                            @if ($directoryUser->employment_status === 'active' && auth()->id() !== $directoryUser->id)
+                                                <form action="{{ route('admin.users.role.update', $directoryUser) }}" method="post" data-role-change-form>
                                                     @csrf
                                                     @method('patch')
-                                                    <input type="hidden" name="role" value="department_admin">
-                                                    <input type="hidden" name="department_id" value="{{ $directoryUser->department_id }}">
-                                                    <button class="admin-console-button" type="submit">Promote to department admin</button>
-                                                </form>
-                                            @elseif (in_array($directoryUser->role, ['admin', 'department_admin'], true) && $directoryUser->employment_status === 'active' && auth()->id() !== $directoryUser->id)
-                                                <form action="{{ route('admin.users.role.update', $directoryUser) }}" method="post">
-                                                    @csrf
-                                                    @method('patch')
-                                                    <input type="hidden" name="role" value="staff">
-                                                    <button class="admin-console-button admin-console-button--danger" type="submit">Change to staff</button>
+                                                    @if ($directoryUser->department_id !== null)
+                                                        <input type="hidden" name="department_id" value="{{ $directoryUser->department_id }}">
+                                                    @endif
+                                                    <label class="visually-hidden" for="user-{{ $directoryUser->id }}-role">Change {{ $directoryUser->name }}'s role</label>
+                                                    <select id="user-{{ $directoryUser->id }}-role" class="admin-role-change-select" name="role" aria-label="Change {{ $directoryUser->name }}'s role" data-role-change-select>
+                                                        <option value="staff" @selected($directoryUser->role === 'staff')>Staff</option>
+                                                        @if ($directoryUser->department_id !== null)
+                                                            <option value="department_admin" @selected($directoryUser->role === 'department_admin')>Department Admin</option>
+                                                        @endif
+                                                        <option value="admin" @selected($directoryUser->role === 'admin')>Super Admin</option>
+                                                    </select>
                                                 </form>
                                             @elseif ($directoryUser->isAdmin() && auth()->id() === $directoryUser->id)
                                                 <span class="admin-readonly-badge">Your account</span>

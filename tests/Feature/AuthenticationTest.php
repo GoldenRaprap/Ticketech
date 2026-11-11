@@ -123,7 +123,9 @@ class AuthenticationTest extends TestCase
         $this->actingAs($admin)->get(route('staff.dashboard'))->assertOk();
 
         $this->get(route('admin.dashboard'))
-            ->assertSee('Ticket Options');
+            ->assertSee('title="Tools"', false)
+            ->assertSee('<span class="sidebar-link-label">Tools</span>', false)
+            ->assertSee('<strong>Ticket Options</strong>', false);
     }
 
     public function test_staff_and_admin_can_sign_out_from_the_sidebar_account_control(): void

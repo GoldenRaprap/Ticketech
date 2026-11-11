@@ -12,12 +12,13 @@ use App\Models\TicketEvent;
 use App\Models\User;
 use App\Models\WorkspaceNotification;
 use App\Notifications\TicketRequesterUpdate;
+use App\Services\ImmediateNotificationSender;
+use App\Services\TicketNotificationRecipients;
 use App\Services\TicketResolutionSla;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -30,15 +31,15 @@ class StaffTicketController extends Controller
     public function index(Request $request, TicketResolutionSla $resolutionSla): View
     {
         $user = $request->user();
-        $canFilterByDepartment = $user->isAdmin() || $user->isDepartmentAdmin();
-        $requestedDepartmentId = $user->isDepartmentAdmin()
-            ? ($request->input('department_id') ?: $user->department_id)
-            : ($user->isAdmin() ? $request->input('department_id') : $user->department_id);
+        $canViewAllDepartments = $user->isAdmin() || ($user->isDepartmentAdmin() && $user->department_id !== null);
+        $requestedDepartmentId = $canViewAllDepartments
+            ? $request->input('department_id')
+            : $user->department_id;
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', 'in:New,Assigned,In Progress,Waiting for User,On Hold,Resolved,Closed'],
             'priority' => ['nullable', 'in:Urgent,High,Medium,Low'],
-            'department_id' => $canFilterByDepartment
+            'department_id' => $canViewAllDepartments
                 ? ['nullable', 'integer', Rule::exists('departments', 'id')->where('is_active', true)]
                 : ['prohibited'],
             'assignee' => [
@@ -48,13 +49,13 @@ class StaffTicketController extends Controller
                 Rule::when(
                     $request->input('assignee') !== 'unassigned',
                     ['integer', Rule::exists('users', 'id')->where(fn ($query) => $query
-                        ->where('role', 'staff')
+                        ->whereIn('role', ['staff', 'department_admin'])
                         ->where('employment_status', 'active')
                         ->where('staff_approval_status', 'approved')
                         ->when(
-                            $requestedDepartmentId !== null,
+                            filled($requestedDepartmentId),
                             fn ($query) => $query->where('department_id', $requestedDepartmentId),
-                            fn ($query) => $query->whereRaw('1 = 0'),
+                            fn ($query) => $canViewAllDepartments ? $query : $query->whereRaw('1 = 0'),
                         ))],
                 ),
             ],
@@ -63,22 +64,20 @@ class StaffTicketController extends Controller
         $resolutionSla->initializeMissingDeadlines();
 
         $searchTerm = trim($filters['search'] ?? '');
-        $selectedDepartmentId = $user->isDepartmentAdmin()
+        $selectedDepartmentId = $canViewAllDepartments
             ? (filled($filters['department_id'] ?? null)
                 ? (int) $filters['department_id']
-                : $user->department_id)
-            : ($user->isAdmin() && filled($filters['department_id'] ?? null)
-                ? (int) $filters['department_id']
-                : $user->department_id);
+                : null)
+            : $user->department_id;
         $departmentTickets = Ticket::query()
             ->when(
                 $selectedDepartmentId !== null,
                 fn ($query) => $query->where('department_id', $selectedDepartmentId),
-                fn ($query) => $user->isAdmin() ? $query : $query->whereRaw('1 = 0'),
+                fn ($query) => $canViewAllDepartments ? $query : $query->whereRaw('1 = 0'),
             );
         $tickets = Ticket::query()
-            ->where(function ($query) use ($user, $searchTerm, $selectedDepartmentId): void {
-                if (! $user->isAdmin()) {
+            ->where(function ($query) use ($searchTerm, $selectedDepartmentId, $canViewAllDepartments): void {
+                if (! $canViewAllDepartments) {
                     if ($selectedDepartmentId === null) {
                         $query->whereRaw('1 = 0');
                     } else {
@@ -88,7 +87,7 @@ class StaffTicketController extends Controller
                     $query->where('department_id', $selectedDepartmentId);
                 }
 
-                if (! $user->isAdmin() && $searchTerm !== '') {
+                if (! $canViewAllDepartments && $searchTerm !== '') {
                     $query->orWhere('ticket_number', $searchTerm);
                 }
             })
@@ -122,22 +121,22 @@ class StaffTicketController extends Controller
         return view('staff.tickets', [
             'tickets' => $tickets,
             'filters' => $filters,
-            'canFilterByDepartment' => $canFilterByDepartment,
-            'departments' => $canFilterByDepartment
+            'canFilterByDepartment' => $canViewAllDepartments,
+            'departments' => $canViewAllDepartments
                 ? Department::query()->where('is_active', true)->orderBy('name')->get(['id', 'name'])
                 : collect(),
             'selectedDepartmentId' => $selectedDepartmentId,
             'assignees' => User::query()
-                ->where('role', 'staff')
+                ->whereIn('role', ['staff', 'department_admin'])
                 ->where('employment_status', 'active')
                 ->where('staff_approval_status', 'approved')
                 ->when(
                     $selectedDepartmentId !== null,
                     fn ($query) => $query->where('department_id', $selectedDepartmentId),
-                    fn ($query) => $query->whereRaw('1 = 0'),
+                    fn ($query) => $canViewAllDepartments ? $query : $query->whereRaw('1 = 0'),
                 )
                 ->orderBy('name')
-                ->get(['id', 'name', 'nickname']),
+                ->get(['id', 'name', 'nickname', 'role']),
             'ticketCount' => (clone $departmentTickets)->count(),
             'newCount' => (clone $departmentTickets)->where('status', 'New')->count(),
             'inProgressCount' => (clone $departmentTickets)->where('status', 'In Progress')->count(),
@@ -163,6 +162,11 @@ class StaffTicketController extends Controller
         $user = $request->user();
         $canWorkTicket = $ticket->isVisibleTo($user);
         $canManageTickets = $canWorkTicket && $user->canManageDepartmentTickets();
+        $canChangeAssignment = $canManageTickets || (
+            $user->role === 'staff'
+            && $ticket->department_id === $user->department_id
+            && ($ticket->assigned_to_user_id === null || $ticket->assigned_to_user_id === $user->id)
+        );
         $lastReopenedAt = $ticket->last_reopened_at ?? $ticket->events
             ->where('event', 'status_changed')
             ->filter(fn (TicketEvent $event): bool => str_starts_with($event->description, 'Ticket reopened after a requester reply'))
@@ -175,7 +179,9 @@ class StaffTicketController extends Controller
             'canWorkTicket' => $canWorkTicket,
             'isCrossDepartmentView' => ! $canWorkTicket,
             'canManageTickets' => $canManageTickets,
+            'canChangeAssignment' => $canChangeAssignment,
             'canTransferTicket' => $canManageTickets && ! in_array($ticket->status, ['Resolved', 'Closed'], true),
+            'defaultHandoffNote' => TransferStaffTicketRequest::DEFAULT_HANDOFF_NOTE,
             'departments' => $canManageTickets
                 ? Department::query()
                     ->where('is_active', true)
@@ -186,16 +192,20 @@ class StaffTicketController extends Controller
                     ->orderBy('name')
                     ->get(['id', 'name'])
                 : collect(),
-            'staffUsers' => $canManageTickets
+            'staffUsers' => $canChangeAssignment
                 ? User::query()
                     ->where('employment_status', 'active')
                     ->where('staff_approval_status', 'approved')
+                    ->when(
+                        $user->role === 'staff' && $ticket->assigned_to_user_id === null,
+                        fn ($query) => $query->whereKey($user->id),
+                    )
                     ->where(function ($query) use ($ticket, $user): void {
                         $query->where(function ($query) use ($ticket): void {
                             if ($ticket->department_id === null) {
                                 $query->whereRaw('1 = 0');
                             } else {
-                                $query->where('role', 'staff')
+                                $query->whereIn('role', ['staff', 'department_admin'])
                                     ->where('department_id', $ticket->department_id);
                             }
                         });
@@ -205,7 +215,7 @@ class StaffTicketController extends Controller
                         }
                     })
                     ->orderBy('name')
-                    ->get(['id', 'name', 'nickname'])
+                    ->get(['id', 'name', 'nickname', 'role'])
                 : collect(),
             'ticketTiming' => [
                 'first_assignment' => $ticket->first_assigned_at
@@ -234,6 +244,8 @@ class StaffTicketController extends Controller
         UpdateStaffTicketRequest $request,
         Ticket $ticket,
         TicketResolutionSla $resolutionSla,
+        TicketNotificationRecipients $notificationRecipients,
+        ImmediateNotificationSender $notificationSender,
     ): RedirectResponse {
         $validated = $request->validated();
         $originalAssigneeId = $ticket->assigned_to_user_id;
@@ -250,6 +262,7 @@ class StaffTicketController extends Controller
             $previousPriority,
             $wasSlaPaused,
             $resolutionSla,
+            $notificationRecipients,
         ): void {
             $assigneeId = array_key_exists('assigned_to_user_id', $validated)
                 ? ($validated['assigned_to_user_id'] !== null ? (int) $validated['assigned_to_user_id'] : null)
@@ -296,6 +309,16 @@ class StaffTicketController extends Controller
                     'event' => 'status_changed',
                     'description' => "Status changed from {$previousStatus} to {$ticket->status}.",
                 ]);
+
+                $notificationRecipients->forTicket($ticket, $request->user()->id)
+                    ->each(fn (User $user) => WorkspaceNotification::create([
+                        'user_id' => $user->id,
+                        'ticket_id' => $ticket->id,
+                        'actor_id' => $request->user()->id,
+                        'type' => 'status_update',
+                        'title' => 'Ticket status updated',
+                        'message' => "{$ticket->ticket_number} · Status changed from {$previousStatus} to {$ticket->status}.",
+                    ]));
             }
 
             if ($previousPriority !== $ticket->priority) {
@@ -305,6 +328,16 @@ class StaffTicketController extends Controller
                     'event' => 'priority_changed',
                     'description' => "Priority changed to {$ticket->priority}.",
                 ]);
+
+                $notificationRecipients->forTicket($ticket, $request->user()->id)
+                    ->each(fn (User $user) => WorkspaceNotification::create([
+                        'user_id' => $user->id,
+                        'ticket_id' => $ticket->id,
+                        'actor_id' => $request->user()->id,
+                        'type' => 'priority_update',
+                        'title' => 'Ticket priority updated',
+                        'message' => "{$ticket->ticket_number} · Priority changed from {$previousPriority} to {$ticket->priority}.",
+                    ]));
             }
 
             if ($isReopening) {
@@ -331,21 +364,24 @@ class StaffTicketController extends Controller
                     'description' => $assignee ? "Assigned to {$assignee->name}." : 'Ticket assignment removed.',
                 ]);
 
-                if ($assignee && $assignee->id !== $request->user()->id) {
-                    WorkspaceNotification::create([
-                        'user_id' => $assignee->id,
+                $assignmentMessage = $assignee
+                    ? "{$ticket->ticket_number} · {$ticket->subject} was assigned to {$assignee->displayName()}."
+                    : "{$ticket->ticket_number} · {$ticket->subject} is no longer assigned.";
+
+                $notificationRecipients->forTicket($ticket, $request->user()->id)
+                    ->each(fn (User $user) => WorkspaceNotification::create([
+                        'user_id' => $user->id,
                         'ticket_id' => $ticket->id,
                         'actor_id' => $request->user()->id,
                         'type' => 'assignment',
-                        'title' => 'Ticket assigned to you',
-                        'message' => "{$ticket->ticket_number} · {$ticket->subject}",
-                    ]);
-                }
+                        'title' => $assignee?->id === $user->id ? 'Ticket assigned to you' : 'Ticket assignment updated',
+                        'message' => $assignmentMessage,
+                    ]));
             }
         });
 
         if ($previousStatus !== $ticket->status && $ticket->canEmailRequester()) {
-            Notification::route('mail', $ticket->requester_email)->notify(new TicketRequesterUpdate(
+            $notificationSender->sendToEmail($ticket->requester_email, new TicketRequesterUpdate(
                 $ticket->requester_name,
                 $ticket->ticket_number,
                 $ticket->subject,
@@ -357,12 +393,15 @@ class StaffTicketController extends Controller
         return to_route('staff.ticket-detail', $ticket)->with('status', 'Ticket updated successfully.');
     }
 
-    public function transfer(TransferStaffTicketRequest $request, Ticket $ticket): RedirectResponse
-    {
+    public function transfer(
+        TransferStaffTicketRequest $request,
+        Ticket $ticket,
+        TicketNotificationRecipients $notificationRecipients,
+    ): RedirectResponse {
         $validated = $request->validated();
         $actor = $request->user();
 
-        DB::transaction(function () use ($ticket, $validated, $actor): void {
+        DB::transaction(function () use ($ticket, $validated, $actor, $notificationRecipients): void {
             $ticket = Ticket::query()->lockForUpdate()->findOrFail($ticket->id);
             abort_unless($ticket->isVisibleTo($actor), 404);
             abort_if(in_array($ticket->status, ['Resolved', 'Closed'], true), 403);
@@ -381,22 +420,24 @@ class StaffTicketController extends Controller
             $ticket->assigned_at = null;
             $ticket->save();
 
-            $ticket->comments()->create([
-                'author_id' => $actor->id,
-                'author_name' => $actor->name,
-                'body' => "Handoff to {$targetDepartment->name}:\n\n{$validated['handoff_note']}",
-                'is_internal' => true,
-            ]);
+            if ($sourceDepartment !== null) {
+                $ticket->comments()->create([
+                    'author_id' => $actor->id,
+                    'author_name' => $actor->name,
+                    'body' => "Handoff to {$targetDepartment->name}:\n\n".$validated['handoff_note'],
+                    'is_internal' => true,
+                ]);
+            }
+
+            $departmentEventDescription = $sourceDepartment === null
+                ? "Ticket assigned to {$targetDepartment->name}."
+                : "Ticket transferred from {$sourceDepartment->name} to {$targetDepartment->name}.";
 
             TicketEvent::create([
                 'ticket_id' => $ticket->id,
                 'actor_id' => $actor->id,
                 'event' => 'department_transferred',
-                'description' => sprintf(
-                    'Ticket transferred from %s to %s.',
-                    $sourceDepartment?->name ?? 'an unassigned department',
-                    $targetDepartment->name,
-                ),
+                'description' => $departmentEventDescription,
                 'properties' => [
                     'from_department_id' => $previousDepartmentId,
                     'to_department_id' => $targetDepartment->id,
@@ -413,19 +454,20 @@ class StaffTicketController extends Controller
                 ]);
             }
 
-            User::query()
-                ->where('role', 'department_admin')
-                ->where('department_id', $targetDepartment->id)
-                ->where('employment_status', 'active')
-                ->where('staff_approval_status', 'approved')
-                ->get(['id'])
-                ->each(fn (User $departmentAdmin) => WorkspaceNotification::create([
-                    'user_id' => $departmentAdmin->id,
+            $sourceDepartmentName = $sourceDepartment?->name ?? 'an unassigned department';
+            $targetDepartmentName = $targetDepartment->name;
+            $notificationRecipients->forTicket($ticket, $actor->id)
+                ->each(fn (User $user) => WorkspaceNotification::create([
+                    'user_id' => $user->id,
                     'ticket_id' => $ticket->id,
                     'actor_id' => $actor->id,
                     'type' => 'department_transfer',
-                    'title' => 'Ticket transferred to your department',
-                    'message' => "{$ticket->ticket_number} · {$ticket->subject}",
+                    'title' => $sourceDepartment === null
+                        ? 'Ticket assigned to a department'
+                        : 'Ticket transferred between departments',
+                    'message' => $sourceDepartment === null
+                        ? "{$ticket->ticket_number} · {$ticket->subject} was assigned to {$targetDepartmentName}."
+                        : "{$ticket->ticket_number} · {$ticket->subject} was transferred from {$sourceDepartmentName} to {$targetDepartmentName}.",
                 ]));
         });
 
@@ -433,8 +475,12 @@ class StaffTicketController extends Controller
             ->with('status', 'Ticket transferred to the receiving department queue.');
     }
 
-    public function comment(StoreStaffTicketCommentRequest $request, Ticket $ticket): RedirectResponse
-    {
+    public function comment(
+        StoreStaffTicketCommentRequest $request,
+        Ticket $ticket,
+        TicketNotificationRecipients $notificationRecipients,
+        ImmediateNotificationSender $notificationSender,
+    ): RedirectResponse {
         $validated = $request->validated();
         $isInternal = (bool) ($validated['is_internal'] ?? false);
         $uploads = $request->file('attachment', []) ?? [];
@@ -454,7 +500,15 @@ class StaffTicketController extends Controller
                 ];
             }
 
-            DB::transaction(function () use ($request, $ticket, $validated, $isInternal, $storedAttachments): void {
+            DB::transaction(function () use (
+                $request,
+                $ticket,
+                $validated,
+                $isInternal,
+                $storedAttachments,
+                $notificationRecipients,
+                $notificationSender,
+            ): void {
                 $comment = $ticket->comments()->create([
                     'author_id' => $request->user()->id,
                     'author_name' => $request->user()->name,
@@ -484,19 +538,20 @@ class StaffTicketController extends Controller
                         : "{$request->user()->name} replied to the requester.",
                 ]);
 
-                if (! $isInternal && $ticket->assigned_to_user_id && $ticket->assigned_to_user_id !== $request->user()->id) {
-                    WorkspaceNotification::create([
-                        'user_id' => $ticket->assigned_to_user_id,
+                $notificationType = $isInternal ? 'internal_note' : 'reply';
+                $notificationTitle = $isInternal ? 'New internal note' : 'New ticket reply';
+                $notificationRecipients->forTicket($ticket, $request->user()->id)
+                    ->each(fn (User $user) => WorkspaceNotification::create([
+                        'user_id' => $user->id,
                         'ticket_id' => $ticket->id,
                         'actor_id' => $request->user()->id,
-                        'type' => 'reply',
-                        'title' => 'New ticket reply',
-                        'message' => "{$ticket->ticket_number} · {$ticket->subject}",
-                    ]);
-                }
+                        'type' => $notificationType,
+                        'title' => $notificationTitle,
+                        'message' => "{$ticket->ticket_number} · {$ticket->subject} received a ".($isInternal ? 'staff note.' : 'reply.'),
+                    ]));
 
                 if (! $isInternal && $ticket->canEmailRequester()) {
-                    Notification::route('mail', $ticket->requester_email)->notify(new TicketRequesterUpdate(
+                    $notificationSender->sendToEmail($ticket->requester_email, new TicketRequesterUpdate(
                         $ticket->requester_name,
                         $ticket->ticket_number,
                         $ticket->subject,
@@ -539,16 +594,21 @@ class StaffTicketController extends Controller
                 'description' => "{$request->user()->name} submitted a client conduct report for administrator review.",
             ]);
 
-            User::query()->where('role', 'admin')->get(['id'])->each(
-                fn (User $admin) => WorkspaceNotification::create([
-                    'user_id' => $admin->id,
-                    'ticket_id' => $ticket->id,
-                    'actor_id' => $request->user()->id,
-                    'type' => 'client_report',
-                    'title' => 'Client conduct report for review',
-                    'message' => "{$ticket->ticket_number} · {$validated['reason']}",
-                ]),
-            );
+            User::query()
+                ->where('role', 'admin')
+                ->where('employment_status', 'active')
+                ->where('staff_approval_status', 'approved')
+                ->get(['id'])
+                ->each(
+                    fn (User $admin) => WorkspaceNotification::create([
+                        'user_id' => $admin->id,
+                        'ticket_id' => $ticket->id,
+                        'actor_id' => $request->user()->id,
+                        'type' => 'client_report',
+                        'title' => 'Client conduct report for review',
+                        'message' => "{$ticket->ticket_number} · {$validated['reason']}",
+                    ]),
+                );
         });
 
         return to_route('staff.ticket-detail', $ticket)->with('status', 'Client report submitted for administrator review.');

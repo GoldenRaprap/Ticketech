@@ -24,7 +24,7 @@
                 <h2>{{ $departmentName ? "{$departmentName} tickets" : 'All tickets' }}</h2>
                 <p>Search requests or filter by status, priority, and assignee.</p>
                 @if (auth()->user()->isDepartmentAdmin())
-                    <p>Other departments’ queues are available in read-only mode.</p>
+                    <p>Review and manage tickets across all departments, including unassigned requests.</p>
                 @elseif (! auth()->user()->isAdmin())
                     <p>Enter an exact ticket ID to view another department’s ticket in read-only mode.</p>
                 @endif
@@ -34,7 +34,7 @@
             <label class="ticket-search-field"><span class="sr-only">Search tickets</span><span aria-hidden="true">⌕</span><input name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search by ticket ID, subject, or requester" aria-label="Search tickets"></label>
             @if ($canFilterByDepartment)
                 <label><span class="sr-only">Filter by department</span><select name="department_id" aria-label="Filter by department">
-                    @if (auth()->user()->isAdmin())
+                    @if (auth()->user()->isAdmin() || auth()->user()->isDepartmentAdmin())
                         <option value="">Department: All</option>
                     @endif
                     @foreach ($departments as $department)
@@ -54,11 +54,11 @@
                     <option value="{{ $priority }}" @selected(($filters['priority'] ?? '') === $priority)>{{ $priority }}</option>
                 @endforeach
             </select></label>
-            <label><span class="sr-only">Filter by staff</span><select name="assignee" aria-label="Filter by staff" @disabled($selectedDepartmentId === null)>
-                <option value="">{{ $selectedDepartmentId === null ? 'Select department first' : 'Assignee: All' }}</option>
-                <option value="unassigned" @selected(($filters['assignee'] ?? '') === 'unassigned') @disabled($selectedDepartmentId === null)>Unassigned</option>
+            <label><span class="sr-only">Filter by assignee</span><select name="assignee" aria-label="Filter by assignee" @disabled($selectedDepartmentId === null && ! $canFilterByDepartment)>
+                <option value="">{{ $selectedDepartmentId === null && ! $canFilterByDepartment ? 'Select department first' : 'Assignee: All' }}</option>
+                <option value="unassigned" @selected(($filters['assignee'] ?? '') === 'unassigned') @disabled($selectedDepartmentId === null && ! $canFilterByDepartment)>Unassigned</option>
                 @foreach ($assignees as $assignee)
-                    <option value="{{ $assignee->id }}" @selected((string) ($filters['assignee'] ?? '') === (string) $assignee->id)>{{ $assignee->displayName() }}</option>
+                    <option value="{{ $assignee->id }}" @selected((string) ($filters['assignee'] ?? '') === (string) $assignee->id)>{{ $assignee->displayName() }}{{ $assignee->isDepartmentAdmin() ? ' (Department admin)' : '' }}</option>
                 @endforeach
             </select></label>
             @if (count($filters) > 0)
@@ -67,7 +67,7 @@
         </form>
         <div class="ticket-table-scroll">
             <table class="workspace-table">
-                <thead><tr><th scope="col">Ticket</th><th scope="col">Requester</th><th scope="col">Priority</th><th scope="col">Assignee</th><th scope="col">Status</th><th scope="col">Resolution target</th><th scope="col">Created</th></tr></thead>
+                <thead><tr><th scope="col">Ticket</th><th scope="col">Department</th><th scope="col">Requester</th><th scope="col">Priority</th><th scope="col">Assignee</th><th scope="col">Status</th><th scope="col">Resolution target</th><th scope="col">Created</th></tr></thead>
                 <tbody>
                     @forelse ($tickets as $ticket)
                         <tr data-ticket-row data-ticket-url="{{ route('staff.ticket-detail', $ticket) }}" tabindex="0" aria-label="Open ticket {{ $ticket->ticket_number }}: {{ $ticket->subject }}">
@@ -80,6 +80,7 @@
                                     @endif
                                 </a>
                             </td>
+                            <td>{{ $ticket->department?->name ?? 'Unassigned' }}</td>
                             <td><div class="table-requester"><span class="requester-avatar requester-avatar--small" aria-hidden="true">{{ strtoupper(substr($ticket->requester_name, 0, 1)) }}</span><strong>{{ $ticket->requester_name }}</strong></div></td>
                             <td><span class="priority-pill priority-pill--{{ strtolower($ticket->priority) }}">{{ $ticket->priority }}</span></td>
                             <td>{{ $ticket->assignedTo?->name ?? 'Unassigned' }}</td>

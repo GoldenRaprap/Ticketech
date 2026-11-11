@@ -7,7 +7,6 @@ use App\Models\Ticket;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
@@ -37,7 +36,7 @@ class StaffReportsController extends Controller
         $baseQuery = $this->ticketsInPeriod($user, $periodStart, $periodEnd, $selectedDepartmentId);
         $summary = $this->summary(clone $baseQuery);
         $trendBuckets = collect($this->trendBuckets($user, $period, $periodStart, $periodEnd, $selectedDepartmentId));
-        $staffWorkload = $this->staffWorkload(clone $baseQuery, $user, $selectedDepartmentId);
+        $assigneeWorkload = $this->assigneeWorkload(clone $baseQuery);
 
         return view('staff.reports', [
             ...$summary,
@@ -56,15 +55,22 @@ class StaffReportsController extends Controller
             'selectedDepartmentId' => $selectedDepartmentId,
             'selectedDepartmentName' => $this->departmentLabel($user, $selectedDepartmentId),
             'trendBuckets' => $trendBuckets,
-            'staffWorkload' => $staffWorkload,
-            'staffMembers' => $user->isAdmin()
+            'assigneeWorkload' => $assigneeWorkload,
+            'assignees' => $user->isAdmin()
                 ? User::query()
-                    ->where('role', 'staff')
+                    ->whereIn('role', ['staff', 'department_admin', 'admin'])
                     ->where('employment_status', 'active')
                     ->where('staff_approval_status', 'approved')
-                    ->when($selectedDepartmentId !== null, fn ($query) => $query->where('department_id', $selectedDepartmentId))
+                    ->when($selectedDepartmentId !== null, fn ($query) => $query->where(function ($query) use ($selectedDepartmentId): void {
+                        $query->where('role', 'admin')
+                            ->orWhere(function ($query) use ($selectedDepartmentId): void {
+                                $query->whereIn('role', ['staff', 'department_admin'])
+                                    ->where('department_id', $selectedDepartmentId);
+                            });
+                    }))
                     ->orderBy('name')
-                    ->get(['id', 'name', 'nickname', 'email'])
+                    ->orderBy('id')
+                    ->get(['id', 'name', 'nickname', 'email', 'role'])
                 : collect(),
             'priorityCounts' => (clone $baseQuery)
                 ->selectRaw('priority, COUNT(*) as total')
@@ -99,7 +105,7 @@ class StaffReportsController extends Controller
             ->groupBy('status')
             ->orderBy('status')
             ->pluck('total', 'status');
-        $tickets = (clone $periodTickets)->with('assignedTo:id,name');
+        $tickets = (clone $periodTickets)->with('assignedTo:id,name,nickname,role');
         $filename = sprintf(
             'ticketech-report-%s-%s-%s-to-%s.xlsx',
             $period,
@@ -189,7 +195,7 @@ class StaffReportsController extends Controller
 
                     $writer->addRow($this->styledRow(['Ticketech Helpdesk Report'], $titleStyle, 34));
                     $writer->addRow($this->styledRow([
-                        'STAFF PERFORMANCE  |  '.strtoupper($period).' REPORT  |  '
+                        'HELPDESK PERFORMANCE  |  '.strtoupper($period).' REPORT  |  '
                             .$periodStart->format('M j, Y').' - '.$periodEnd->format('M j, Y')
                             .'  |  '.strtoupper($departmentLabel),
                     ], $subtitleStyle, 24));
@@ -261,11 +267,11 @@ class StaffReportsController extends Controller
                     $ticketSheet->setColumnWidth(14, 5);
                     $ticketSheet->setColumnWidth(16, 6);
                     $ticketSheet->setColumnWidth(24, 7);
-                    $ticketSheet->setColumnWidth(22, 8, 9);
+                    $ticketSheet->setColumnWidth(22, 8, 10);
                     $ticketSheet->setAutoFilter(new AutoFilter(
                         0,
                         1,
-                        8,
+                        9,
                         max(2, $summary['totalTicketCount'] + 1),
                     ));
                     $ticketSheet->setSheetView(
@@ -291,7 +297,8 @@ class StaffReportsController extends Controller
                         'Requester email',
                         'Priority',
                         'Status',
-                        'Assigned staff',
+                        'Assignee',
+                        'Assignee role',
                         'Created at',
                         'Resolved at',
                     ], $tableHeaderStyle, 30));
@@ -309,7 +316,8 @@ class StaffReportsController extends Controller
                             $this->spreadsheetSafeValue($ticket->requester_email),
                             $this->spreadsheetSafeValue($ticket->priority),
                             $this->spreadsheetSafeValue($ticket->status),
-                            $this->spreadsheetSafeValue($ticket->assignedTo?->name ?? 'Unassigned'),
+                            $this->spreadsheetSafeValue($ticket->assignedTo?->displayName() ?? 'Unassigned'),
+                            $this->spreadsheetSafeValue($this->assigneeRoleLabel($ticket->assignedTo?->role)),
                             $ticket->created_at?->copy()->timezone(config('app.display_timezone'))->toDateTimeString() ?? '',
                             $ticket->resolved_at?->copy()->timezone(config('app.display_timezone'))->toDateTimeString() ?? '',
                         ], $ticketRow % 2 === 0 ? $stripeStyle : null, [
@@ -340,7 +348,7 @@ class StaffReportsController extends Controller
         $user = $request->user();
         $selectedDepartmentId = $this->selectedDepartmentId($user, $filters);
         $departmentLabel = $this->departmentLabel($user, $selectedDepartmentId);
-        $validatedStaff = $request->validate([
+        $validatedAssignees = $request->validate([
             'staff_ids' => ['required', 'array', 'min:1'],
             'staff_ids.*' => [
                 'required',
@@ -348,30 +356,45 @@ class StaffReportsController extends Controller
                 'distinct',
                 Rule::exists('users', 'id')
                     ->where(fn ($query) => $query
-                        ->where('role', 'staff')
+                        ->whereIn('role', ['staff', 'department_admin', 'admin'])
                         ->where('employment_status', 'active')
                         ->where('staff_approval_status', 'approved')
-                        ->when($selectedDepartmentId !== null, fn ($query) => $query->where('department_id', $selectedDepartmentId))),
+                        ->when($selectedDepartmentId !== null, fn ($query) => $query->where(function ($query) use ($selectedDepartmentId): void {
+                            $query->where('role', 'admin')
+                                ->orWhere(function ($query) use ($selectedDepartmentId): void {
+                                    $query->whereIn('role', ['staff', 'department_admin'])
+                                        ->where('department_id', $selectedDepartmentId);
+                                });
+                        }))),
             ],
         ]);
         $period = $filters['period'] ?? 'weekly';
         [$periodStart, $periodEnd] = $this->periodRange($filters, $period);
-        $staffMembers = User::query()
-            ->where('role', 'staff')
+        $assignees = User::query()
+            ->whereIn('role', ['staff', 'department_admin', 'admin'])
             ->where('employment_status', 'active')
             ->where('staff_approval_status', 'approved')
-            ->when($selectedDepartmentId !== null, fn ($query) => $query->where('department_id', $selectedDepartmentId))
-            ->whereKey($validatedStaff['staff_ids'])
+            ->when($selectedDepartmentId !== null, fn ($query) => $query->where(function ($query) use ($selectedDepartmentId): void {
+                $query->where('role', 'admin')
+                    ->orWhere(function ($query) use ($selectedDepartmentId): void {
+                        $query->whereIn('role', ['staff', 'department_admin'])
+                            ->where('department_id', $selectedDepartmentId);
+                    });
+            }))
+            ->whereKey($validatedAssignees['staff_ids'])
             ->orderBy('name')
-            ->get(['id', 'name', 'nickname', 'email']);
-        $staffStats = [];
+            ->orderBy('id')
+            ->get(['id', 'name', 'nickname', 'email', 'role']);
+        $assigneeStats = [];
 
-        foreach ($staffMembers as $staffMember) {
-            $staffStats[$staffMember->id] = [
+        foreach ($assignees as $assignee) {
+            $assigneeStats[$assignee->id] = [
                 'ticket_count' => 0,
                 'new_count' => 0,
                 'assigned_count' => 0,
                 'in_progress_count' => 0,
+                'waiting_for_user_count' => 0,
+                'on_hold_count' => 0,
                 'resolved_count' => 0,
                 'closed_count' => 0,
                 'resolution_minutes' => 0.0,
@@ -382,7 +405,7 @@ class StaffReportsController extends Controller
         $ticketQuery = Ticket::query()
             ->whereBetween('tickets.created_at', [$periodStart->utc(), $periodEnd->utc()])
             ->when($selectedDepartmentId !== null, fn ($query) => $query->where('tickets.department_id', $selectedDepartmentId))
-            ->whereIn('assigned_to_user_id', $staffMembers->modelKeys())
+            ->whereIn('assigned_to_user_id', $assignees->modelKeys())
             ->select([
                 'id',
                 'ticket_number',
@@ -395,13 +418,15 @@ class StaffReportsController extends Controller
             ]);
 
         foreach ((clone $ticketQuery)->lazyById(500) as $ticket) {
-            $stats = &$staffStats[$ticket->assigned_to_user_id];
+            $stats = &$assigneeStats[$ticket->assigned_to_user_id];
             $stats['ticket_count']++;
 
             match ($ticket->status) {
                 'New' => $stats['new_count']++,
                 'Assigned' => $stats['assigned_count']++,
                 'In Progress' => $stats['in_progress_count']++,
+                'Waiting for User' => $stats['waiting_for_user_count']++,
+                'On Hold' => $stats['on_hold_count']++,
                 'Resolved' => $stats['resolved_count']++,
                 'Closed' => $stats['closed_count']++,
                 default => null,
@@ -415,9 +440,9 @@ class StaffReportsController extends Controller
             unset($stats);
         }
 
-        $ticketCount = array_sum(array_column($staffStats, 'ticket_count'));
+        $ticketCount = array_sum(array_column($assigneeStats, 'ticket_count'));
         $filename = sprintf(
-            'ticketech-staff-performance-%s-%s-%s-to-%s.xlsx',
+            'ticketech-assignee-performance-%s-%s-%s-to-%s.xlsx',
             $period,
             str($departmentLabel)->slug(),
             $periodStart->format('Y-m-d'),
@@ -429,15 +454,15 @@ class StaffReportsController extends Controller
             $departmentLabel,
             $periodStart,
             $periodEnd,
-            $staffMembers,
-            $staffStats,
+            $assignees,
+            $assigneeStats,
             $ticketCount,
             $ticketQuery,
         ): void {
-            $path = tempnam(sys_get_temp_dir(), 'ticketech-staff-performance-');
+            $path = tempnam(sys_get_temp_dir(), 'ticketech-assignee-performance-');
 
             if ($path === false) {
-                throw new RuntimeException('Unable to create the staff performance export file.');
+                throw new RuntimeException('Unable to create the assignee performance export file.');
             }
 
             try {
@@ -446,13 +471,13 @@ class StaffReportsController extends Controller
 
                 try {
                     $summarySheet = $writer->getCurrentSheet();
-                    $summarySheet->setName('Staff Summary');
+                    $summarySheet->setName('Assignee Summary');
                     $summarySheet->setColumnWidth(26, 1);
                     $summarySheet->setColumnWidth(34, 2);
-                    $summarySheet->setColumnWidth(17, 3, 7);
-                    $summarySheet->setColumnWidth(20, 8, 9);
+                    $summarySheet->setColumnWidth(17, 3, 11);
+                    $summarySheet->setColumnWidth(24, 12);
                     $summarySheet->setSheetView((new SheetView)->setShowGridLines(false)->setFreezeRow(4));
-                    $summarySheet->setAutoFilter(new AutoFilter(0, 4, 8, $staffMembers->count() + 4));
+                    $summarySheet->setAutoFilter(new AutoFilter(0, 4, 11, $assignees->count() + 4));
                     $headerStyle = (new Style)
                         ->setFontBold()
                         ->setFontColor(Color::toARGB('18324B'))
@@ -469,26 +494,29 @@ class StaffReportsController extends Controller
                     $ticketStatusStyles = $this->ticketStatusStyles();
                     $unknownStatusStyle = (new Style)->setCellAlignment(CellAlignment::CENTER);
 
-                    $writer->addRow(Row::fromValues(['STAFF PERFORMANCE SUMMARY'], $titleStyle));
+                    $writer->addRow(Row::fromValues(['ASSIGNEE PERFORMANCE SUMMARY'], $titleStyle));
                     $writer->addRow(Row::fromValues([
                         strtoupper($period).' REPORT  |  '.$periodStart->format('M j, Y').' - '.$periodEnd->format('M j, Y')
                             .'  |  '.strtoupper($departmentLabel),
                     ], $subtitleStyle));
                     $writer->addRow(Row::fromValues());
                     $writer->addRow(Row::fromValues([
-                        'Staff member',
+                        'Assignee',
                         'Email',
                         'Tickets assigned',
                         'New',
                         'Assigned',
                         'In Progress',
+                        'Waiting for User',
+                        'On Hold',
                         'Resolved / closed',
                         'Resolution rate',
                         'Avg resolution (hours)',
+                        'Role',
                     ], $headerStyle));
 
-                    foreach ($staffMembers as $staffMember) {
-                        $stats = $staffStats[$staffMember->id];
+                    foreach ($assignees as $assignee) {
+                        $stats = $assigneeStats[$assignee->id];
                         $completedCount = $stats['resolved_count'] + $stats['closed_count'];
                         $resolutionRate = $stats['ticket_count'] === 0
                             ? 0
@@ -498,16 +526,19 @@ class StaffReportsController extends Controller
                             : round($stats['resolution_minutes'] / $stats['resolution_count'] / 60, 1);
 
                         $writer->addRow(Row::fromValuesWithStyles([
-                            $this->spreadsheetSafeValue($staffMember->displayName()),
-                            $this->spreadsheetSafeValue($staffMember->email),
+                            $this->spreadsheetSafeValue($assignee->displayName()),
+                            $this->spreadsheetSafeValue($assignee->email),
                             $stats['ticket_count'],
                             $stats['new_count'],
                             $stats['assigned_count'],
                             $stats['in_progress_count'],
+                            $stats['waiting_for_user_count'],
+                            $stats['on_hold_count'],
                             $completedCount,
                             $resolutionRate,
                             $averageResolutionHours,
-                        ], null, [7 => $percentStyle, 8 => $numberStyle]));
+                            $this->assigneeRoleLabel($assignee->role),
+                        ], null, [9 => $percentStyle, 10 => $numberStyle]));
                     }
 
                     $ticketSheet = $writer->addNewSheetAndMakeItCurrent();
@@ -519,23 +550,25 @@ class StaffReportsController extends Controller
                     $ticketSheet->setColumnWidth(15, 5, 6);
                     $ticketSheet->setColumnWidth(23, 7, 8);
                     $ticketSheet->setColumnWidth(24, 9);
+                    $ticketSheet->setColumnWidth(22, 10);
                     $ticketSheet->setSheetView((new SheetView)->setShowGridLines(false)->setFreezeRow(1));
-                    $ticketSheet->setAutoFilter(new AutoFilter(0, 1, 8, max(1, $ticketCount + 1)));
+                    $ticketSheet->setAutoFilter(new AutoFilter(0, 1, 9, max(1, $ticketCount + 1)));
                     $writer->addRow(Row::fromValues([
                         'Ticket number',
                         'Subject',
-                        'Staff member',
-                        'Staff email',
+                        'Assignee',
+                        'Assignee email',
                         'Priority',
                         'Status',
                         'Created at',
                         'Resolved at',
                         'Resolution time (hours)',
+                        'Assignee role',
                     ], $headerStyle));
 
                     $ticketRow = 0;
 
-                    foreach ((clone $ticketQuery)->with('assignedTo:id,name,nickname,email')->lazyById(500) as $ticket) {
+                    foreach ((clone $ticketQuery)->with('assignedTo:id,name,nickname,email,role')->lazyById(500) as $ticket) {
                         $ticketRow++;
                         $durationHours = in_array($ticket->status, ['Resolved', 'Closed'], true)
                             && $ticket->resolved_at !== null
@@ -552,6 +585,7 @@ class StaffReportsController extends Controller
                             $ticket->created_at?->copy()->timezone(config('app.display_timezone'))->toDateTimeString() ?? '',
                             $ticket->resolved_at?->copy()->timezone(config('app.display_timezone'))->toDateTimeString() ?? '',
                             $durationHours,
+                            $this->assigneeRoleLabel($ticket->assignedTo?->role),
                         ], $ticketRow % 2 === 0 ? $ticketStripeStyle : null, [
                             5 => $ticketStatusStyles[$ticket->status] ?? $unknownStatusStyle,
                         ]));
@@ -594,12 +628,8 @@ class StaffReportsController extends Controller
      */
     private function selectedDepartmentId(User $user, array $filters): ?int
     {
-        if ($user->isAdmin()) {
-            return isset($filters['department_id']) ? (int) $filters['department_id'] : null;
-        }
-
-        if ($user->isDepartmentAdmin() && isset($filters['department_id'])) {
-            return (int) $filters['department_id'];
+        if ($user->isAdmin() || $user->isDepartmentAdmin()) {
+            return filled($filters['department_id'] ?? null) ? (int) $filters['department_id'] : null;
         }
 
         return $user->department_id;
@@ -608,7 +638,7 @@ class StaffReportsController extends Controller
     private function departmentLabel(User $user, ?int $departmentId): string
     {
         if ($departmentId === null) {
-            return $user->isAdmin() ? 'All departments' : 'Unassigned';
+            return $user->isAdmin() || $user->isDepartmentAdmin() ? 'All departments' : 'Unassigned';
         }
 
         return Department::query()->whereKey($departmentId)->value('name') ?? 'Unassigned';
@@ -618,15 +648,11 @@ class StaffReportsController extends Controller
     {
         $tickets = Ticket::query();
 
-        if ($user->isAdmin()) {
+        if ($user->isAdmin() || $user->isDepartmentAdmin()) {
             return $tickets->when(
                 $departmentId !== null,
                 fn (Builder $query) => $query->where('tickets.department_id', $departmentId),
             );
-        }
-
-        if ($user->isDepartmentAdmin()) {
-            return $tickets->where('tickets.department_id', $departmentId ?? $user->department_id);
         }
 
         return $tickets->visibleTo($user);
@@ -722,10 +748,8 @@ class StaffReportsController extends Controller
             $bucketRanges,
         );
         $resolvedCounts = $this->countsByTrendBucket(
-            $this->ticketsForDepartment($user, $departmentId)
-                ->whereIn('status', ['Resolved', 'Closed'])
-                ->whereNotNull('resolved_at'),
-            'tickets.resolved_at',
+            $this->ticketsForDepartment($user, $departmentId),
+            'COALESCE(tickets.last_resolved_at, tickets.resolved_at)',
             $bucketRanges,
         );
         $maximumCount = 1;
@@ -843,7 +867,7 @@ class StaffReportsController extends Controller
         $rangeEnd = $bucketRanges[array_key_last($bucketRanges)]['end']->utc();
 
         return $tickets
-            ->whereBetween($dateColumn, [$rangeStart, $rangeEnd])
+            ->whereRaw("{$dateColumn} BETWEEN ? AND ?", [$rangeStart, $rangeEnd])
             ->selectRaw("{$bucketExpression} as report_bucket, COUNT(*) as total", $bindings)
             ->groupBy('report_bucket')
             ->pluck('total', 'report_bucket');
@@ -852,21 +876,16 @@ class StaffReportsController extends Controller
     /**
      * @return Collection<int, object>
      */
-    private function staffWorkload(Builder $tickets, User $user, ?int $departmentId): Collection
+    private function assigneeWorkload(Builder $tickets): Collection
     {
         $rows = $tickets
-            ->leftJoin('users as assigned_staff', function (JoinClause $join) use ($user, $departmentId): void {
-                $join->on('tickets.assigned_to_user_id', '=', 'assigned_staff.id');
-
-                if (! $user->isAdmin() || $departmentId !== null) {
-                    $join->on('assigned_staff.department_id', '=', 'tickets.department_id');
-                }
-            })
-            ->selectRaw("COALESCE(assigned_staff.name, 'Unassigned') as staff_name")
+            ->leftJoin('users as assigned_staff', 'tickets.assigned_to_user_id', '=', 'assigned_staff.id')
+            ->selectRaw("COALESCE(assigned_staff.nickname, assigned_staff.name, 'Unassigned') as assignee_name")
+            ->selectRaw('assigned_staff.role as assignee_role')
             ->selectRaw('COUNT(*) as total_tickets')
             ->selectRaw("SUM(CASE WHEN tickets.status NOT IN ('Resolved', 'Closed') THEN 1 ELSE 0 END) as open_tickets")
             ->selectRaw("SUM(CASE WHEN tickets.status IN ('Resolved', 'Closed') THEN 1 ELSE 0 END) as completed_tickets")
-            ->groupBy('tickets.assigned_to_user_id', 'assigned_staff.name')
+            ->groupBy('tickets.assigned_to_user_id', 'assigned_staff.nickname', 'assigned_staff.name', 'assigned_staff.role')
             ->orderByDesc('total_tickets')
             ->limit(6)
             ->get();
@@ -874,9 +893,21 @@ class StaffReportsController extends Controller
 
         return $rows->map(function (object $row) use ($maximumCount): object {
             $row->workloadWidth = (int) round((int) $row->total_tickets / $maximumCount * 100);
+            $row->assignee_role_label = $this->assigneeRoleLabel($row->assignee_role);
 
             return $row;
         });
+    }
+
+    private function assigneeRoleLabel(?string $role): string
+    {
+        return match ($role) {
+            null => '',
+            'admin' => 'Super Admin',
+            'department_admin' => 'Department Admin',
+            'staff' => 'Staff',
+            default => ucwords(str_replace('_', ' ', $role)),
+        };
     }
 
     private function formatPeriodRange(CarbonImmutable $periodStart, CarbonImmutable $periodEnd): string

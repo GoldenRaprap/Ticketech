@@ -191,7 +191,7 @@ class AdminSlaSettingsTest extends TestCase
         Notification::fake();
         $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
-            'student_id' => 'PCU-2026-001',
+            'student_id' => '2023000001',
             'email' => 'jamie@example.edu',
             'department_id' => $department->id,
             'subject' => 'Campus-wide outage',

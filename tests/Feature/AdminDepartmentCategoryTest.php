@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\Department;
-use App\Models\Ticket;
+use App\Models\PendingTicketSubmission;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -87,7 +87,7 @@ class AdminDepartmentCategoryTest extends TestCase
         $this->assertDatabaseCount('departments', 0);
     }
 
-    public function test_ticket_form_lists_only_active_options_and_saves_the_selected_ids(): void
+    public function test_ticket_form_does_not_allow_requesters_to_choose_a_department(): void
     {
         $department = Department::factory()->create(['name' => 'Student Services']);
         $inactiveDepartment = Department::factory()->create(['name' => 'Inactive Department', 'is_active' => false]);
@@ -96,16 +96,16 @@ class AdminDepartmentCategoryTest extends TestCase
 
         $this->get(route('ticket.create'))
             ->assertOk()
-            ->assertSee('name="department_id"', false)
+            ->assertDontSee('name="department_id"', false)
             ->assertSee('name="category_id"', false)
-            ->assertSee('>Student Services</option>', false)
             ->assertSee('>Portal access</option>', false)
             ->assertDontSee('Inactive Department')
+            ->assertDontSee('Student Services')
             ->assertDontSee('Inactive Category');
 
         $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
-            'student_id' => 'PCU-2026-001',
+            'student_id' => '2023000001',
             'email' => 'jamie@example.edu',
             'department_id' => $department->id,
             'category_id' => $category->id,
@@ -113,28 +113,19 @@ class AdminDepartmentCategoryTest extends TestCase
             'message' => 'The student portal shows an error.',
         ])->assertRedirect(route('ticket.submitted'));
 
-        $ticket = Ticket::query()->firstOrFail();
-        $this->assertDatabaseHas('tickets', [
-            'id' => $ticket->id,
+        $submission = PendingTicketSubmission::query()->firstOrFail();
+        $this->assertSame(null, $submission->payload['department_id']);
+        $this->assertSame($category->id, $submission->payload['category_id']);
+        $this->assertDatabaseMissing('tickets', [
             'department_id' => $department->id,
-            'category_id' => $category->id,
         ]);
         $this->assertDatabaseMissing('tickets', [
             'department_id' => $inactiveDepartment->id,
         ]);
-        $this->assertDatabaseMissing('tickets', [
-            'category_id' => $inactiveCategory->id,
-        ]);
-
-        $staff = User::factory()->create(['role' => 'staff']);
-        $this->actingAs($staff)
-            ->get(route('staff.ticket-detail', $ticket))
-            ->assertOk()
-            ->assertSee('Student Services')
-            ->assertSee('Portal access');
+        $this->assertDatabaseCount('tickets', 0);
     }
 
-    public function test_ticket_submission_rejects_deactivated_department_and_category(): void
+    public function test_ticket_submission_rejects_deactivated_categories_but_does_not_validate_requester_department(): void
     {
         $department = Department::factory()->create(['is_active' => false]);
         $category = Category::factory()->create(['is_active' => false]);
@@ -142,7 +133,7 @@ class AdminDepartmentCategoryTest extends TestCase
         $this->from(route('ticket.create'))
             ->post(route('ticket.store'), [
                 'name' => 'Jamie Student',
-                'student_id' => 'PCU-2026-001',
+                'student_id' => '2023000001',
                 'email' => 'jamie@example.edu',
                 'department_id' => $department->id,
                 'category_id' => $category->id,
@@ -150,8 +141,10 @@ class AdminDepartmentCategoryTest extends TestCase
                 'message' => 'The student portal shows an error.',
             ])
             ->assertRedirect(route('ticket.create'))
-            ->assertSessionHasErrors(['department_id', 'category_id']);
+            ->assertSessionHasErrors(['category_id'])
+            ->assertSessionDoesntHaveErrors(['department_id']);
 
+        $this->assertDatabaseCount('pending_ticket_submissions', 0);
         $this->assertDatabaseCount('tickets', 0);
     }
 }

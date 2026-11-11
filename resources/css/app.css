@@ -34,7 +34,7 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; scrollbar-gutter: stable; }
+html { scroll-behavior: smooth; }
 body { margin: 0; width: 100%; min-width: 0; overflow-x: hidden; font: var(--fs-small)/1.55 var(--font-sans); background: #dfeaf7; color: var(--ink); }
 h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); font-weight: 400; letter-spacing: 0; }
 a { color: inherit; text-decoration: none; }
@@ -2808,6 +2808,28 @@ img, svg { display: block; max-width: 100%; }
     color: #fff;
 }
 
+.sidebar-notification-badge {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    display: inline-flex;
+    min-width: 20px;
+    height: 20px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #e5484d;
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.sidebar-notification-badge--blue {
+    background: #2563eb;
+}
+
 .sidebar-icon {
     display: inline-flex;
     width: 20px;
@@ -2898,12 +2920,13 @@ img, svg { display: block; max-width: 100%; }
     font-weight: 700;
 }
 
-.user-mini-avatar img,
-.profile-large-avatar img {
+.profile-photo-image {
     display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: center;
+    border-radius: 50%;
 }
 
 .user-mini strong {
@@ -6901,6 +6924,11 @@ img, svg { display: block; max-width: 100%; }
 .notification-icon--collaboration { background: #f2edff; color: #7653ae; }
 .notification-icon--reply { background: #fff4df; color: #ae7b23; }
 .notification-icon--resolved { background: #eaf7ef; color: #39805b; }
+.notification-icon--status_update { background: #eaf7ef; color: #39805b; }
+.notification-icon--priority_update,
+.notification-icon--client_report { background: #fff0e8; color: #a7542b; }
+.notification-icon--internal_note { background: #f2edff; color: #7653ae; }
+.notification-icon--department_transfer { background: #e8f4f4; color: #347b79; }
 
 .notification-copy {
     min-width: 0;
@@ -8317,6 +8345,10 @@ img, svg { display: block; max-width: 100%; }
     min-width: 0;
 }
 
+.admin-user-access-page {
+    container: user-access / inline-size;
+}
+
 .admin-page-header {
     display: flex;
     align-items: flex-end;
@@ -9665,6 +9697,11 @@ img, svg { display: block; max-width: 100%; }
     opacity: 0.55;
 }
 
+.admin-staff-card-actions .admin-console-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
 .admin-staff-bulk-feedback {
     min-height: 1.2em;
     margin: 7px 0 0;
@@ -9782,6 +9819,36 @@ img, svg { display: block; max-width: 100%; }
     min-height: 36px;
     padding: 8px 12px;
     font-size: 0.68rem;
+}
+
+.admin-user-management-actions form[data-role-change-form] {
+    width: min(100%, 220px);
+}
+
+.admin-role-change-select {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 34px 0 11px;
+    border: 1px solid #d5e0ea;
+    border-radius: 9px;
+    background: linear-gradient(180deg, #fff 0%, #f7fafd 100%);
+    color: #284b6a;
+    font: inherit;
+    font-size: 0.7rem;
+    font-weight: 650;
+    cursor: pointer;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.admin-role-change-select:hover {
+    border-color: #9eb8d0;
+}
+
+.admin-role-change-select:focus-visible {
+    border-color: #3978b6;
+    outline: 0;
+    box-shadow: 0 0 0 3px rgba(57, 120, 182, 0.16);
 }
 
 .admin-staff-field {
@@ -11850,6 +11917,188 @@ img, svg { display: block; max-width: 100%; }
 
     .admin-staff-directory-form input,
     .admin-staff-directory-form select {
+        font-size: 0.75rem;
+    }
+}
+
+@container user-access (max-width: 900px) {
+    .admin-user-access-page .admin-page-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .admin-user-access-page .admin-page-context {
+        align-self: flex-start;
+    }
+
+    .admin-user-access-page .admin-staff-bulk-entry {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-user-access-page .admin-staff-bulk-entry > .admin-console-button {
+        grid-column: 1 / -1;
+        justify-self: start;
+    }
+
+    .admin-user-access-page .admin-user-filter-toolbar {
+        grid-template-columns: minmax(0, 1fr) minmax(150px, 0.7fr);
+    }
+
+    .admin-user-access-page .admin-user-filter-toolbar .admin-search-field,
+    .admin-user-access-page .admin-user-filter-toolbar .admin-user-filter-department,
+    .admin-user-access-page .admin-user-filter-toolbar .admin-console-clear {
+        grid-column: 1 / -1;
+    }
+
+    .admin-user-access-page .admin-staff-directory {
+        min-width: 0;
+        table-layout: auto;
+    }
+
+    .admin-user-access-page .admin-staff-directory thead {
+        display: none;
+    }
+
+    .admin-user-access-page .admin-staff-directory tbody {
+        display: grid;
+        gap: 10px;
+        padding: 10px;
+    }
+
+    .admin-user-access-page .admin-staff-directory tbody tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        overflow: hidden;
+        border: 1px solid #e4ebf1;
+        border-radius: 9px;
+        background: #fff;
+    }
+
+    .admin-user-access-page .admin-staff-directory tbody tr:hover {
+        background: #fff;
+    }
+
+    .admin-user-access-page .admin-staff-directory td {
+        min-width: 0;
+        padding: 10px;
+        border-bottom: 0;
+    }
+
+    .admin-user-access-page .admin-staff-directory td:first-child,
+    .admin-user-access-page .admin-staff-directory td:last-child,
+    .admin-user-access-page .admin-staff-directory td[colspan] {
+        grid-column: 1 / -1;
+    }
+
+    .admin-user-access-page .admin-staff-directory td:nth-child(2)::before,
+    .admin-user-access-page .admin-staff-directory td:nth-child(3)::before,
+    .admin-user-access-page .admin-staff-directory td:nth-child(4)::before {
+        display: block;
+        margin-bottom: 6px;
+        color: #78889a;
+        font-size: 0.6rem;
+        font-weight: 700;
+        letter-spacing: 0.055em;
+        text-transform: uppercase;
+    }
+
+    .admin-user-access-page .admin-staff-directory td:nth-child(2)::before { content: "Role"; }
+    .admin-user-access-page .admin-staff-directory td:nth-child(3)::before { content: "Account access"; }
+    .admin-user-access-page .admin-staff-directory td:nth-child(4)::before { content: "Actions"; }
+
+    .admin-user-access-page .admin-staff-directory-user {
+        align-items: flex-start;
+    }
+
+    .admin-user-access-page .admin-staff-directory-status {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .admin-user-access-page .admin-staff-directory .admin-user-management-actions,
+    .admin-user-access-page .admin-staff-directory .admin-user-management-actions form,
+    .admin-user-access-page .admin-staff-directory td:last-child .admin-console-button {
+        width: 100%;
+    }
+
+    .admin-user-access-page .admin-staff-directory .admin-user-management-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+
+@container user-access (max-width: 760px) {
+    .admin-user-access-page .admin-console-card {
+        padding: 15px;
+    }
+
+    .admin-user-access-page .admin-metric-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-user-access-page .admin-console-card-heading {
+        flex-direction: column;
+    }
+}
+
+@container user-access (max-width: 600px) {
+    .admin-user-access-page {
+        gap: 14px;
+    }
+
+    .admin-user-access-page .admin-staff-bulk-entry,
+    .admin-user-access-page .admin-user-filter-toolbar {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .admin-user-access-page .admin-staff-bulk-entry > .admin-console-button {
+        grid-column: 1;
+        justify-self: stretch;
+        width: 100%;
+    }
+
+    .admin-user-access-page .admin-staff-bulk-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .admin-user-access-page .admin-staff-bulk-actions > .admin-console-button {
+        width: 100%;
+    }
+
+    .admin-user-access-page .admin-user-filter-toolbar .admin-search-field,
+    .admin-user-access-page .admin-user-filter-toolbar .admin-filter-field,
+    .admin-user-access-page .admin-user-filter-toolbar .admin-console-clear {
+        grid-column: 1;
+    }
+
+    .admin-user-access-page .admin-user-filter-toolbar .admin-console-clear {
+        justify-self: start;
+    }
+
+    .admin-user-access-page .admin-staff-directory tbody {
+        padding: 7px;
+    }
+
+    .admin-user-access-page .admin-staff-directory tbody tr {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .admin-user-access-page .admin-staff-directory td,
+    .admin-user-access-page .admin-staff-directory td:first-child,
+    .admin-user-access-page .admin-staff-directory td:last-child,
+    .admin-user-access-page .admin-staff-directory td[colspan] {
+        grid-column: 1;
+    }
+
+    .admin-user-access-page .admin-staff-directory td:nth-child(2),
+    .admin-user-access-page .admin-staff-directory td:nth-child(3),
+    .admin-user-access-page .admin-staff-directory td:nth-child(4) {
+        padding-top: 5px;
+    }
+
+    .admin-user-access-page .admin-staff-directory-form input,
+    .admin-user-access-page .admin-staff-directory-form select {
         font-size: 0.75rem;
     }
 }

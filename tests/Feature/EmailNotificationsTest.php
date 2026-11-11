@@ -66,9 +66,11 @@ class EmailNotificationsTest extends TestCase
         ]);
     }
 
-    public function test_workspace_alerts_are_sent_to_the_notified_staff_member_by_email(): void
+    public function test_workspace_alerts_are_sent_immediately_without_a_queue_worker(): void
     {
-        Notification::fake();
+        Queue::fake();
+        config()->set('mail.default', 'array');
+        Mail::purge('array');
         $staff = User::factory()->create(['role' => 'staff']);
 
         WorkspaceNotification::create([
@@ -78,31 +80,39 @@ class EmailNotificationsTest extends TestCase
             'message' => 'ED-2026-000001 is approaching its resolution target.',
         ]);
 
-        Notification::assertSentTo(
-            $staff,
-            WorkspaceAlert::class,
-            fn (WorkspaceAlert $notification, array $channels): bool => $channels === ['mail']
-                && $notification->workspaceNotification->title === 'Ticket resolution target approaching',
-        );
+        $messages = Mail::mailer('array')->getSymfonyTransport()->messages();
+        $this->assertCount(1, $messages);
+        $this->assertSame('Ticket resolution target approaching', $messages->first()->getOriginalMessage()->getSubject());
+        $this->assertSame($staff->email, $messages->first()->getOriginalMessage()->getTo()[0]->getAddress());
+        Queue::assertNothingPushed();
     }
 
-    public function test_ticket_submission_notifies_only_its_department_queue_after_email_confirmation(): void
+    public function test_unassigned_ticket_submission_notifies_all_department_admins_after_email_confirmation(): void
     {
         Notification::fake();
         $department = Department::factory()->create();
+        $otherDepartment = Department::factory()->create();
         $departmentAdmin = User::factory()->create([
             'role' => 'department_admin',
             'department_id' => $department->id,
+        ]);
+        $otherDepartmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $otherDepartment->id,
         ]);
         $staff = User::factory()->create([
             'role' => 'staff',
             'department_id' => $department->id,
         ]);
+        $otherDepartmentStaff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $otherDepartment->id,
+        ]);
         $category = Category::factory()->create();
 
         $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
-            'student_id' => 'PCU-2026-001',
+            'student_id' => '2023000001',
             'email' => 'jamie@example.edu',
             'department_id' => $department->id,
             'category_id' => $category->id,
@@ -153,6 +163,7 @@ class EmailNotificationsTest extends TestCase
         $this->assertDatabaseHas('tickets', [
             'id' => $ticket->id,
             'requester_email' => 'jamie@example.edu',
+            'department_id' => null,
             'status' => 'New',
         ]);
         $this->assertNotNull($ticket->requester_email_verified_at);
@@ -164,12 +175,24 @@ class EmailNotificationsTest extends TestCase
             'ticket_id' => $ticket->id,
             'type' => 'new_ticket',
         ]);
+        $this->assertDatabaseHas('workspace_notifications', [
+            'user_id' => $otherDepartmentAdmin->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'new_ticket',
+        ]);
         $this->assertDatabaseMissing('workspace_notifications', [
             'user_id' => $staff->id,
             'ticket_id' => $ticket->id,
             'type' => 'new_ticket',
         ]);
+        $this->assertDatabaseMissing('workspace_notifications', [
+            'user_id' => $otherDepartmentStaff->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'new_ticket',
+        ]);
         Notification::assertSentTo($departmentAdmin, WorkspaceAlert::class);
+        Notification::assertSentTo($otherDepartmentAdmin, WorkspaceAlert::class);
+        Notification::assertNotSentTo($staff, WorkspaceAlert::class);
         Notification::assertSentOnDemand(
             TicketRequesterUpdate::class,
             function (TicketRequesterUpdate $notification): bool {
@@ -203,7 +226,7 @@ class EmailNotificationsTest extends TestCase
 
         $this->post(route('ticket.store'), [
             'name' => 'Jamie Student',
-            'student_id' => 'PCU-2026-001',
+            'student_id' => '2023000001',
             'email' => 'jamie@example.edu',
             'department_id' => $department->id,
             'subject' => 'Cannot access Bluebook',
@@ -227,6 +250,10 @@ class EmailNotificationsTest extends TestCase
             'role' => 'staff',
             'department_id' => $ticket->department_id,
         ]);
+        $peer = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $ticket->department_id,
+        ]);
 
         $this->actingAs($staff)
             ->post(route('staff.ticket-comments.store', $ticket), [
@@ -234,7 +261,13 @@ class EmailNotificationsTest extends TestCase
                 'is_internal' => '1',
             ])->assertRedirect(route('staff.ticket-detail', $ticket));
 
-        Notification::assertNothingSent();
+        Notification::assertSentTo(
+            $peer,
+            WorkspaceAlert::class,
+            fn (WorkspaceAlert $notification): bool => $notification->workspaceNotification->type === 'internal_note',
+        );
+        Notification::assertNotSentTo($staff, WorkspaceAlert::class);
+        Notification::assertSentOnDemandTimes(TicketRequesterUpdate::class, 0);
 
         $this->post(route('staff.ticket-comments.store', $ticket), [
             'body' => 'We have restored access to the course page.',
@@ -251,6 +284,58 @@ class EmailNotificationsTest extends TestCase
     {
         Notification::fake();
         $ticket = $this->createTicket('jamie@example.edu');
+        $staff = User::factory()->create(['role' => 'admin']);
+        $peer = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $ticket->department_id,
+        ]);
+        $otherDepartmentStaff = User::factory()->create(['role' => 'staff']);
+
+        $this->actingAs($staff)
+            ->put(route('staff.ticket-update', $ticket), [
+                'status' => 'Resolved',
+                'priority' => 'High',
+                'assigned_to_user_id' => $peer->id,
+            ])
+            ->assertRedirect(route('staff.ticket-detail', $ticket));
+
+        Notification::assertSentOnDemand(
+            TicketRequesterUpdate::class,
+            fn (TicketRequesterUpdate $notification): bool => $notification->updateMessage === 'The status of your support ticket changed from New to Resolved.',
+        );
+        $this->assertDatabaseHas('workspace_notifications', [
+            'user_id' => $peer->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'status_update',
+        ]);
+        $this->assertDatabaseHas('workspace_notifications', [
+            'user_id' => $peer->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'priority_update',
+        ]);
+        $this->assertDatabaseMissing('workspace_notifications', [
+            'user_id' => $staff->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'status_update',
+        ]);
+        $this->assertDatabaseHas('workspace_notifications', [
+            'user_id' => $peer->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'assignment',
+        ]);
+        $this->assertDatabaseMissing('workspace_notifications', [
+            'user_id' => $otherDepartmentStaff->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'status_update',
+        ]);
+    }
+
+    public function test_requester_status_update_email_is_sent_without_a_queue_worker(): void
+    {
+        Queue::fake();
+        config()->set('mail.default', 'array');
+        Mail::purge('array');
+        $ticket = $this->createTicket('jamie@example.edu');
         $staff = User::factory()->create([
             'role' => 'staff',
             'department_id' => $ticket->department_id,
@@ -260,10 +345,11 @@ class EmailNotificationsTest extends TestCase
             ->put(route('staff.ticket-update', $ticket), ['status' => 'Resolved'])
             ->assertRedirect(route('staff.ticket-detail', $ticket));
 
-        Notification::assertSentOnDemand(
-            TicketRequesterUpdate::class,
-            fn (TicketRequesterUpdate $notification): bool => $notification->updateMessage === 'The status of your support ticket changed from New to Resolved.',
-        );
+        $messages = Mail::mailer('array')->getSymfonyTransport()->messages();
+        $this->assertCount(1, $messages);
+        $this->assertSame('Your support ticket status changed', $messages->first()->getOriginalMessage()->getSubject());
+        $this->assertSame('jamie@example.edu', $messages->first()->getOriginalMessage()->getTo()[0]->getAddress());
+        Queue::assertNothingPushed();
     }
 
     public function test_staff_replies_and_status_changes_do_not_email_an_unverified_requester(): void
@@ -391,7 +477,7 @@ class EmailNotificationsTest extends TestCase
             'ticket_number' => 'ED-2026-000001',
             'department_id' => $department->id,
             'requester_name' => 'Jamie Student',
-            'student_id' => 'PCU-2026-001',
+            'student_id' => '2023000001',
             'requester_email' => $requesterEmail,
             'requester_email_verified_at' => $emailVerified ? now() : null,
             'requester_email_verification_token_hash' => $emailVerified ? null : hash('sha256', 'pending-verification-token'),
