@@ -12,6 +12,8 @@ class AuthenticationTest extends TestCase
 
     public function test_login_page_has_no_header_sign_in_link_or_breadcrumb(): void
     {
+        User::factory()->create(['role' => 'admin']);
+
         $this->get(route('login'))
             ->assertOk()
             ->assertSee('<div class="container public-topbar-inner">', false)
@@ -192,6 +194,7 @@ class AuthenticationTest extends TestCase
     public function test_local_preview_sign_in_opens_the_staff_workspace(): void
     {
         config()->set('app.env', 'local');
+        User::factory()->create(['role' => 'admin']);
 
         $this->get(route('login'))
             ->assertOk()

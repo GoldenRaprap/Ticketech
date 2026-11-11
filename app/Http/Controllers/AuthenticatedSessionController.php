@@ -13,8 +13,12 @@ use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
 {
-    public function create(): View
+    public function create(): View|RedirectResponse
     {
+        if (! User::query()->where('role', 'admin')->exists()) {
+            return redirect()->route('super-admin-setup.create');
+        }
+
         return view('helpdesk.login');
     }
 
@@ -61,6 +65,10 @@ class AuthenticatedSessionController extends Controller
         );
 
         if ($request->user()->isAdmin()) {
+            if (! $request->user()->hasVerifiedEmail()) {
+                return to_route('verification.notice');
+            }
+
             return redirect()->intended(route('admin.dashboard'));
         }
 
@@ -93,6 +101,8 @@ class AuthenticatedSessionController extends Controller
                 'role' => $role,
             ],
         );
+        $user->email_verified_at = now();
+        $user->save();
 
         Auth::login($user);
         $request->session()->regenerate();

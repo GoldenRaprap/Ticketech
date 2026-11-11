@@ -23,7 +23,9 @@ class EmailVerificationController extends Controller
             return to_route($this->destinationRoute($user));
         }
 
-        return view('helpdesk.verify-email');
+        return view('helpdesk.verify-email', [
+            'isSuperAdmin' => $user->isAdmin(),
+        ]);
     }
 
     public function verify(EmailVerificationRequest $request): RedirectResponse

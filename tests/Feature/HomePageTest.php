@@ -13,6 +13,8 @@ class HomePageTest extends TestCase
 
     public function test_guest_sees_helpdesk_actions(): void
     {
+        User::factory()->create(['role' => 'admin']);
+
         $this->get(route('home'))
             ->assertOk()
             ->assertSee('<img src="'.asset('images/Philippine_Christian_University_logo.png').'" alt="Philippine Christian University logo">', false)
@@ -34,6 +36,8 @@ class HomePageTest extends TestCase
 
     public function test_homepage_is_also_available_at_the_helpdesk_url(): void
     {
+        User::factory()->create(['role' => 'admin']);
+
         $this->get('/Helpdesk')
             ->assertOk()
             ->assertSee('How can we help you today?')
@@ -61,6 +65,8 @@ class HomePageTest extends TestCase
 
     public function test_homepage_shows_recent_published_knowledge_articles_below_helpdesk_actions(): void
     {
+        User::factory()->create(['role' => 'admin']);
+
         KnowledgeArticle::create([
             'title' => 'Campus Wi-Fi guide',
             'slug' => 'campus-wi-fi-guide',
@@ -106,6 +112,8 @@ class HomePageTest extends TestCase
 
     public function test_published_articles_without_images_show_branded_covers_on_public_cards(): void
     {
+        User::factory()->create(['role' => 'admin']);
+
         KnowledgeArticle::create([
             'title' => 'Password reset guide',
             'slug' => 'password-reset-guide',
@@ -131,6 +139,8 @@ class HomePageTest extends TestCase
 
     public function test_requester_only_sees_their_own_recent_tickets(): void
     {
+        User::factory()->create(['role' => 'admin']);
+
         $requester = User::factory()->create();
         $otherRequester = User::factory()->create();
         $requester->tickets()->create([

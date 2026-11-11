@@ -96,6 +96,8 @@ class RegistrationTest extends TestCase
 
     public function test_pending_staff_login_is_limited_to_verification_and_approval_status(): void
     {
+        User::factory()->create(['role' => 'admin']);
+
         $user = $this->createPendingStaff([
             'email' => 'pending.staff@pcu.edu.ph',
             'password' => 'secure-password-123',
@@ -125,6 +127,8 @@ class RegistrationTest extends TestCase
 
     public function test_unverified_and_unapproved_staff_cannot_access_staff_routes(): void
     {
+        User::factory()->create(['role' => 'admin']);
+
         $user = $this->createPendingStaff(unverified: true);
 
         $this->actingAs($user)->get(route('staff.dashboard'))

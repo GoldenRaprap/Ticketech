@@ -135,6 +135,8 @@ class AdminMailSettingsTest extends TestCase
 
     public function test_invalid_saved_smtp_password_pauses_ticket_email_features_and_keeps_admin_access(): void
     {
+        User::factory()->create(['role' => 'admin']);
+
         DB::table('system_settings')->insert([
             'setting' => 'mail.smtp.password',
             'value' => 'invalid-encrypted-password',

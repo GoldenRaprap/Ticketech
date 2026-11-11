@@ -19,6 +19,7 @@ use App\Http\Controllers\StaffProfileController;
 use App\Http\Controllers\StaffRegistrationController;
 use App\Http\Controllers\StaffReportsController;
 use App\Http\Controllers\StaffTicketController;
+use App\Http\Controllers\SuperAdminSetupController;
 use App\Http\Controllers\TicketAttachmentPreviewController;
 use App\Http\Controllers\TicketController;
 use Illuminate\Support\Facades\Route;
@@ -26,6 +27,12 @@ use Illuminate\Support\Facades\Route;
 Route::get('/public-images/{path}', PublicImageController::class)
     ->where('path', '.*')
     ->name('public-images.show');
+
+Route::get('/setup/super-admin', [SuperAdminSetupController::class, 'create'])
+    ->name('super-admin-setup.create');
+Route::post('/setup/super-admin', [SuperAdminSetupController::class, 'store'])
+    ->middleware('throttle:5,1')
+    ->name('super-admin-setup.store');
 
 Route::middleware('redirect.workspace-users')->group(function () {
     Route::get('/', HomeController::class)->name('home');

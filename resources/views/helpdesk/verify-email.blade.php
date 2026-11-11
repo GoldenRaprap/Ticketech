@@ -33,7 +33,14 @@
                 <div class="password-form-inner">
                     <p class="password-eyebrow">PCU STAFF PORTAL</p>
                     <h1>Verify your email</h1>
-                    <p>We sent a secure verification link to {{ auth()->user()->email }}. Verify this address before your request can be reviewed for staff access.</p>
+                    <p>
+                        We sent a secure verification link to {{ auth()->user()->email }}.
+                        @if ($isSuperAdmin)
+                            Verify this address to activate your Super Admin access.
+                        @else
+                            Verify this address before your request can be reviewed for staff access.
+                        @endif
+                    </p>
 
                     @if (session('status'))
                         <p class="password-form-status" role="status">{{ session('status') }}</p>

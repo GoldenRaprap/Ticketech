@@ -32,6 +32,10 @@ class EnsureAdmin
             ]);
         }
 
+        if (! $request->user()->hasVerifiedEmail()) {
+            return to_route('verification.notice');
+        }
+
         return $next($request);
     }
 }
