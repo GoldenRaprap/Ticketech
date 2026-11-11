@@ -35,6 +35,10 @@ return [
         ],
     ],
 
-    'super_admin_setup_key' => env('SUPER_ADMIN_SETUP_KEY'),
+    'helpdesk_staff' => [
+        'name' => env('HELPDESK_STAFF_NAME', 'PCU Helpdesk Admin'),
+        'email' => env('HELPDESK_STAFF_EMAIL'),
+        'password' => env('HELPDESK_STAFF_PASSWORD'),
+    ],
 
 ];

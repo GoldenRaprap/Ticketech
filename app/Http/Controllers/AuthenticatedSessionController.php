@@ -13,12 +13,8 @@ use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
 {
-    public function create(): View|RedirectResponse
+    public function create(): View
     {
-        if (! User::query()->where('role', 'admin')->exists()) {
-            return redirect()->route('super-admin-setup.create');
-        }
-
         return view('helpdesk.login');
     }
 

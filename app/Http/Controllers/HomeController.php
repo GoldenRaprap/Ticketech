@@ -3,10 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\KnowledgeArticle;
-use App\Models\User;
 use App\Services\KnowledgeArticleReviewSettings;
 use App\Services\PublicFeatureAvailability;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -16,11 +14,7 @@ class HomeController extends Controller
         Request $request,
         KnowledgeArticleReviewSettings $reviewSettings,
         PublicFeatureAvailability $availability,
-    ): View|RedirectResponse {
-        if (! User::query()->where('role', 'admin')->exists()) {
-            return to_route('super-admin-setup.create');
-        }
-
+    ): View {
         $recentTickets = $request->user()?->tickets()->latest()->limit(3)->get() ?? collect();
         $knowledgeBaseEnabled = $availability->knowledgeBaseIsEnabled();
         $featuredArticles = $knowledgeBaseEnabled
