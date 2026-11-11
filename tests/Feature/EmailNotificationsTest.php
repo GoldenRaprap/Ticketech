@@ -15,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Symfony\Component\Mime\Email;
 use Tests\TestCase;
@@ -191,6 +192,31 @@ class EmailNotificationsTest extends TestCase
         $this->post($verificationUrl)->assertNotFound();
         $this->assertDatabaseCount('tickets', 1);
         Notification::assertSentOnDemandTimes(TicketRequesterUpdate::class, 1);
+    }
+
+    public function test_ticket_verification_email_is_sent_immediately_without_a_queued_job(): void
+    {
+        Queue::fake();
+        config()->set('mail.default', 'array');
+        Mail::purge('array');
+        $department = Department::factory()->create();
+
+        $this->post(route('ticket.store'), [
+            'name' => 'Jamie Student',
+            'student_id' => 'PCU-2026-001',
+            'email' => 'jamie@example.edu',
+            'department_id' => $department->id,
+            'subject' => 'Cannot access Bluebook',
+            'message' => 'The course page returns an error.',
+        ])->assertRedirect(route('ticket.submitted'));
+
+        $transport = Mail::mailer('array')->getSymfonyTransport();
+        $this->assertCount(1, $transport->messages());
+        $email = $transport->messages()->first()->getOriginalMessage();
+        $this->assertSame('Verify your email to complete your PCU Helpdesk request', $email->getSubject());
+        $this->assertSame('jamie@example.edu', $email->getTo()[0]->getAddress());
+        $this->assertStringContainsString('Confirm email and submit ticket', $email->getHtmlBody());
+        Queue::assertNothingPushed();
     }
 
     public function test_public_staff_reply_emails_the_requester_but_internal_notes_do_not(): void

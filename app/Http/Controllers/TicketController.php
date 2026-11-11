@@ -123,13 +123,22 @@ class TicketController extends Controller
             ['submission' => $submission->id, 'token' => $verificationToken],
         );
 
-        Notification::route('mail', $submission->requester_email)->notify(new TicketEmailVerification(
+        $verificationNotification = new TicketEmailVerification(
             $submission->requester_name,
             $verificationUrl,
             $verificationExpiresAt->copy()
                 ->timezone(config('app.display_timezone'))
                 ->format('F j, Y g:i A'),
-        ));
+        );
+
+        try {
+            Notification::route('mail', $submission->requester_email)
+                ->notifyNow($verificationNotification);
+        } catch (Throwable $exception) {
+            $verificationNotification->failed($exception);
+
+            throw $exception;
+        }
 
         $request->session()->flash('submitted_ticket', [
             'email' => $submission->requester_email,
