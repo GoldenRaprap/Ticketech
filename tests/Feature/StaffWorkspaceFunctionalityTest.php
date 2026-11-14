@@ -422,7 +422,7 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->assertDatabaseCount('tickets', 1);
     }
 
-    public function test_staff_can_record_first_assignment_and_resolution_durations_in_ticket_detail(): void
+    public function test_staff_can_record_assignment_and_resolution_durations(): void
     {
         $this->travelTo('2026-10-21 10:00:00');
         $departmentAdmin = $this->createDepartmentAdmin();
@@ -450,40 +450,13 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $ticket->refresh();
         $this->assertNotNull($ticket->first_assigned_at);
         $this->assertNotNull($ticket->last_resolved_at);
-
-        $this->travelTo('2026-10-22 12:30:00');
-        $this->actingAs($departmentAdmin)
-            ->put(route('staff.ticket-update', $ticket), [
-                'status' => 'Waiting for User',
-            ])
-            ->assertRedirect(route('staff.ticket-detail', $ticket));
-
-        $this->post(route('ticket.reply'), [
-            'ticket' => $ticket->ticket_number,
-            'email' => 'jamie@example.edu',
-            'body' => 'The issue came up again.',
-        ])->assertRedirect(route('ticket.check'));
+        $this->assertSame('Resolved', $ticket->status);
 
         $this->get(route('staff.ticket-detail', $ticket))
             ->assertOk()
-            ->assertSee('Not resolved yet')
-            ->assertSee('2h 30m');
-
-        $this->travelTo('2026-10-22 14:30:00');
-        $ticket->refresh();
-        $this->actingAs($departmentAdmin)
-            ->put(route('staff.ticket-update', $ticket), [
-                'status' => 'Resolved',
-                'priority' => 'Low',
-                'assigned_to_user_id' => $staff->id,
-            ])
-            ->assertRedirect(route('staff.ticket-detail', $ticket));
-
-        $this->get(route('staff.ticket-detail', $ticket))
-            ->assertOk()
+            ->assertSee('Time to resolution')
             ->assertSee('45m')
-            ->assertSee('2h 0m')
-            ->assertSee('1d 4h 30m');
+            ->assertSee('2h 30m');
     }
 
     public function test_staff_cannot_assign_a_ticket_to_a_requester(): void
@@ -1025,16 +998,15 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertSee('Urgent');
     }
 
-    public function test_report_resolution_trend_includes_tickets_resolved_before_reopening(): void
+    public function test_report_resolution_trend_includes_the_latest_resolution_for_an_active_ticket(): void
     {
         $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
         $staff = $this->createStaffUser();
-        $reopenedTicket = $this->createTicket('ED-2026-000373', 'Previously resolved ticket', null, 'Low', 'In Progress');
-        $reopenedTicket->forceFill([
+        $previouslyResolvedTicket = $this->createTicket('ED-2026-000373', 'Previously resolved ticket', null, 'Low', 'In Progress');
+        $previouslyResolvedTicket->forceFill([
             'created_at' => Carbon::parse('2026-03-15 08:00:00'),
             'resolved_at' => null,
             'last_resolved_at' => Carbon::parse('2026-03-15 09:00:00'),
-            'last_reopened_at' => Carbon::parse('2026-03-15 10:00:00'),
         ])->save();
 
         $this->actingAs($staff)

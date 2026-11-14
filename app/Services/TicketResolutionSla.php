@@ -31,7 +31,7 @@ class TicketResolutionSla
 
     public function refresh(Ticket $ticket, ?CarbonInterface $cycleStart = null): void
     {
-        $cycleStart ??= $ticket->last_reopened_at ?? $ticket->created_at;
+        $cycleStart ??= $ticket->created_at;
 
         if ($cycleStart === null) {
             throw new LogicException('A persisted ticket is required to calculate its resolution SLA.');

@@ -185,10 +185,12 @@
                     @method('put')
                     <div class="ticket-property-fields">
                         <label class="workspace-field"><span>Status</span><select name="status" required>
-                            @foreach (['New', 'Assigned', 'In Progress', 'Waiting for User', 'On Hold', 'Resolved', 'Closed'] as $status)
+                            @foreach (in_array($ticket->status, ['Resolved', 'Closed'], true) ? ['Resolved', 'Closed'] : ['New', 'Assigned', 'In Progress', 'Waiting for User', 'On Hold', 'Resolved', 'Closed'] as $status)
                                 <option value="{{ $status }}" @selected(old('status', $ticket->status) === $status)>{{ $status }}</option>
                             @endforeach
-                        </select></label>
+                        </select>
+                            @error('status')<span class="form-field-error">{{ $message }}</span>@enderror
+                        </label>
                         <label class="workspace-field">
                             <span>Priority</span>
                             <select name="priority">
@@ -283,10 +285,9 @@
                 <div class="ticket-collapsible-content">
                     <dl class="ticket-timing-list">
                         <div><dt>Time to first assignment</dt><dd>{{ $ticketTiming['first_assignment'] ?? 'Not assigned yet' }}</dd></div>
-                        <div><dt>Latest resolution interval</dt><dd>{{ $ticketTiming['latest_resolution'] ?? 'Not resolved yet' }}</dd></div>
-                        <div><dt>Total elapsed to last resolution</dt><dd>{{ $ticketTiming['total_elapsed'] ?? 'Not resolved yet' }}</dd></div>
+                        <div><dt>Time to resolution</dt><dd>{{ $ticketTiming['resolution'] ?? 'Not resolved yet' }}</dd></div>
                     </dl>
-                    <p class="ticket-timing-note">Durations use calendar time, not active work time. The latest resolution interval starts at submission or the latest reopening; total elapsed starts at submission.</p>
+                    <p class="ticket-timing-note">Duration uses calendar time from submission to the latest resolution, not active work time.</p>
                 </div>
             </details>
 

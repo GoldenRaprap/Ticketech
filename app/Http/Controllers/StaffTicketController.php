@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -167,12 +168,7 @@ class StaffTicketController extends Controller
             && $ticket->department_id === $user->department_id
             && ($ticket->assigned_to_user_id === null || $ticket->assigned_to_user_id === $user->id)
         );
-        $lastReopenedAt = $ticket->last_reopened_at ?? $ticket->events
-            ->where('event', 'status_changed')
-            ->filter(fn (TicketEvent $event): bool => str_starts_with($event->description, 'Ticket reopened after a requester reply'))
-            ->last()?->created_at;
-        $hasLatestResolution = $ticket->last_resolved_at
-            && (! $lastReopenedAt || $ticket->last_resolved_at->greaterThanOrEqualTo($lastReopenedAt));
+        $lastResolvedAt = $ticket->last_resolved_at ?? $ticket->resolved_at;
 
         return view('staff.ticket-detail', [
             'ticket' => $ticket,
@@ -221,11 +217,8 @@ class StaffTicketController extends Controller
                 'first_assignment' => $ticket->first_assigned_at
                     ? $this->formatDuration($ticket->created_at->diffInSeconds($ticket->first_assigned_at))
                     : null,
-                'latest_resolution' => $hasLatestResolution
-                    ? $this->formatDuration(($lastReopenedAt ?? $ticket->created_at)->diffInSeconds($ticket->last_resolved_at))
-                    : null,
-                'total_elapsed' => $ticket->last_resolved_at
-                    ? $this->formatDuration($ticket->created_at->diffInSeconds($ticket->last_resolved_at))
+                'resolution' => $lastResolvedAt
+                    ? $this->formatDuration($ticket->created_at->diffInSeconds($lastResolvedAt))
                     : null,
             ],
         ]);
@@ -248,22 +241,29 @@ class StaffTicketController extends Controller
         ImmediateNotificationSender $notificationSender,
     ): RedirectResponse {
         $validated = $request->validated();
-        $originalAssigneeId = $ticket->assigned_to_user_id;
-        $previousStatus = $ticket->status;
-        $previousPriority = $ticket->priority;
-        $wasSlaPaused = in_array($previousStatus, ['Waiting for User', 'On Hold'], true);
 
-        DB::transaction(function () use (
+        $previousStatus = DB::transaction(function () use (
             $request,
             $ticket,
             $validated,
-            $originalAssigneeId,
-            $previousStatus,
-            $previousPriority,
-            $wasSlaPaused,
             $resolutionSla,
             $notificationRecipients,
-        ): void {
+        ): string {
+            $ticket = Ticket::query()->lockForUpdate()->findOrFail($ticket->getKey());
+            $previousStatus = $ticket->status;
+            $previousPriority = $ticket->priority;
+            $originalAssigneeId = $ticket->assigned_to_user_id;
+            $wasSlaPaused = in_array($previousStatus, ['Waiting for User', 'On Hold'], true);
+
+            if (
+                in_array($previousStatus, ['Resolved', 'Closed'], true)
+                && ! in_array($validated['status'], ['Resolved', 'Closed'], true)
+            ) {
+                throw ValidationException::withMessages([
+                    'status' => 'Resolved or closed tickets cannot be reopened.',
+                ]);
+            }
+
             $assigneeId = array_key_exists('assigned_to_user_id', $validated)
                 ? ($validated['assigned_to_user_id'] !== null ? (int) $validated['assigned_to_user_id'] : null)
                 : $originalAssigneeId;
@@ -284,19 +284,12 @@ class StaffTicketController extends Controller
                 $ticket->sla_paused_at = null;
             }
 
-            $isReopening = in_array($previousStatus, ['Resolved', 'Closed'], true)
-                && ! in_array($ticket->status, ['Resolved', 'Closed'], true);
-
             if (in_array($ticket->status, ['Resolved', 'Closed'], true)) {
                 if (! in_array($previousStatus, ['Resolved', 'Closed'], true) || $ticket->resolved_at === null) {
                     $ticket->resolved_at = now();
                     $ticket->last_resolved_at = $ticket->resolved_at;
                 }
             } else {
-                if (in_array($previousStatus, ['Resolved', 'Closed'], true)) {
-                    $ticket->last_reopened_at = now();
-                }
-
                 $ticket->resolved_at = null;
             }
 
@@ -340,14 +333,8 @@ class StaffTicketController extends Controller
                     ]));
             }
 
-            if ($isReopening) {
-                $ticket->sla_paused_minutes = 0;
-                $ticket->sla_paused_at = $isSlaPaused ? now() : null;
-            }
-
             if (
-                $isReopening
-                || $previousPriority !== $ticket->priority
+                $previousPriority !== $ticket->priority
                 || ($wasSlaPaused && ! $isSlaPaused)
                 || $ticket->resolution_due_at === null
             ) {
@@ -378,7 +365,10 @@ class StaffTicketController extends Controller
                         'message' => $assignmentMessage,
                     ]));
             }
+
+            return $previousStatus;
         });
+        $ticket->refresh();
 
         if ($previousStatus !== $ticket->status && $ticket->canEmailRequester()) {
             $notificationSender->sendToEmail($ticket->requester_email, new TicketRequesterUpdate(

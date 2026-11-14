@@ -34,7 +34,7 @@ class SendResolutionSlaAlerts extends Command
                         throw new LogicException("Ticket [{$ticket->id}] has an alert time but no resolution deadline.");
                     }
 
-                    $cycleStart = $ticket->last_reopened_at ?? $ticket->created_at;
+                    $cycleStart = $ticket->created_at;
                     $recipientIds = $notificationRecipients->forTicket($ticket)->modelKeys();
 
                     if ($recipientIds === []) {

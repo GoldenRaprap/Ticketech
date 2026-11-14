@@ -167,21 +167,39 @@ class TicketResolutionSlaTest extends TestCase
         );
     }
 
-    public function test_reopened_ticket_starts_a_fresh_resolution_target(): void
+    public function test_resolved_and_closed_tickets_cannot_be_reopened_by_staff(): void
     {
-        $this->setUrgentResolutionTarget(1, 'business_hour');
         $staff = User::factory()->create(['role' => 'staff']);
-        $this->travelTo('2026-11-02 01:00:00 UTC');
-        $ticket = $this->createTicket($staff->id, 'Urgent', 'Resolved');
-        $this->travelTo('2026-11-02 02:00:00 UTC');
 
-        $this->actingAs($staff->fresh())
-            ->put(route('staff.ticket-update', $ticket), ['status' => 'In Progress'])
-            ->assertRedirect(route('staff.ticket-detail', $ticket));
+        foreach (['Resolved', 'Closed'] as $status) {
+            $ticket = $this->createTicket($staff->id, 'Urgent', $status);
+            $resolvedAt = now()->subDay();
+            $ticket->update([
+                'resolved_at' => $resolvedAt,
+                'last_resolved_at' => $resolvedAt,
+            ]);
 
-        $ticket->refresh();
-        $this->assertSame('2026-11-02 02:00:00', $ticket->last_reopened_at->format('Y-m-d H:i:s'));
-        $this->assertSame('2026-11-02 03:00:00', $ticket->resolution_due_at->format('Y-m-d H:i:s'));
+            $this->actingAs($staff->fresh())
+                ->from(route('staff.ticket-detail', $ticket))
+                ->put(route('staff.ticket-update', $ticket), ['status' => 'In Progress'])
+                ->assertRedirect(route('staff.ticket-detail', $ticket))
+                ->assertSessionHasErrors([
+                    'status' => 'Resolved or closed tickets cannot be reopened.',
+                ]);
+
+            $ticket->refresh();
+            $this->assertSame($status, $ticket->status);
+            $this->assertSame($resolvedAt->toDateTimeString(), $ticket->resolved_at->toDateTimeString());
+            $this->assertDatabaseMissing('ticket_events', [
+                'ticket_id' => $ticket->id,
+                'event' => 'status_changed',
+                'description' => "Status changed from {$status} to In Progress.",
+            ]);
+            $this->assertDatabaseMissing('workspace_notifications', [
+                'ticket_id' => $ticket->id,
+                'type' => 'status_update',
+            ]);
+        }
     }
 
     public function test_requester_reply_resumes_waiting_ticket_and_sla_clock(): void

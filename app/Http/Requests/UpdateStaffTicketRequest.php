@@ -46,9 +46,14 @@ class UpdateStaffTicketRequest extends FormRequest
     {
         $ticket = $this->route('ticket');
         $user = $this->user();
+        $allowedStatuses = ['New', 'Assigned', 'In Progress', 'Waiting for User', 'On Hold', 'Resolved', 'Closed'];
+
+        if ($ticket instanceof Ticket && in_array($ticket->status, ['Resolved', 'Closed'], true)) {
+            $allowedStatuses = ['Resolved', 'Closed'];
+        }
 
         return [
-            'status' => ['required', Rule::in(['New', 'Assigned', 'In Progress', 'Waiting for User', 'On Hold', 'Resolved', 'Closed'])],
+            'status' => ['required', Rule::in($allowedStatuses)],
             'priority' => ['sometimes', 'required', Rule::in(['Urgent', 'High', 'Medium', 'Low'])],
             'assigned_to_user_id' => [
                 'nullable',
@@ -78,5 +83,21 @@ class UpdateStaffTicketRequest extends FormRequest
                 }),
             ],
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        $ticket = $this->route('ticket');
+
+        if ($ticket instanceof Ticket && in_array($ticket->status, ['Resolved', 'Closed'], true)) {
+            return [
+                'status.in' => 'Resolved or closed tickets cannot be reopened.',
+            ];
+        }
+
+        return [];
     }
 }
