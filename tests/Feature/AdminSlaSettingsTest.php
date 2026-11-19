@@ -69,6 +69,8 @@ class AdminSlaSettingsTest extends TestCase
             ->assertOk()
             ->assertSee('Save ticket options')
             ->assertSee('Save SLA targets')
+            ->assertSee('Normal priority')
+            ->assertDontSee('Medium priority')
             ->assertSee(route('admin.sla-settings.priority-keywords.update'), false)
             ->assertSee('name="targets[urgent][first_response][value]"', false)
             ->assertSee('name="priority_keywords[urgent]"', false)

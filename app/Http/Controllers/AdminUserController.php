@@ -268,7 +268,6 @@ class AdminUserController extends Controller
 
         $staffDetails = $request->validate([
             'staff.'.$user->id.'.name' => ['required', 'string', 'max:255'],
-            'staff.'.$user->id.'.email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user)],
             'staff.'.$user->id.'.department_id' => ['nullable', 'integer', Rule::exists('departments', 'id')],
         ]);
 

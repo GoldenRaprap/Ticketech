@@ -470,6 +470,33 @@ class AdminStaffManagementTest extends TestCase
         ]);
     }
 
+    public function test_staff_email_is_read_only_and_cannot_be_changed_from_user_access(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'email' => 'original.staff@example.edu',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.users'))
+            ->assertOk()
+            ->assertSee('id="staff-'.$staff->id.'-email"', false)
+            ->assertSee('readonly', false);
+
+        $this->put(route('admin.users.update', $staff), [
+            'staff' => [
+                $staff->id => [
+                    'name' => $staff->name,
+                    'email' => 'changed.staff@example.edu',
+                ],
+            ],
+        ])->assertRedirect(route('admin.users'))
+            ->assertSessionHas('status', 'Staff account details updated.');
+
+        $this->assertSame('original.staff@example.edu', $staff->fresh()->email);
+    }
+
     public function test_super_admin_can_remove_a_staff_department_assignment(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);

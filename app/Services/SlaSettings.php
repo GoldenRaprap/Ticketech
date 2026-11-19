@@ -31,7 +31,7 @@ class SlaSettings
             'resolution' => ['value' => 1, 'unit' => 'business_day'],
         ],
         'medium' => [
-            'priority' => 'Medium',
+            'priority' => 'Normal',
             'class' => 'admin-sla-card--medium',
             'description' => 'Standard response',
             'first_response' => ['value' => 1, 'unit' => 'business_day'],

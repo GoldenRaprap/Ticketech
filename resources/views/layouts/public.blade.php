@@ -7,7 +7,7 @@
     <link rel="icon" type="image/png" href="{{ asset('images/ticketech-icon.png') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="public-shell @if(request()->routeIs('ticket.create')) ticket-create-shell @endif @if(request()->routeIs('home', 'helpdesk')) home-shell @endif" style="--pyramid-background: url('{{ asset('images/Background_Pyramids.png') }}');">
+<body class="public-shell @if(request()->routeIs('ticket.create')) ticket-create-shell @endif @if(request()->routeIs('home', 'helpdesk')) home-shell @endif" style="--pyramid-background: url('{{ asset('images/PCU-BG.jpg') }}');">
     <header class="public-topbar">
         <div class="container public-topbar-inner">
             <a class="public-brand" href="{{ route('home') }}">

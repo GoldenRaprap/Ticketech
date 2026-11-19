@@ -195,7 +195,7 @@
                 </div>
             </header>
             <div class="admin-priority-rules-grid">
-                @foreach (['urgent' => 'Urgent', 'high' => 'High', 'medium' => 'Medium', 'low' => 'Low'] as $key => $label)
+                @foreach (['urgent' => 'Urgent', 'high' => 'High', 'medium' => 'Normal', 'low' => 'Low'] as $key => $label)
                     <div class="admin-priority-rule-field" data-priority-keyword-editor>
                         <span class="admin-priority-rule-label" id="priority-keywords-label-{{ $key }}">{{ $label }} priority keywords</span>
                         <details class="admin-priority-keyword-details">

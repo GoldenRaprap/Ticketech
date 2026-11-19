@@ -309,7 +309,7 @@
                                             <label class="visually-hidden" for="staff-{{ $directoryUser->id }}-name">Full name</label>
                                             <input id="staff-{{ $directoryUser->id }}-name" name="staff[{{ $directoryUser->id }}][name]" value="{{ old('staff.'.$directoryUser->id.'.name', $directoryUser->name) }}" autocomplete="name" maxlength="255" required>
                                             <label class="visually-hidden" for="staff-{{ $directoryUser->id }}-email">Work email</label>
-                                            <input id="staff-{{ $directoryUser->id }}-email" name="staff[{{ $directoryUser->id }}][email]" type="email" value="{{ old('staff.'.$directoryUser->id.'.email', $directoryUser->email) }}" autocomplete="email" maxlength="255" required>
+                                            <input id="staff-{{ $directoryUser->id }}-email" type="email" value="{{ $directoryUser->email }}" autocomplete="email" maxlength="255" readonly aria-label="Work email (read only)">
                                             @if (auth()->user()->isAdmin())
                                                 <label class="visually-hidden" for="staff-{{ $directoryUser->id }}-department">Department</label>
                                                 <select id="staff-{{ $directoryUser->id }}-department" name="staff[{{ $directoryUser->id }}][department_id]">

@@ -9779,6 +9779,12 @@ img, svg { display: block; max-width: 100%; }
     font-size: 0.68rem;
 }
 
+.admin-staff-directory-form input[readonly] {
+    background: #f5f8fb;
+    color: #718397;
+    cursor: not-allowed;
+}
+
 .admin-staff-directory-status {
     width: auto;
     min-width: 120px;
