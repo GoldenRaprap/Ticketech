@@ -10,6 +10,7 @@ use App\Models\WorkspaceNotification;
 use App\Notifications\TicketEmailVerification;
 use App\Notifications\TicketRequesterUpdate;
 use App\Notifications\WorkspaceAlert;
+use App\Services\ImmediateNotificationSender;
 use App\Services\TicketEmailAvailability;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
@@ -66,12 +67,13 @@ class EmailNotificationsTest extends TestCase
         ]);
     }
 
-    public function test_workspace_alerts_are_sent_immediately_without_a_queue_worker(): void
+    public function test_workspace_alerts_are_deferred_without_a_queue_worker(): void
     {
         Queue::fake();
         config()->set('mail.default', 'array');
         Mail::purge('array');
         $staff = User::factory()->create(['role' => 'staff']);
+        $deferredCallbacks = defer();
 
         WorkspaceNotification::create([
             'user_id' => $staff->id,
@@ -80,11 +82,41 @@ class EmailNotificationsTest extends TestCase
             'message' => 'ED-2026-000001 is approaching its resolution target.',
         ]);
 
+        $this->assertCount(0, Mail::mailer('array')->getSymfonyTransport()->messages());
+
+        $deferredCallbacks->invoke();
+
         $messages = Mail::mailer('array')->getSymfonyTransport()->messages();
         $this->assertCount(1, $messages);
         $this->assertSame('Ticket resolution target approaching', $messages->first()->getOriginalMessage()->getSubject());
         $this->assertSame($staff->email, $messages->first()->getOriginalMessage()->getTo()[0]->getAddress());
         Queue::assertNothingPushed();
+    }
+
+    public function test_requester_update_email_sender_defers_delivery_until_after_the_response(): void
+    {
+        config()->set('mail.default', 'array');
+        Mail::purge('array');
+        $sender = app(ImmediateNotificationSender::class);
+        $notification = new TicketRequesterUpdate(
+            'Jamie Student',
+            'ED-2026-000001',
+            'Cannot access the portal',
+            'Your ticket was updated.',
+            'Your support ticket was updated',
+        );
+        $deferredCallbacks = defer();
+
+        $sender->sendToEmailAfterResponse('jamie@example.edu', $notification);
+
+        $this->assertCount(0, Mail::mailer('array')->getSymfonyTransport()->messages());
+
+        $deferredCallbacks->invoke();
+
+        $messages = Mail::mailer('array')->getSymfonyTransport()->messages();
+        $this->assertCount(1, $messages);
+        $this->assertSame('Your support ticket was updated', $messages->first()->getOriginalMessage()->getSubject());
+        $this->assertSame('jamie@example.edu', $messages->first()->getOriginalMessage()->getTo()[0]->getAddress());
     }
 
     public function test_unassigned_ticket_submission_notifies_all_department_admins_after_email_confirmation(): void

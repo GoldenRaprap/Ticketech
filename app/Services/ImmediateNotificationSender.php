@@ -13,6 +13,16 @@ class ImmediateNotificationSender
         $this->send(NotificationFacade::route('mail', $email), $notification);
     }
 
+    public function sendToEmailAfterResponse(string $email, Notification $notification): void
+    {
+        defer(fn () => $this->sendToEmail($email, $notification));
+    }
+
+    public function sendAfterResponse(object $notifiable, Notification $notification): void
+    {
+        defer(fn () => $this->send($notifiable, $notification));
+    }
+
     public function send(object $notifiable, Notification $notification): void
     {
         try {

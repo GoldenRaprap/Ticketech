@@ -371,7 +371,7 @@ class StaffTicketController extends Controller
         $ticket->refresh();
 
         if ($previousStatus !== $ticket->status && $ticket->canEmailRequester()) {
-            $notificationSender->sendToEmail($ticket->requester_email, new TicketRequesterUpdate(
+            $notificationSender->sendToEmailAfterResponse($ticket->requester_email, new TicketRequesterUpdate(
                 $ticket->requester_name,
                 $ticket->ticket_number,
                 $ticket->subject,

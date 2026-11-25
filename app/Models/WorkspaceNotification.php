@@ -28,7 +28,7 @@ class WorkspaceNotification extends Model
     protected static function booted(): void
     {
         static::created(function (WorkspaceNotification $notification): void {
-            app(ImmediateNotificationSender::class)->send(
+            app(ImmediateNotificationSender::class)->sendAfterResponse(
                 $notification->user,
                 new WorkspaceAlert($notification),
             );
