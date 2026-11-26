@@ -129,6 +129,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'audit.activity'])->
 
 Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])->group(function () {
     Route::get('/dashboard', AdminDashboardController::class)->name('dashboard');
+    Route::post('/users/{user}/registration-block', [AdminUserController::class, 'blockDeniedApplicationRegistrationEmail'])
+        ->name('users.registration-block.store');
+    Route::patch('/users/registration-blocks/{staffRegistrationBlock}/clear', [AdminUserController::class, 'clearRegistrationBlock'])
+        ->name('users.registration-blocks.clear');
     Route::get('/moderation', [AdminModerationController::class, 'index'])->name('moderation');
     Route::patch('/moderation/reports/{report}/review', [AdminModerationController::class, 'review'])->name('moderation.review');
     Route::patch('/moderation/clients/{clientModeration}/clear', [AdminModerationController::class, 'clear'])->name('moderation.clear');

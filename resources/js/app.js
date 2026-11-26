@@ -1,3 +1,25 @@
+const configureFileDropZone = (dropzone, onDrop) => {
+	dropzone.addEventListener('dragover', (event) => {
+		event.preventDefault();
+		dropzone.classList.add('is-dragging');
+	});
+
+	dropzone.addEventListener('dragleave', (event) => {
+		if (!(event.relatedTarget instanceof Node) || !dropzone.contains(event.relatedTarget)) {
+			dropzone.classList.remove('is-dragging');
+		}
+	});
+
+	dropzone.addEventListener('drop', (event) => {
+		event.preventDefault();
+		dropzone.classList.remove('is-dragging');
+
+		if (event.dataTransfer?.files.length) {
+			onDrop(event.dataTransfer.files);
+		}
+	});
+};
+
 document.querySelectorAll('[data-staff-bulk-form]').forEach((form) => {
 	const entryList = form.querySelector('[data-staff-entry-list]');
 	const entryTemplate = form.querySelector('template[data-staff-entry-template]');
@@ -631,6 +653,96 @@ document.querySelectorAll('[data-article-content-editor]').forEach((editor) => {
 	});
 });
 
+document.querySelectorAll('[data-article-image-upload]').forEach((input) => {
+	if (!(input instanceof HTMLInputElement)) {
+		throw new Error('Article image upload control is not an input.');
+	}
+
+	const panel = input.closest('.article-image-panel');
+	const preview = panel?.querySelector('[data-article-image-preview]');
+	const previewList = preview?.querySelector('[data-article-image-preview-list]');
+
+	if (!(preview instanceof HTMLElement) || !(previewList instanceof HTMLElement)) {
+		throw new Error('Article image upload is missing its preview container.');
+	}
+
+	let previewUrls = [];
+	const releasePreviewUrls = () => {
+		previewUrls.forEach((url) => URL.revokeObjectURL(url));
+		previewUrls = [];
+	};
+
+	const renderImagePreviews = () => {
+		releasePreviewUrls();
+		previewList.replaceChildren();
+
+		const files = Array.from(input.files ?? []);
+		preview.hidden = files.length === 0;
+
+		files.forEach((file, index) => {
+			const item = document.createElement('figure');
+			item.className = 'article-image-preview-item';
+
+			const image = document.createElement('img');
+			image.src = URL.createObjectURL(file);
+			image.alt = `Preview of selected image ${index + 1}: ${file.name}`;
+			previewUrls.push(image.src);
+
+			const removeButton = document.createElement('button');
+			removeButton.className = 'article-image-preview-remove';
+			removeButton.type = 'button';
+			removeButton.textContent = '×';
+			removeButton.setAttribute('aria-label', `Remove ${file.name}`);
+			removeButton.addEventListener('click', () => {
+				const transfer = new DataTransfer();
+
+				Array.from(input.files ?? []).forEach((selectedFile, selectedIndex) => {
+					if (selectedIndex !== index) {
+						transfer.items.add(selectedFile);
+					}
+				});
+
+				input.files = transfer.files;
+				input.dispatchEvent(new Event('change', { bubbles: true }));
+			});
+
+			const caption = document.createElement('figcaption');
+			caption.textContent = file.name;
+
+			item.append(image, removeButton, caption);
+			previewList.append(item);
+		});
+	};
+
+	input.addEventListener('change', renderImagePreviews);
+});
+
+document.querySelectorAll('[data-file-dropzone]').forEach((dropzone) => {
+	if (!(dropzone instanceof HTMLElement)) {
+		throw new Error('File drop zone is not an HTML element.');
+	}
+
+	const input = dropzone.querySelector('input[type="file"]');
+
+	if (!(input instanceof HTMLInputElement)) {
+		throw new Error('File drop zone is missing its input.');
+	}
+
+	const addDroppedFiles = (files) => {
+		const droppedFiles = Array.from(files);
+		const selectedFiles = input.multiple
+			? [...Array.from(input.files ?? []), ...droppedFiles]
+			: droppedFiles.slice(0, 1);
+		const transfer = new DataTransfer();
+
+		selectedFiles.forEach((file) => transfer.items.add(file));
+		input.files = transfer.files;
+		input.dispatchEvent(new Event('change', { bubbles: true }));
+	};
+
+	configureFileDropZone(dropzone, addDroppedFiles);
+});
+
 document.querySelectorAll('[data-report-period-form]').forEach((form) => {
 	if (!(form instanceof HTMLFormElement)) {
 		console.error('Report period filter is not a form.');
@@ -953,19 +1065,7 @@ document.querySelectorAll('.attachment-box input[type="file"]').forEach((input) 
 	};
 
 	input.addEventListener('change', () => setFiles(input.files, true));
-	box.addEventListener('dragover', (event) => {
-		event.preventDefault();
-		box.classList.add('is-dragging');
-	});
-	box.addEventListener('dragleave', () => box.classList.remove('is-dragging'));
-	box.addEventListener('drop', (event) => {
-		event.preventDefault();
-		box.classList.remove('is-dragging');
-
-		if (event.dataTransfer.files.length > 0) {
-			setFiles(event.dataTransfer.files, true);
-		}
-	});
+	configureFileDropZone(box, (files) => setFiles(files, true));
 
 	input.closest('form')?.addEventListener('submit', (event) => {
 		if (Array.from(input.files).some((file) => !getFileFeedback(file).valid)) {

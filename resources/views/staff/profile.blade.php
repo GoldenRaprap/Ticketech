@@ -55,8 +55,9 @@
                 @method('put')
                 <div class="profile-edit-field profile-photo-edit-field">
                     <label for="profile-avatar"><span class="profile-detail-icon" aria-hidden="true">◉</span>Profile photo</label>
-                    <div class="profile-photo-input">
+                    <div class="profile-photo-input" data-file-dropzone>
                         <input id="profile-avatar" name="avatar" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" aria-describedby="profile-avatar-help">
+                        <span class="profile-photo-drop-prompt">Drag and drop a photo here, or choose one above.</span>
                         <small id="profile-avatar-help">Choose a JPG, PNG, or WebP image up to 2 MB.</small>
                     </div>
                 </div>

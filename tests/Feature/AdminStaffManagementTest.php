@@ -434,20 +434,21 @@ class AdminStaffManagementTest extends TestCase
         ]);
     }
 
-    public function test_super_admin_can_move_staff_to_another_department_from_user_access(): void
+    public function test_super_admin_can_assign_a_pending_staff_application_to_another_department(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
         $originalDepartment = Department::factory()->create(['name' => 'Original Department']);
         $newDepartment = Department::factory()->create(['name' => 'New Department']);
         $staff = User::factory()->create([
             'role' => 'staff',
+            'staff_approval_status' => 'pending',
             'department_id' => $originalDepartment->id,
         ]);
 
         $this->actingAs($admin)
             ->get(route('admin.users'))
             ->assertOk()
-            ->assertSee('data-auto-submit-on-change', false)
+            ->assertSee('id="pending-staff-'.$staff->id.'-department"', false)
             ->assertSee('name="staff['.$staff->id.'][department_id]"', false);
 
         $this->put(route('admin.users.update', $staff), [
@@ -470,39 +471,90 @@ class AdminStaffManagementTest extends TestCase
         ]);
     }
 
-    public function test_staff_email_is_read_only_and_cannot_be_changed_from_user_access(): void
+    public function test_admin_can_change_approved_staff_department_without_changing_their_profile(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
+        $department = Department::factory()->create();
+        $newDepartment = Department::factory()->create();
         $staff = User::factory()->create([
+            'name' => 'Original Staff Name',
             'role' => 'staff',
+            'department_id' => $department->id,
             'email' => 'original.staff@example.edu',
         ]);
 
         $this->actingAs($admin)
             ->get(route('admin.users'))
             ->assertOk()
-            ->assertSee('id="staff-'.$staff->id.'-email"', false)
-            ->assertSee('readonly', false);
+            ->assertSee('Original Staff Name')
+            ->assertSee('original.staff@example.edu')
+            ->assertSee('id="staff-'.$staff->id.'-department"', false)
+            ->assertSee('name="staff['.$staff->id.'][department_id]"', false)
+            ->assertDontSee('name="staff['.$staff->id.'][name]"', false)
+            ->assertSee('id="user-'.$staff->id.'-role"', false)
+            ->assertDontSee('>Staff</span>', false)
+            ->assertSee('form="user-status-'.$staff->id.'"', false);
 
         $this->put(route('admin.users.update', $staff), [
             'staff' => [
                 $staff->id => [
-                    'name' => $staff->name,
+                    'name' => 'Changed Staff Name',
                     'email' => 'changed.staff@example.edu',
+                    'department_id' => $newDepartment->id,
                 ],
             ],
         ])->assertRedirect(route('admin.users'))
             ->assertSessionHas('status', 'Staff account details updated.');
 
-        $this->assertSame('original.staff@example.edu', $staff->fresh()->email);
+        $staff->refresh();
+        $this->assertSame('Original Staff Name', $staff->name);
+        $this->assertSame('original.staff@example.edu', $staff->email);
+        $this->assertSame($newDepartment->id, $staff->department_id);
     }
 
-    public function test_super_admin_can_remove_a_staff_department_assignment(): void
+    public function test_department_admin_can_assign_an_unassigned_staff_member_to_their_department(): void
+    {
+        $department = Department::factory()->create();
+        $departmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $department->id,
+        ]);
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+        $unassignedStaff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => null,
+        ]);
+
+        $this->actingAs($departmentAdmin)->get(route('admin.users'))
+            ->assertOk()
+            ->assertSee($staff->name)
+            ->assertSee($staff->email)
+            ->assertSee('id="staff-'.$unassignedStaff->id.'-department"', false)
+            ->assertSee('name="staff['.$unassignedStaff->id.'][department_id]"', false)
+            ->assertSee('form="user-status-'.$staff->id.'"', false);
+
+        $this->put(route('admin.users.update', $unassignedStaff), [
+            'staff' => [
+                $unassignedStaff->id => [
+                    'department_id' => $department->id,
+                ],
+            ],
+        ])->assertRedirect(route('admin.users'))
+            ->assertSessionHas('status', 'Staff account details updated.');
+
+        $this->assertSame($department->id, $unassignedStaff->fresh()->department_id);
+    }
+
+    public function test_super_admin_can_remove_a_pending_staff_application_department_assignment(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
         $department = Department::factory()->create();
         $staff = User::factory()->create([
             'role' => 'staff',
+            'staff_approval_status' => 'pending',
             'department_id' => $department->id,
         ]);
 

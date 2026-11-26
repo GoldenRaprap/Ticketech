@@ -54,7 +54,7 @@
 
                         @if ($departments->isNotEmpty())
                             <label for="register-department">Department</label>
-                            <select id="register-department" name="department_id" @if ($errors->has('department_id')) aria-invalid="true" @endif>
+                            <select id="register-department" class="password-form-select" name="department_id" @if ($errors->has('department_id')) aria-invalid="true" @endif>
                                 <option value="">Select a department (optional)</option>
                                 @foreach ($departments as $department)
                                     <option value="{{ $department->id }}" @selected((string) old('department_id') === (string) $department->id)>{{ $department->name }}</option>

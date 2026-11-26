@@ -4099,7 +4099,8 @@ img, svg { display: block; max-width: 100%; }
     font-weight: 600;
 }
 
-.password-form > input {
+.password-form > input,
+.password-form > select {
     width: 100%;
     min-height: 46px;
     border: 1px solid #a8b7c8;
@@ -4110,12 +4111,27 @@ img, svg { display: block; max-width: 100%; }
     font: 400 1rem/1.4 var(--font-sans);
 }
 
+.password-form > select {
+    appearance: none;
+    padding-right: 42px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2 4 4 4 4-4' fill='none' stroke='%23173b7c' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5'/%3E%3C/svg%3E");
+    background-position: right 14px center;
+    background-repeat: no-repeat;
+    background-size: 16px;
+    cursor: pointer;
+}
+
+.password-form > select:has(option[value=""]:checked) {
+    color: #77879a;
+}
+
 .password-form input::placeholder {
     color: #77879a;
     opacity: 1;
 }
 
-.password-form input:focus-visible {
+.password-form input:focus-visible,
+.password-form > select:focus-visible {
     outline: 3px solid rgba(13, 79, 167, 0.2);
     border-color: #0d4fa7;
 }
@@ -9782,7 +9798,11 @@ img, svg { display: block; max-width: 100%; }
 .admin-staff-directory-form input[readonly] {
     background: #f5f8fb;
     color: #718397;
-    cursor: not-allowed;
+    cursor: default;
+}
+
+.admin-staff-department-form {
+    width: min(100%, 220px);
 }
 
 .admin-staff-directory-status {
@@ -10495,11 +10515,27 @@ img, svg { display: block; max-width: 100%; }
 .profile-photo-input {
     display: grid;
     gap: 5px;
+    padding: 11px;
+    border: 1px dashed #b9cddd;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.profile-photo-input:focus-within,
+.profile-photo-input.is-dragging {
+    border-color: #3677bb;
+    background: #f0f6fc;
+    outline: 3px solid rgba(54, 119, 187, 0.12);
 }
 
 .profile-photo-input input {
     min-height: auto;
     padding: 8px;
+}
+
+.profile-photo-drop-prompt {
+    color: #4e688b;
+    font-size: 0.72rem;
 }
 
 .profile-photo-input small {
@@ -10960,6 +10996,13 @@ img, svg { display: block; max-width: 100%; }
     text-align: center;
 }
 
+.article-image-upload:focus-within,
+.article-image-upload.is-dragging {
+    border-color: #3677bb;
+    background: #f0f6fc;
+    outline: 3px solid rgba(54, 119, 187, 0.12);
+}
+
 .article-image-upload-icon {
     display: grid;
     width: 34px;
@@ -10984,6 +11027,74 @@ img, svg { display: block; max-width: 100%; }
     max-width: 100%;
     color: #6a7e92;
     font-size: 0.7rem;
+}
+
+.article-image-preview {
+    display: grid;
+    gap: 9px;
+}
+
+.article-image-preview[hidden] {
+    display: none;
+}
+
+.article-image-preview > strong {
+    color: #3d5872;
+    font-size: 0.75rem;
+}
+
+.article-image-preview-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.article-image-preview-item {
+    position: relative;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid #e3eaf1;
+    border-radius: 9px;
+    background: #fff;
+}
+
+.article-image-preview-remove {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    display: grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    border-radius: 50%;
+    background: rgba(23, 40, 58, 0.82);
+    color: #fff;
+    font: 700 1rem/1 var(--font-sans);
+    cursor: pointer;
+}
+
+.article-image-preview-remove:hover,
+.article-image-preview-remove:focus-visible {
+    background: #173b7c;
+    outline: 3px solid rgba(54, 119, 187, 0.28);
+}
+
+.article-image-preview-item img {
+    display: block;
+    width: 100%;
+    height: 150px;
+    background: #f3f6fa;
+    object-fit: contain;
+}
+
+.article-image-preview-item figcaption {
+    padding: 8px 10px;
+    overflow-wrap: anywhere;
+    color: #718398;
+    font-size: 0.68rem;
 }
 
 .public-knowledge-heading {
@@ -11860,7 +11971,7 @@ img, svg { display: block; max-width: 100%; }
         text-transform: uppercase;
     }
 
-    .admin-staff-directory td:nth-child(2)::before { content: "Role"; }
+    .admin-staff-directory td:nth-child(2)::before { content: "Department / role"; }
     .admin-staff-directory td:nth-child(3)::before { content: "Account access"; }
     .admin-staff-directory td:nth-child(4)::before { content: "Actions"; }
 
@@ -12008,7 +12119,7 @@ img, svg { display: block; max-width: 100%; }
         text-transform: uppercase;
     }
 
-    .admin-user-access-page .admin-staff-directory td:nth-child(2)::before { content: "Role"; }
+    .admin-user-access-page .admin-staff-directory td:nth-child(2)::before { content: "Department / role"; }
     .admin-user-access-page .admin-staff-directory td:nth-child(3)::before { content: "Account access"; }
     .admin-user-access-page .admin-staff-directory td:nth-child(4)::before { content: "Actions"; }
 
@@ -12106,5 +12217,9 @@ img, svg { display: block; max-width: 100%; }
     .admin-user-access-page .admin-staff-directory-form input,
     .admin-user-access-page .admin-staff-directory-form select {
         font-size: 0.75rem;
+    }
+
+    .admin-user-access-page .admin-staff-department-form {
+        width: 100%;
     }
 }

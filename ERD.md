@@ -1,8 +1,8 @@
 # Ticketech ERD
 
-This ERD lists every column in the 23 Ticketech and Laravel support tables. `PK` marks primary keys and `FK` marks foreign keys. Column types are simplified for readability.
+This ERD lists every column in the 24 Ticketech and Laravel support tables. `PK` marks primary keys and `FK` marks foreign keys. Column types are simplified for readability.
 
-```mermaid
+
 erDiagram
     USERS {
         bigint id PK
@@ -168,6 +168,15 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
+    STAFF_REGISTRATION_BLOCKS {
+        bigint id PK
+        varchar email
+        text reason
+        bigint blocked_by_id FK
+        timestamp cleared_at
+        timestamp created_at
+        timestamp updated_at
+    }
     PENDING_TICKET_SUBMISSIONS {
         bigint id PK
         bigint requester_user_id FK
@@ -269,6 +278,7 @@ erDiagram
     USERS o|--o{ TICKET_MISUSE_REPORTS : reviews
     TICKET_MISUSE_REPORTS o|--o{ CLIENT_MODERATIONS : informs
     USERS o|--o{ CLIENT_MODERATIONS : acts
+    USERS o|--o{ STAFF_REGISTRATION_BLOCKS : blocks
     USERS o|--o{ PENDING_TICKET_SUBMISSIONS : submits
 ```
 

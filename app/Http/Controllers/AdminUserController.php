@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Department;
+use App\Models\StaffRegistrationBlock;
 use App\Models\Ticket;
 use App\Models\TicketEvent;
 use App\Models\User;
@@ -167,6 +168,9 @@ class AdminUserController extends Controller
                 ->when($departmentId !== null, fn ($query) => $query->where('department_id', $departmentId))
                 ->orderBy('created_at')
                 ->get(),
+            'registrationBlocks' => $request->user()->isAdmin()
+                ? StaffRegistrationBlock::query()->with('blockedBy:id,name')->latest('updated_at')->paginate(15, ['*'], 'registration_blocks_page')
+                : null,
             'departments' => Department::query()->orderBy('name')->get(),
             'activeDepartments' => Department::query()->where('is_active', true)->orderBy('name')->get(),
             'departmentAssignmentOptions' => $request->user()->isAdmin()
@@ -262,15 +266,97 @@ class AdminUserController extends Controller
         );
     }
 
+    public function blockDeniedApplicationRegistrationEmail(
+        Request $request,
+        User $user,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
+        abort_unless(
+            $request->user()->isAdmin()
+                && $user->role === 'staff'
+                && $user->staff_approval_status === 'denied',
+            404,
+        );
+
+        $email = Str::lower(trim($user->email));
+        $block = DB::transaction(function () use ($request, $user, $email, $auditLogger): StaffRegistrationBlock {
+            $block = StaffRegistrationBlock::query()->updateOrCreate(
+                ['email' => $email],
+                [
+                    'reason' => 'Staff registration was denied and the address was escalated for blocking.',
+                    'blocked_by_id' => $request->user()->id,
+                    'cleared_at' => null,
+                ],
+            );
+
+            $auditLogger->record(
+                $request,
+                'staff_registration_email_blocked',
+                "Blocked {$email} from future staff registrations.",
+                $block,
+                ['email' => $email, 'denied_application_id' => $user->id],
+            );
+
+            return $block;
+        });
+
+        return to_route('admin.users')->with(
+            'status',
+            "{$block->email} is blocked from future staff registrations.",
+        );
+    }
+
+    public function clearRegistrationBlock(
+        Request $request,
+        StaffRegistrationBlock $staffRegistrationBlock,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
+        abort_if($staffRegistrationBlock->cleared_at !== null, 404);
+
+        DB::transaction(function () use ($request, $staffRegistrationBlock, $auditLogger): void {
+            $staffRegistrationBlock = StaffRegistrationBlock::query()
+                ->whereKey($staffRegistrationBlock->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            abort_if($staffRegistrationBlock->cleared_at !== null, 404);
+
+            $staffRegistrationBlock->update(['cleared_at' => now()]);
+            $auditLogger->record(
+                $request,
+                'staff_registration_email_block_cleared',
+                "Cleared the staff registration block for {$staffRegistrationBlock->email}.",
+                $staffRegistrationBlock,
+                ['email' => $staffRegistrationBlock->email],
+            );
+        });
+
+        return to_route('admin.users')->with('status', 'Staff registration email block cleared.');
+    }
+
     public function update(Request $request, User $user, AuditActivityLogger $auditLogger): RedirectResponse
     {
-        abort_unless($user->role === 'staff' && $request->user()->can('update', $user), 404);
+        abort_unless(
+            $user->role === 'staff'
+                && in_array($user->staff_approval_status, ['approved', 'pending'], true)
+                && $request->user()->can('update', $user),
+            404,
+        );
 
-        $staffDetails = $request->validate([
-            'staff.'.$user->id.'.name' => ['required', 'string', 'max:255'],
-            'staff.'.$user->id.'.department_id' => ['nullable', 'integer', Rule::exists('departments', 'id')],
-        ]);
+        $departmentRules = [
+            $user->staff_approval_status === 'pending' ? 'sometimes' : 'present',
+            'nullable',
+            'integer',
+            Rule::exists('departments', 'id'),
+        ];
+        $rules = [
+            'staff.'.$user->id.'.department_id' => $departmentRules,
+        ];
 
+        if ($user->staff_approval_status === 'pending') {
+            $rules['staff.'.$user->id.'.name'] = ['required', 'string', 'max:255'];
+        }
+
+        $staffDetails = $request->validate($rules);
         $validated = $staffDetails['staff'][$user->id];
         $canChangeDepartment = $request->user()->isAdmin()
             || ($request->user()->isDepartmentAdmin() && $user->department_id === null);

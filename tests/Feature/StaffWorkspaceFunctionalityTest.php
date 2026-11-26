@@ -659,7 +659,11 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertSee('aria-label="Italic"', false)
             ->assertSee('aria-label="Heading 1"', false)
             ->assertSee('aria-label="Heading 2"', false)
-            ->assertSee('aria-label="Bulleted list"', false);
+            ->assertSee('aria-label="Bulleted list"', false)
+            ->assertSee('data-article-image-upload', false)
+            ->assertSee('data-article-image-preview', false)
+            ->assertSee('data-file-dropzone', false)
+            ->assertSee('Choose images or drop them here');
 
         $this->actingAs($admin)
             ->post(route('admin.knowledge-base.store'), $articleData)
@@ -2043,6 +2047,12 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             $this->fakeProfilePhoto('old-photo.png'),
         );
         $staff->forceFill(['profile_photo_path' => $oldPhotoPath])->save();
+
+        $this->actingAs($staff)
+            ->get(route('staff.profile'))
+            ->assertOk()
+            ->assertSee('data-file-dropzone', false)
+            ->assertSee('Drag and drop a photo here');
 
         $this->actingAs($staff)
             ->put(route('staff.profile.update'), [

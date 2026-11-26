@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Department;
+use App\Models\StaffRegistrationBlock;
 use App\Models\User;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -19,6 +21,8 @@ class RegistrationTest extends TestCase
     public function test_staff_registration_requires_email_verification_and_admin_approval(): void
     {
         Notification::fake();
+        $department = Department::factory()->create(['name' => 'College of Informatics']);
+        Department::factory()->create(['name' => 'Inactive Department', 'is_active' => false]);
 
         $this->get(route('register'))
             ->assertOk()
@@ -28,6 +32,9 @@ class RegistrationTest extends TestCase
             ->assertSee('placeholder="e.g. jamie.santos@pcu.edu.ph"', false)
             ->assertSee('placeholder="At least 12 characters"', false)
             ->assertSee('placeholder="Re-enter your password"', false)
+            ->assertSee('class="password-form-select" name="department_id"', false)
+            ->assertSee($department->name)
+            ->assertDontSee('Inactive Department')
             ->assertSee('aria-controls="register-password"', false)
             ->assertSee('aria-controls="register-password-confirmation"', false);
 
@@ -36,6 +43,7 @@ class RegistrationTest extends TestCase
             'email' => 'jamie.staff@pcu.edu.ph',
             'password' => 'secure-password-123',
             'password_confirmation' => 'secure-password-123',
+            'department_id' => $department->id,
             'role' => 'admin',
             'employment_status' => 'terminated',
             'staff_approval_status' => 'approved',
@@ -46,6 +54,7 @@ class RegistrationTest extends TestCase
         $this->assertSame('staff', $user->role);
         $this->assertSame('active', $user->employment_status);
         $this->assertSame('pending', $user->staff_approval_status);
+        $this->assertSame($department->id, $user->department_id);
         $this->assertNull($user->email_verified_at);
         $this->assertNotSame('secure-password-123', $user->password);
         $this->assertAuthenticatedAs($user);
@@ -292,6 +301,100 @@ class RegistrationTest extends TestCase
 
         $this->assertModelExists($verifiedDeniedUser);
         $this->assertModelExists($pendingUnverifiedUser);
+    }
+
+    public function test_admin_can_block_and_later_release_a_denied_email_for_registration(): void
+    {
+        Notification::fake();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $deniedUser = $this->createPendingStaff([
+            'email' => 'persistent.denial@pcu.edu.ph',
+        ], unverified: true);
+        $deniedUser->staff_approval_status = 'denied';
+        $deniedUser->save();
+
+        $this->actingAs($admin)->post(route('admin.users.registration-block.store', $deniedUser))
+            ->assertRedirect(route('admin.users'))
+            ->assertSessionHas('status', 'persistent.denial@pcu.edu.ph is blocked from future staff registrations.');
+
+        $this->assertDatabaseHas('staff_registration_blocks', [
+            'email' => 'persistent.denial@pcu.edu.ph',
+            'blocked_by_id' => $admin->id,
+            'cleared_at' => null,
+        ]);
+        $this->assertDatabaseHas('ticket_events', [
+            'actor_id' => $admin->id,
+            'event' => 'staff_registration_email_blocked',
+            'properties->email' => 'persistent.denial@pcu.edu.ph',
+        ]);
+        $this->actingAs($admin)->get(route('admin.users'))
+            ->assertOk()
+            ->assertSee('Blocked registration emails')
+            ->assertSee('persistent.denial@pcu.edu.ph')
+            ->assertSee('Block future registrations');
+
+        $this->delete(route('admin.users.denied-unverified-application.destroy', $deniedUser))
+            ->assertRedirect(route('admin.users'));
+
+        Auth::logout();
+
+        $registrationDetails = [
+            'name' => 'Persistent Denial',
+            'email' => 'PERSISTENT.DENIAL@PCU.EDU.PH',
+            'password' => 'secure-password-123',
+            'password_confirmation' => 'secure-password-123',
+        ];
+
+        $this->from(route('register'))
+            ->post(route('register.store'), $registrationDetails)
+            ->assertRedirect(route('register'))
+            ->assertSessionHasErrors([
+                'email' => 'This email address is blocked from staff registration. Contact an administrator if you believe this is a mistake.',
+            ]);
+
+        $this->assertDatabaseMissing('users', ['email' => 'persistent.denial@pcu.edu.ph']);
+
+        $block = StaffRegistrationBlock::query()->where('email', 'persistent.denial@pcu.edu.ph')->firstOrFail();
+        $this->actingAs($admin)
+            ->patch(route('admin.users.registration-blocks.clear', $block))
+            ->assertRedirect(route('admin.users'))
+            ->assertSessionHas('status', 'Staff registration email block cleared.');
+
+        Auth::logout();
+
+        $this->post(route('register.store'), $registrationDetails)
+            ->assertRedirect(route('verification.notice'));
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'persistent.denial@pcu.edu.ph',
+            'staff_approval_status' => 'pending',
+        ]);
+    }
+
+    public function test_only_admins_can_block_a_denied_registration_email(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+        $deniedUser = $this->createPendingStaff(unverified: true);
+        $deniedUser->staff_approval_status = 'denied';
+        $deniedUser->save();
+
+        $this->actingAs($staff)
+            ->post(route('admin.users.registration-block.store', $deniedUser))
+            ->assertForbidden();
+
+        $this->assertDatabaseCount('staff_registration_blocks', 0);
+    }
+
+    public function test_admin_cannot_block_an_application_that_is_not_denied(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $pendingUser = $this->createPendingStaff(unverified: true);
+
+        $this->actingAs($admin)
+            ->post(route('admin.users.registration-block.store', $pendingUser))
+            ->assertNotFound();
+
+        $this->assertDatabaseCount('staff_registration_blocks', 0);
     }
 
     public function test_staff_cannot_remove_a_denied_unverified_application(): void

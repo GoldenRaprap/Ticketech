@@ -3,11 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Department;
+use App\Models\StaffRegistrationBlock;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class StaffRegistrationController extends Controller
@@ -28,9 +31,20 @@ class StaffRegistrationController extends Controller
             'password' => ['required', 'string', 'min:12', 'confirmed'],
         ]);
 
+        $email = Str::lower(trim($validated['email']));
+
+        if (StaffRegistrationBlock::query()
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->whereNull('cleared_at')
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'email' => 'This email address is blocked from staff registration. Contact an administrator if you believe this is a mistake.',
+            ]);
+        }
+
         $user = new User([
             'name' => $validated['name'],
-            'email' => $validated['email'],
+            'email' => $email,
             'password' => $validated['password'],
             'role' => 'staff',
             'department_id' => $validated['department_id'] ?? null,

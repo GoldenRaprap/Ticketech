@@ -68,12 +68,16 @@
                         @endforeach
                     </div>
                 @endif
-                <label class="article-image-upload" for="article-images">
+                <label class="article-image-upload" for="article-images" data-file-dropzone>
                     <span class="article-image-upload-icon" aria-hidden="true">↑</span>
-                    <strong>Add image attachments</strong>
+                    <strong>Choose images or drop them here</strong>
                     <small>Choose up to 5 JPEG, PNG, or WebP images, up to 5 MB each.</small>
-                    <input id="article-images" type="file" name="images[]" accept="image/jpeg,image/png,image/webp" multiple>
+                    <input id="article-images" type="file" name="images[]" accept="image/jpeg,image/png,image/webp" multiple data-article-image-upload>
                 </label>
+                <div class="article-image-preview" data-article-image-preview hidden aria-live="polite">
+                    <strong>Selected image previews</strong>
+                    <div class="article-image-preview-list" data-article-image-preview-list></div>
+                </div>
             </section>
 
             <label class="article-publish-toggle"><input type="checkbox" name="is_published" value="1" @checked(old('is_published', $article->is_published))><span><strong>Publish this article</strong><small>Published articles are visible on the public Helpdesk knowledge base.</small></span></label>
