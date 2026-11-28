@@ -41,15 +41,15 @@ return [
 
         'smtp' => [
             'transport' => 'smtp',
-            'scheme' => match (env('MAIL_SCHEME')) {
+            'scheme' => match (env('MAIL_SCHEME', 'tls')) {
                 'tls' => 'smtp',
                 'ssl' => 'smtps',
                 default => env('MAIL_SCHEME'),
             },
             'url' => env('MAIL_URL') ?: null,
-            'host' => env('MAIL_HOST', '127.0.0.1'),
-            'port' => env('MAIL_PORT', 2525),
-            'username' => env('MAIL_USERNAME'),
+            'host' => env('MAIL_HOST', 'smtp.gmail.com'),
+            'port' => env('MAIL_PORT', 587),
+            'username' => env('MAIL_USERNAME', 'denicsdental@gmail.com'),
             'password' => env('MAIL_PASSWORD'),
             'timeout' => null,
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
@@ -117,8 +117,8 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
-        'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
+        'address' => env('MAIL_FROM_ADDRESS', 'denicsdental@gmail.com'),
+        'name' => env('MAIL_FROM_NAME', 'PCU Helpdesk'),
     ],
 
 ];
