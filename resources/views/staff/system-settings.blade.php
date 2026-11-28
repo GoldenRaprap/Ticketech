@@ -104,14 +104,130 @@
                 <form class="admin-staff-create-form" action="{{ route('admin.system-settings.business-hours.update') }}" method="post">
                     @csrf
                     @method('put')
-                    <label class="admin-staff-field" for="business-opening-time">
-                        <span>Opening time</span>
-                        <input id="business-opening-time" name="opening_time" type="time" value="{{ old('opening_time', $businessHours['opening_time']) }}" required>
-                    </label>
-                    <label class="admin-staff-field" for="business-closing-time">
-                        <span>Closing time</span>
-                        <input id="business-closing-time" name="closing_time" type="time" value="{{ old('closing_time', $businessHours['closing_time']) }}" required>
-                    </label>
+                    <div class="admin-staff-field business-time-picker-field" data-business-time-picker>
+                        <span id="business-opening-time-label">Opening time</span>
+                        <input
+                            id="business-opening-time"
+                            name="opening_time"
+                            type="time"
+                            value="{{ old('opening_time', $businessHours['opening_time']) }}"
+                            aria-labelledby="business-opening-time-label"
+                            data-time-source
+                            required
+                        >
+                        <button
+                            class="business-time-picker-trigger"
+                            type="button"
+                            aria-labelledby="business-opening-time-label business-opening-time-display"
+                            aria-controls="business-opening-time-picker-panel"
+                            aria-expanded="false"
+                            hidden
+                            data-time-trigger
+                        >
+                            <span id="business-opening-time-display" data-time-display></span>
+                            <span class="business-time-picker-icon" aria-hidden="true">◷</span>
+                        </button>
+                        <div
+                            id="business-opening-time-picker-panel"
+                            class="business-time-picker-panel"
+                            role="dialog"
+                            aria-label="Choose opening time"
+                            hidden
+                            data-time-panel
+                        >
+                            <p>Select an hour, minute, and period.</p>
+                            <div class="business-time-picker-controls">
+                                <label>
+                                    <span>Hour</span>
+                                    <select data-time-hour required>
+                                        <option value="" disabled selected>Hour</option>
+                                        @foreach (range(1, 12) as $hour)
+                                            <option value="{{ sprintf('%02d', $hour) }}">{{ $hour }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Minute</span>
+                                    <select data-time-minute required>
+                                        <option value="" disabled selected>Min</option>
+                                        @foreach (range(0, 59) as $minute)
+                                            <option value="{{ sprintf('%02d', $minute) }}">{{ sprintf('%02d', $minute) }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Period</span>
+                                    <select data-time-period required>
+                                        <option value="" disabled selected>AM/PM</option>
+                                        <option value="AM">AM</option>
+                                        <option value="PM">PM</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="admin-staff-field business-time-picker-field business-time-picker-field--align-end" data-business-time-picker>
+                        <span id="business-closing-time-label">Closing time</span>
+                        <input
+                            id="business-closing-time"
+                            name="closing_time"
+                            type="time"
+                            value="{{ old('closing_time', $businessHours['closing_time']) }}"
+                            aria-labelledby="business-closing-time-label"
+                            data-time-source
+                            required
+                        >
+                        <button
+                            class="business-time-picker-trigger"
+                            type="button"
+                            aria-labelledby="business-closing-time-label business-closing-time-display"
+                            aria-controls="business-closing-time-picker-panel"
+                            aria-expanded="false"
+                            hidden
+                            data-time-trigger
+                        >
+                            <span id="business-closing-time-display" data-time-display></span>
+                            <span class="business-time-picker-icon" aria-hidden="true">◷</span>
+                        </button>
+                        <div
+                            id="business-closing-time-picker-panel"
+                            class="business-time-picker-panel"
+                            role="dialog"
+                            aria-label="Choose closing time"
+                            hidden
+                            data-time-panel
+                        >
+                            <p>Select an hour, minute, and period.</p>
+                            <div class="business-time-picker-controls">
+                                <label>
+                                    <span>Hour</span>
+                                    <select data-time-hour required>
+                                        <option value="" disabled selected>Hour</option>
+                                        @foreach (range(1, 12) as $hour)
+                                            <option value="{{ sprintf('%02d', $hour) }}">{{ $hour }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Minute</span>
+                                    <select data-time-minute required>
+                                        <option value="" disabled selected>Min</option>
+                                        @foreach (range(0, 59) as $minute)
+                                            <option value="{{ sprintf('%02d', $minute) }}">{{ sprintf('%02d', $minute) }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Period</span>
+                                    <select data-time-period required>
+                                        <option value="" disabled selected>AM/PM</option>
+                                        <option value="AM">AM</option>
+                                        <option value="PM">PM</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                     <button class="admin-console-button" type="submit">Save business hours</button>
                 </form>
             </section>

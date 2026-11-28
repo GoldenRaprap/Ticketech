@@ -867,6 +867,127 @@ document.querySelectorAll('[data-report-period-form]').forEach((form) => {
 	updateReportPeriodControls();
 });
 
+document.querySelectorAll('[data-business-time-picker]').forEach((picker) => {
+	const timeInput = picker.querySelector('[data-time-source]');
+	const trigger = picker.querySelector('[data-time-trigger]');
+	const display = picker.querySelector('[data-time-display]');
+	const panel = picker.querySelector('[data-time-panel]');
+	const hourSelect = picker.querySelector('[data-time-hour]');
+	const minuteSelect = picker.querySelector('[data-time-minute]');
+	const periodSelect = picker.querySelector('[data-time-period]');
+	const form = timeInput?.form;
+
+	if (
+		!(timeInput instanceof HTMLInputElement)
+		|| !(form instanceof HTMLFormElement)
+		|| !(trigger instanceof HTMLButtonElement)
+		|| !(display instanceof HTMLElement)
+		|| !(panel instanceof HTMLElement)
+		|| !(hourSelect instanceof HTMLSelectElement)
+		|| !(minuteSelect instanceof HTMLSelectElement)
+		|| !(periodSelect instanceof HTMLSelectElement)
+	) {
+		console.error('Business hours picker is missing a required control.');
+		return;
+	}
+
+	const syncPickerFromInput = () => {
+		const match = timeInput.value.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+
+		if (!match) {
+			hourSelect.value = '';
+			minuteSelect.value = '';
+			periodSelect.value = '';
+			display.textContent = 'Select time';
+			return;
+		}
+
+		const hour24 = Number(match[1]);
+		const hour12 = hour24 % 12 || 12;
+		const minute = match[2];
+		const period = hour24 >= 12 ? 'PM' : 'AM';
+
+		hourSelect.value = String(hour12).padStart(2, '0');
+		minuteSelect.value = minute;
+		periodSelect.value = period;
+		display.textContent = `${hour12}:${minute} ${period}`;
+	};
+
+	const syncInputFromPicker = () => {
+		if (!hourSelect.value || !minuteSelect.value || !periodSelect.value) {
+			timeInput.value = '';
+			display.textContent = 'Select time';
+			return;
+		}
+
+		const hour12 = Number(hourSelect.value);
+		const hour24 = (hour12 % 12) + (periodSelect.value === 'PM' ? 12 : 0);
+
+		timeInput.value = `${String(hour24).padStart(2, '0')}:${minuteSelect.value}`;
+		display.textContent = `${hour12}:${minuteSelect.value} ${periodSelect.value}`;
+		timeInput.dispatchEvent(new Event('input', { bubbles: true }));
+		timeInput.dispatchEvent(new Event('change', { bubbles: true }));
+	};
+
+	const setPanelOpen = (isOpen, restoreFocus = false) => {
+		panel.hidden = !isOpen;
+		trigger.setAttribute('aria-expanded', String(isOpen));
+		hourSelect.required = isOpen;
+		minuteSelect.required = isOpen;
+		periodSelect.required = isOpen;
+
+		if (isOpen) {
+			hourSelect.focus();
+		} else if (restoreFocus) {
+			trigger.focus();
+		}
+	};
+
+	[hourSelect, minuteSelect, periodSelect].forEach((select) => {
+		select.addEventListener('change', syncInputFromPicker);
+	});
+
+	trigger.addEventListener('click', () => setPanelOpen(panel.hidden));
+	panel.addEventListener('keydown', (event) => {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			setPanelOpen(false, true);
+		}
+	});
+	picker.addEventListener('focusout', (event) => {
+		if (!(event.relatedTarget instanceof Node) || !picker.contains(event.relatedTarget)) {
+			setPanelOpen(false);
+		}
+	});
+	document.addEventListener('pointerdown', (event) => {
+		if (!(event.target instanceof Node) || picker.contains(event.target)) {
+			return;
+		}
+
+		setPanelOpen(false);
+	});
+
+	form.addEventListener('submit', (event) => {
+		if (event.defaultPrevented || timeInput.value !== '') {
+			return;
+		}
+
+		event.preventDefault();
+		setPanelOpen(true);
+	});
+
+	syncPickerFromInput();
+	hourSelect.required = false;
+	minuteSelect.required = false;
+	periodSelect.required = false;
+	timeInput.required = false;
+	timeInput.tabIndex = -1;
+	timeInput.setAttribute('aria-hidden', 'true');
+	timeInput.classList.add('business-time-picker-source--enhanced');
+	picker.classList.add('business-time-picker-field--enhanced');
+	trigger.hidden = false;
+});
+
 document.querySelectorAll('[data-notification-row]').forEach((row) => {
 	const form = row.querySelector('[data-notification-action]');
 

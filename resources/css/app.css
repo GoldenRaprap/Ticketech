@@ -6277,23 +6277,33 @@ img, svg { display: block; max-width: 100%; }
 
 .report-workload-list {
     display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
     gap: 17px;
 }
 
 .report-workload-row {
     display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
     gap: 7px;
 }
 
 .report-workload-heading,
 .report-workload-meta {
-    display: flex;
+    min-width: 0;
     align-items: baseline;
-    justify-content: space-between;
     gap: 8px;
 }
 
+.report-workload-heading {
+    display: flex;
+    justify-content: space-between;
+}
+
 .report-workload-heading strong {
+    min-width: 0;
+    flex: 1 1 0;
     overflow: hidden;
     color: #365875;
     font-size: 0.73rem;
@@ -6313,6 +6323,17 @@ img, svg { display: block; max-width: 100%; }
 
 .report-workload-track {
     height: 7px;
+}
+
+.report-workload-meta {
+    display: grid;
+    justify-content: space-between;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.report-workload-meta span {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .report-workload-meta span:last-child {
@@ -10183,6 +10204,111 @@ img, svg { display: block; max-width: 100%; }
     height: 37px;
 }
 
+.business-time-picker-source--enhanced {
+    display: none;
+}
+
+.business-time-picker-field--enhanced {
+    position: relative;
+}
+
+.business-time-picker-trigger {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 12px;
+    border: 1px solid #dce5ed;
+    border-radius: 9px;
+    background: linear-gradient(180deg, #fff, #f8fbfd);
+    color: #35516c;
+    font: 650 0.8rem/1.2 var(--font-sans);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.business-time-picker-trigger:hover {
+    border-color: #b7cadd;
+    background: #fff;
+}
+
+.business-time-picker-trigger:focus-visible {
+    border-color: #3978b6;
+    outline: 0;
+    box-shadow: 0 0 0 3px rgba(57, 120, 182, 0.16);
+}
+
+.business-time-picker-icon {
+    color: #3978b6;
+    font-size: 1rem;
+}
+
+.business-time-picker-panel {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 8px);
+    left: 0;
+    width: min(320px, calc(100vw - 32px));
+    padding: 15px;
+    border: 1px solid #dce5ed;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 16px 38px rgba(25, 55, 85, 0.18);
+}
+
+.business-time-picker-field--align-end .business-time-picker-panel {
+    right: 0;
+    left: auto;
+}
+
+.business-time-picker-panel[hidden],
+.business-time-picker-trigger[hidden] {
+    display: none;
+}
+
+.business-time-picker-panel > p {
+    margin: 0 0 12px;
+    color: #73869a;
+    font-size: 0.68rem;
+}
+
+.business-time-picker-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px;
+}
+
+.business-time-picker-controls label {
+    display: grid;
+    min-width: 0;
+    gap: 5px;
+    color: #60758a;
+    font-size: 0.66rem;
+    font-weight: 650;
+}
+
+.business-time-picker-controls select {
+    width: 100%;
+    min-width: 0;
+    height: 40px;
+    padding: 0 9px;
+    border: 1px solid #dce5ed;
+    border-radius: 8px;
+    background: #f8fbfd;
+    color: #294762;
+    font: 600 0.78rem/1 var(--font-sans);
+}
+
+.business-time-picker-controls select:focus-visible {
+    border-color: #3978b6;
+    outline: 0;
+    box-shadow: 0 0 0 3px rgba(57, 120, 182, 0.14);
+}
+
 .admin-staff-field textarea {
     min-height: 84px;
     padding: 9px 10px;
@@ -10297,6 +10423,8 @@ img, svg { display: block; max-width: 100%; }
 
 @media (max-width: 520px) {
     .admin-sla-grid { grid-template-columns: 1fr; }
+    .business-time-picker-panel { width: min(320px, calc(100vw - 48px)); }
+    .business-time-picker-field--align-end .business-time-picker-panel { right: auto; left: 0; }
     .admin-sla-input-group { grid-template-columns: minmax(0, 1fr); }
     .admin-sla-input-group input,
     .admin-sla-input-group select { min-height: 42px; }

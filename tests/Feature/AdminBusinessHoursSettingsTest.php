@@ -25,7 +25,12 @@ class AdminBusinessHoursSettingsTest extends TestCase
             ->get(route('admin.system-settings'))
             ->assertOk()
             ->assertSee('value="09:00"', false)
-            ->assertSee('value="17:00"', false);
+            ->assertSee('value="17:00"', false)
+            ->assertSee('data-time-trigger', false)
+            ->assertSee('data-time-hour', false)
+            ->assertSee('value="59">59</option>', false)
+            ->assertSee('name="opening_time"', false)
+            ->assertSee('name="closing_time"', false);
 
         $this->actingAs($admin)
             ->put(route('admin.system-settings.business-hours.update'), [
