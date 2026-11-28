@@ -9482,6 +9482,14 @@ img, svg { display: block; max-width: 100%; }
     grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
 }
 
+.admin-ticket-option-list--categories [hidden] {
+    display: none;
+}
+
+.admin-ticket-option-list--categories > [data-category-no-results] {
+    grid-column: 1 / -1;
+}
+
 .admin-ticket-option-item {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;

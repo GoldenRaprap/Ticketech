@@ -87,6 +87,40 @@ class AdminSlaSettingsTest extends TestCase
             ->assertSee('Business days');
     }
 
+    public function test_admin_can_filter_categories_by_search_department_and_status(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $department = Department::factory()->create(['name' => 'Learning Technology']);
+
+        Category::factory()->create([
+            'name' => 'LMS access',
+            'description' => 'Course sign-in',
+            'classification_keywords' => 'course login',
+            'department_id' => $department->id,
+            'is_active' => true,
+        ]);
+        Category::factory()->create([
+            'name' => 'Printer support',
+            'department_id' => null,
+            'is_active' => false,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.sla-settings'))
+            ->assertOk()
+            ->assertSee('data-category-filter-panel', false)
+            ->assertSee('Search categories')
+            ->assertSee('Filter categories by department')
+            ->assertSee('Filter categories by status')
+            ->assertSee('data-category-department-filter', false)
+            ->assertSee('value="unrouted"', false)
+            ->assertSee('data-category-status-filter', false)
+            ->assertSee('data-category-search="LMS access Course sign-in course login Learning Technology"', false)
+            ->assertSee('data-category-department="'.$department->id.'"', false)
+            ->assertSee('data-category-active="true"', false)
+            ->assertSee('data-category-active="false"', false);
+    }
+
     public function test_admin_can_update_sla_targets_and_see_saved_values(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);

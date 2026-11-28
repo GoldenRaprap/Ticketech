@@ -531,6 +531,65 @@ document.querySelectorAll('[data-auto-submit-on-change]').forEach((form) => {
 	});
 });
 
+document.querySelectorAll('[data-category-filter-panel]').forEach((panel) => {
+	const searchInput = panel.querySelector('[data-category-search-input]');
+	const departmentFilter = panel.querySelector('[data-category-department-filter]');
+	const statusFilter = panel.querySelector('[data-category-status-filter]');
+	const resultCount = panel.querySelector('[data-category-filter-count]');
+	const noResults = panel.querySelector('[data-category-no-results]');
+	const categories = [...panel.querySelectorAll('[data-category-item]')];
+
+	if (
+		!(searchInput instanceof HTMLInputElement) ||
+		!(departmentFilter instanceof HTMLSelectElement) ||
+		!(statusFilter instanceof HTMLSelectElement) ||
+		!(resultCount instanceof HTMLElement) ||
+		!(noResults instanceof HTMLElement)
+	) {
+		console.error('Category filter is missing required controls.');
+		return;
+	}
+
+	if (categories.some((category) => (
+		!(category instanceof HTMLElement) ||
+		typeof category.dataset.categorySearch !== 'string' ||
+		typeof category.dataset.categoryDepartment !== 'string' ||
+		!['true', 'false'].includes(category.dataset.categoryActive)
+	))) {
+		console.error('Category filter item is missing required filter data.');
+		return;
+	}
+
+	const updateCategoryFilters = () => {
+		const searchTerm = searchInput.value.trim().toLocaleLowerCase();
+		const selectedDepartment = departmentFilter.value;
+		const selectedStatus = statusFilter.value;
+		let visibleCount = 0;
+
+		categories.forEach((category) => {
+			const matchesSearch = category.dataset.categorySearch.toLocaleLowerCase().includes(searchTerm);
+			const matchesDepartment = selectedDepartment === ''
+				|| (selectedDepartment === 'unrouted'
+					? category.dataset.categoryDepartment === ''
+					: category.dataset.categoryDepartment === selectedDepartment);
+			const matchesStatus = selectedStatus === ''
+				|| category.dataset.categoryActive === (selectedStatus === 'active' ? 'true' : 'false');
+			const isVisible = matchesSearch && matchesDepartment && matchesStatus;
+
+			category.hidden = !isVisible;
+			visibleCount += Number(isVisible);
+		});
+
+		resultCount.textContent = `Showing ${visibleCount} of ${categories.length} categories`;
+		noResults.hidden = visibleCount > 0 || categories.length === 0;
+	};
+
+	searchInput.addEventListener('input', updateCategoryFilters);
+	departmentFilter.addEventListener('change', updateCategoryFilters);
+	statusFilter.addEventListener('change', updateCategoryFilters);
+	updateCategoryFilters();
+});
+
 document.querySelectorAll('[data-role-change-form]').forEach((form) => {
 	if (!(form instanceof HTMLFormElement)) {
 		console.error('Role change target is not a form.');

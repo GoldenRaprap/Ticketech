@@ -134,7 +134,7 @@
                 </div>
             </section>
 
-            <section class="admin-ticket-option-panel" aria-labelledby="categories-heading">
+            <section class="admin-ticket-option-panel" aria-labelledby="categories-heading" data-category-filter-panel>
                 <header class="admin-ticket-option-heading">
                     <div>
                         <span class="admin-page-eyebrow">02 / TICKET DETAILS</span>
@@ -227,9 +227,40 @@
                         </div>
                     </section>
                 @endif
+                <div class="admin-console-toolbar admin-category-filter-toolbar">
+                    <label class="admin-search-field" for="category-list-search">
+                        <span class="visually-hidden">Search categories</span>
+                        <input id="category-list-search" type="search" autocomplete="off" placeholder="Search categories" data-category-search-input>
+                    </label>
+                    <label class="admin-filter-field" for="category-department-filter">
+                        <span class="visually-hidden">Filter categories by department</span>
+                        <select id="category-department-filter" data-category-department-filter>
+                            <option value="">All departments</option>
+                            <option value="unrouted">Needs review (no route)</option>
+                            @foreach ($departments as $department)
+                                <option value="{{ $department->id }}">{{ $department->name }}{{ $department->is_active ? '' : ' (Inactive)' }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <label class="admin-filter-field" for="category-status-filter">
+                        <span class="visually-hidden">Filter categories by status</span>
+                        <select id="category-status-filter" data-category-status-filter>
+                            <option value="">All statuses</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </label>
+                    <span class="admin-ticket-option-count" data-category-filter-count aria-live="polite">{{ $categories->count() }} categories</span>
+                </div>
                 <div class="admin-ticket-option-list admin-ticket-option-list--categories">
                     @forelse ($categories as $category)
-                        <article class="admin-ticket-option-item">
+                        <article
+                            class="admin-ticket-option-item"
+                            data-category-item
+                            data-category-search="{{ $category->name }} {{ $category->description }} {{ $category->classification_keywords }} {{ $category->department?->name }}"
+                            data-category-department="{{ $category->department_id ?? '' }}"
+                            data-category-active="{{ $category->is_active ? 'true' : 'false' }}"
+                        >
                             <div class="admin-ticket-option-copy">
                                 <strong>{{ $category->name }}</strong>
                                 @if ($category->description)
@@ -286,6 +317,10 @@
                     @empty
                         <div class="workspace-empty-state workspace-empty-state--compact"><strong>No categories yet</strong><p>Add categories to help classify incoming tickets.</p></div>
                     @endforelse
+                    <div class="workspace-empty-state workspace-empty-state--compact" data-category-no-results hidden>
+                        <strong>No matching categories</strong>
+                        <p>Try changing your search or filters.</p>
+                    </div>
                 </div>
             </section>
         </div>
