@@ -91,12 +91,14 @@
                 </form>
             </section>
 
-            <section class="admin-console-card">
+            <section class="admin-console-card turnstile-settings-card">
                 <header class="admin-console-card-heading">
                     <div><span class="admin-page-eyebrow">BOT PROTECTION</span><h2>Cloudflare Turnstile</h2><p>Manage the CAPTCHA keys used by public ticket submissions.</p></div>
                 </header>
                 <p>The site key is shown on the public form. The secret key is encrypted before saving and is never displayed. Both keys must be configured for ticket submissions to use Turnstile.</p>
-                <p role="status">Status: {{ $turnstileConfigured ? 'Configured' : 'Credentials needed' }}</p>
+                <p class="turnstile-settings-status {{ $turnstileConfigured ? 'turnstile-settings-status--configured' : 'turnstile-settings-status--missing' }}" role="status">
+                    {{ $turnstileConfigured ? 'Turnstile configured' : 'Credentials needed' }}
+                </p>
 
                 @if ($errors->hasAny(['turnstile_site_key', 'turnstile_secret_key', 'clear_turnstile_site_key', 'clear_turnstile_secret_key']))
                     <div class="workspace-alert workspace-alert--error" role="alert">
@@ -105,7 +107,7 @@
                     </div>
                 @endif
 
-                <form class="admin-staff-create-form" action="{{ route('admin.system-settings.turnstile.update') }}" method="post">
+                <form class="admin-staff-create-form turnstile-settings-form" action="{{ route('admin.system-settings.turnstile.update') }}" method="post">
                     @csrf
                     @method('put')
                     <label class="admin-staff-field" for="turnstile-site-key">

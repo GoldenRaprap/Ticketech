@@ -10130,6 +10130,69 @@ img, svg { display: block; max-width: 100%; }
     grid-column: 1 / -1;
 }
 
+.turnstile-settings-card > p {
+    max-width: 820px;
+    margin: 0 0 14px;
+    color: #60758a;
+    font-size: 0.78rem;
+    line-height: 1.55;
+}
+
+.turnstile-settings-card > .turnstile-settings-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 18px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 650;
+}
+
+.turnstile-settings-status::before {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    content: "";
+}
+
+.turnstile-settings-status--configured {
+    background: #edf8f1;
+    color: #347951;
+}
+
+.turnstile-settings-status--missing {
+    background: #fff6e8;
+    color: #9a6a20;
+}
+
+.admin-staff-create-form.turnstile-settings-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 16px;
+}
+
+.turnstile-settings-form .admin-staff-field {
+    align-content: start;
+}
+
+.turnstile-settings-form .admin-staff-field > small {
+    color: #718499;
+    font-size: 0.68rem;
+    line-height: 1.45;
+}
+
+.turnstile-settings-form > .admin-setting-row,
+.turnstile-settings-form > .admin-console-button {
+    grid-column: 1 / -1;
+}
+
+.turnstile-settings-form > .admin-console-button {
+    justify-self: end;
+    min-width: 190px;
+}
+
 .admin-staff-edit-form {
     grid-template-columns: minmax(150px, 1fr) minmax(200px, 1.25fr) minmax(150px, 0.8fr) auto;
 }
@@ -10575,6 +10638,8 @@ img, svg { display: block; max-width: 100%; }
     .moderation-phrase-add { grid-template-columns: 1fr; }
     .admin-staff-create-form,
     .admin-staff-edit-form { grid-template-columns: 1fr; }
+    .admin-staff-create-form.turnstile-settings-form { grid-template-columns: minmax(0, 1fr); }
+    .turnstile-settings-form > .admin-console-button { width: 100%; min-width: 0; }
     .admin-staff-bulk-entry { grid-template-columns: 1fr; }
     .admin-staff-bulk-actions { align-items: stretch; flex-direction: column; }
     .admin-user-management-actions .admin-readonly-badge { text-align: left; }
