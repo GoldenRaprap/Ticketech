@@ -1322,14 +1322,14 @@ document.querySelectorAll('form[data-article-recommendations]').forEach((form) =
 	let requestTimer = null;
 	let activeRequest = null;
 
-	const renderMessage = (message) => {
-		status.textContent = message;
-		list.replaceChildren();
-		panel.hidden = false;
-	};
-
 	const renderArticles = (articles) => {
 		list.replaceChildren();
+
+		if (articles.length === 0) {
+			status.textContent = '';
+			panel.hidden = true;
+			return;
+		}
 
 		articles.forEach((article) => {
 			if (
@@ -1367,9 +1367,7 @@ document.querySelectorAll('form[data-article-recommendations]').forEach((form) =
 			list.append(card);
 		});
 
-		status.textContent = articles.length
-			? 'These guides may help with your issue.'
-			: 'No close matches yet. You can continue and submit your request.';
+		status.textContent = 'These guides may help with your issue.';
 		panel.hidden = false;
 	};
 
@@ -1377,17 +1375,17 @@ document.querySelectorAll('form[data-article-recommendations]').forEach((form) =
 		window.clearTimeout(requestTimer);
 		activeRequest?.abort();
 		activeRequest = null;
+		panel.hidden = true;
+		status.textContent = '';
+		list.replaceChildren();
 
 		const subject = subjectInput.value.trim();
 		const message = messageInput.value.trim();
 
 		if ((subject + ' ' + message).trim().length < 12) {
-			panel.hidden = true;
-			list.replaceChildren();
 			return;
 		}
 
-		renderMessage('Looking for relevant help articles…');
 		requestTimer = window.setTimeout(async () => {
 			const controller = new AbortController();
 			activeRequest = controller;
@@ -1426,7 +1424,6 @@ document.querySelectorAll('form[data-article-recommendations]').forEach((form) =
 				}
 
 				console.error('Unable to load article recommendations.', error);
-				renderMessage('Suggestions are temporarily unavailable. You can still submit your request.');
 			}
 		}, 500);
 	};
