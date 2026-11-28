@@ -1,4 +1,4 @@
-<aside id="staff-sidebar" class="staff-sidebar" aria-label="{{ auth()->user()->isAdmin() ? 'Super Admin' : (auth()->user()->isDepartmentAdmin() ? 'Department Admin' : 'Staff') }} navigation">
+<aside id="staff-sidebar" class="staff-sidebar" aria-label="{{ auth()->user()->isAdmin() ? 'Super Admin' : (auth()->user()->isDepartmentAdmin() ? 'Department Admin' : 'Staff') }} navigation" data-staff-notification-poll data-updates-url="{{ route('staff.notifications.updates') }}" data-latest-notification-id="{{ $sidebarLatestNotificationId }}">
     <div class="sidebar-top">
         <a class="sidebar-brand" href="{{ auth()->user()->isAdmin() ? route('admin.dashboard') : route('staff.dashboard') }}">
             <img src="{{ asset('images/TickeTech_Logo_Transparent.png') }}" alt="Ticketech Edtech Support System">

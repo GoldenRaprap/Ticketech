@@ -1974,6 +1974,43 @@ class StaffWorkspaceFunctionalityTest extends TestCase
         $this->assertNotNull($notification->fresh()->read_at);
     }
 
+    public function test_notification_updates_only_expose_the_signed_in_users_latest_notification(): void
+    {
+        Notification::fake();
+        $staff = User::factory()->create(['role' => 'staff']);
+        $anotherStaff = User::factory()->create(['role' => 'staff']);
+        $notification = WorkspaceNotification::create([
+            'user_id' => $staff->id,
+            'type' => 'new_ticket',
+            'title' => 'New support ticket',
+            'message' => 'A ticket needs review.',
+        ]);
+        WorkspaceNotification::create([
+            'user_id' => $anotherStaff->id,
+            'type' => 'new_ticket',
+            'title' => 'Private update',
+            'message' => 'This belongs to another staff member.',
+        ]);
+
+        $this->actingAs($staff)
+            ->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertSee('data-notification-sound-toggle', false)
+            ->assertSee('data-updates-url="'.route('staff.notifications.updates').'"', false)
+            ->assertSee('data-latest-notification-id="'.$notification->id.'"', false);
+
+        $this->actingAs($staff)
+            ->getJson(route('staff.notifications.updates'))
+            ->assertOk()
+            ->assertExactJson(['latest_notification_id' => $notification->id]);
+    }
+
+    public function test_guest_cannot_check_for_staff_notification_updates(): void
+    {
+        $this->get(route('staff.notifications.updates'))
+            ->assertRedirect(route('login'));
+    }
+
     public function test_sidebar_notification_badge_shows_unread_count_and_caps_at_nine_plus(): void
     {
         Notification::fake();

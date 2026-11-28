@@ -38,6 +38,8 @@
                 </div>
             </div>
             <div class="staff-badge-row">
+                <button class="primary-button" type="button" aria-label="Enable notification sounds" aria-pressed="false" data-notification-sound-toggle>Enable sound</button>
+                <span class="sr-only" role="status" aria-live="polite" data-notification-sound-status></span>
                 <a class="primary-button" href="{{ route('staff.tickets') }}">View Tickets</a>
             </div>
         </header>

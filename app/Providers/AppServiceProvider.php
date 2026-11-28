@@ -35,6 +35,11 @@ class AppServiceProvider extends ServiceProvider
                     ->visibleTo($user)
                     ->whereNull('read_at')
                     ->count();
+            $latestNotificationId = $user === null
+                ? 0
+                : WorkspaceNotification::query()
+                    ->visibleTo($user)
+                    ->max('id') ?? 0;
             $pendingStaffApplicationCount = 0;
             $pendingReportCount = 0;
 
@@ -61,6 +66,7 @@ class AppServiceProvider extends ServiceProvider
 
             $view->with([
                 'sidebarUnreadNotificationCount' => $unreadNotificationCount,
+                'sidebarLatestNotificationId' => $latestNotificationId,
                 'sidebarPendingStaffApplicationCount' => $pendingStaffApplicationCount,
                 'sidebarPendingReportCount' => $pendingReportCount,
             ]);

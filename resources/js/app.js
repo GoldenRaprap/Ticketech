@@ -1348,3 +1348,153 @@ document.querySelectorAll('[data-ticket-comment-check]').forEach((conversation) 
 
 	window.setInterval(checkForNewReplies, 15000);
 });
+
+const notificationPoller = document.querySelector('[data-staff-notification-poll]');
+
+if (notificationPoller instanceof HTMLElement) {
+	const updatesUrl = notificationPoller.dataset.updatesUrl;
+	let latestNotificationId = Number(notificationPoller.dataset.latestNotificationId);
+	const soundToggle = document.querySelector('[data-notification-sound-toggle]');
+	const soundStatus = document.querySelector('[data-notification-sound-status]');
+	const soundPreferenceKey = 'ticketech.notification-sounds-enabled';
+	let soundEnabled = false;
+	let audioContext = null;
+	let isCheckingForNotifications = false;
+
+	if (
+		!updatesUrl ||
+		!Number.isFinite(latestNotificationId) ||
+		!(soundToggle instanceof HTMLButtonElement) ||
+		!(soundStatus instanceof HTMLElement)
+	) {
+		console.error('Staff notification alerts are missing required page data or controls.');
+	} else {
+		try {
+			soundEnabled = window.localStorage.getItem(soundPreferenceKey) === 'true';
+		} catch (error) {
+			console.warn('Unable to read the notification sound preference.', error);
+		}
+
+		const updateSoundToggle = () => {
+			soundToggle.setAttribute('aria-pressed', String(soundEnabled));
+			soundToggle.setAttribute('aria-label', soundEnabled
+				? 'Mute notification sounds'
+				: 'Enable notification sounds');
+			soundToggle.textContent = soundEnabled ? 'Mute sound' : 'Enable sound';
+		};
+
+		const resumeAudio = async () => {
+			if (!soundEnabled) {
+				return;
+			}
+
+			if (!audioContext) {
+				audioContext = new window.AudioContext();
+			}
+
+			if (audioContext.state === 'suspended') {
+				await audioContext.resume();
+			}
+		};
+
+		const playNotificationSound = async () => {
+			if (!soundEnabled) {
+				return;
+			}
+
+			try {
+				await resumeAudio();
+				const oscillator = audioContext.createOscillator();
+				const volume = audioContext.createGain();
+				const startTime = audioContext.currentTime;
+
+				oscillator.type = 'sine';
+				oscillator.frequency.setValueAtTime(880, startTime);
+				oscillator.frequency.setValueAtTime(1174.66, startTime + 0.1);
+				volume.gain.setValueAtTime(0.0001, startTime);
+				volume.gain.exponentialRampToValueAtTime(0.12, startTime + 0.02);
+				volume.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.24);
+				oscillator.connect(volume);
+				volume.connect(audioContext.destination);
+				oscillator.start(startTime);
+				oscillator.stop(startTime + 0.25);
+			} catch (error) {
+				console.error('Unable to play the notification sound.', error);
+			}
+		};
+
+		soundToggle.addEventListener('click', async () => {
+			soundEnabled = !soundEnabled;
+			soundStatus.textContent = '';
+			updateSoundToggle();
+
+			if (soundEnabled) {
+				try {
+					await resumeAudio();
+				} catch (error) {
+					soundEnabled = false;
+					updateSoundToggle();
+					soundStatus.textContent = 'Sound alerts are unavailable in this browser.';
+					console.error('Unable to enable notification sounds.', error);
+				}
+			}
+
+			try {
+				window.localStorage.setItem(soundPreferenceKey, String(soundEnabled));
+			} catch (error) {
+				console.warn('Unable to save the notification sound preference.', error);
+			}
+		});
+
+		document.addEventListener('pointerdown', () => {
+			resumeAudio().catch((error) => {
+				console.error('Unable to activate notification audio.', error);
+			});
+		}, { once: true });
+
+		document.addEventListener('keydown', () => {
+			resumeAudio().catch((error) => {
+				console.error('Unable to activate notification audio.', error);
+			});
+		}, { once: true });
+
+		updateSoundToggle();
+
+		const checkForNewNotifications = async () => {
+			if (document.hidden || isCheckingForNotifications) {
+				return;
+			}
+
+			isCheckingForNotifications = true;
+
+			try {
+				const response = await fetch(updatesUrl, {
+					headers: { Accept: 'application/json' },
+					credentials: 'same-origin',
+				});
+
+				if (!response.ok) {
+					throw new Error(`Notification update check failed with status ${response.status}.`);
+				}
+
+				const data = await response.json();
+				const latestServerNotificationId = Number(data.latest_notification_id);
+
+				if (!Number.isFinite(latestServerNotificationId)) {
+					throw new Error('Notification update check returned an invalid notification ID.');
+				}
+
+				if (latestServerNotificationId > latestNotificationId) {
+					latestNotificationId = latestServerNotificationId;
+					await playNotificationSound();
+				}
+			} catch (error) {
+				console.error('Unable to check for new notifications.', error);
+			} finally {
+				isCheckingForNotifications = false;
+			}
+		};
+
+		window.setInterval(checkForNewNotifications, 15000);
+	}
+}

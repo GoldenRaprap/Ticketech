@@ -102,6 +102,7 @@ Route::prefix('staff')->name('staff.')->group(function () {
 
         Route::get('/reports', StaffReportsController::class)->name('reports');
         Route::get('/reports/export', [StaffReportsController::class, 'export'])->name('reports.export');
+        Route::get('/notifications/updates', [StaffNotificationController::class, 'updates'])->name('notifications.updates');
         Route::get('/notifications', [StaffNotificationController::class, 'index'])->name('notifications');
         Route::patch('/notifications/read-all', [StaffNotificationController::class, 'markAllRead'])->name('notifications.read-all');
         Route::patch('/notifications/{notification}/read', [StaffNotificationController::class, 'markRead'])->name('notifications.read');

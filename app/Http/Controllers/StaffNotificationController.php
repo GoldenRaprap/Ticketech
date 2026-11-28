@@ -3,12 +3,22 @@
 namespace App\Http\Controllers;
 
 use App\Models\WorkspaceNotification;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class StaffNotificationController extends Controller
 {
+    public function updates(Request $request): JsonResponse
+    {
+        return response()->json([
+            'latest_notification_id' => WorkspaceNotification::query()
+                ->visibleTo($request->user())
+                ->max('id') ?? 0,
+        ]);
+    }
+
     public function index(Request $request): View
     {
         $filter = $request->validate([
