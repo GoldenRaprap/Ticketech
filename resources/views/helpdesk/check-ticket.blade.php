@@ -111,6 +111,68 @@
                     <p class="ticket-view-created">Submitted {{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('F j, Y \a\t g:i A') }}</p>
                 </header>
 
+                <section class="ticket-progress-panel" aria-labelledby="ticket-progress-title">
+                    <div class="ticket-progress-heading">
+                        <div>
+                            <span class="ticket-view-eyebrow">Your request at a glance</span>
+                            <h2 id="ticket-progress-title">What happens next</h2>
+                        </div>
+                        <span class="ticket-view-status-badge ticket-view-status-badge--{{ \Illuminate\Support\Str::slug($ticket->status) }}">{{ $ticket->status }}</span>
+                    </div>
+                    <dl class="ticket-progress-details">
+                        <div>
+                            <dt>Department</dt>
+                            <dd>{{ $ticket->department?->name ?? 'Being reviewed' }}</dd>
+                        </div>
+                        <div>
+                            <dt>Assigned to</dt>
+                            <dd>{{ $ticketProgress['assigned_to'] ?? 'Not assigned yet' }}</dd>
+                        </div>
+                        <div>
+                            <dt>First response</dt>
+                            <dd>
+                                @if ($ticketProgress['first_response_received'])
+                                    A support team member has replied.
+                                @elseif ($ticketProgress['first_response_due_at'])
+                                    @if ($ticketProgress['first_response_due_at']->isPast())
+                                        The initial response estimate has passed; your request remains in the queue.
+                                    @else
+                                        Expected by {{ $ticketProgress['first_response_due_at']->copy()->timezone(config('app.display_timezone'))->format('F j, Y \a\t g:i A') }}
+                                    @endif
+                                @elseif (in_array($ticket->status, ['Resolved', 'Closed'], true))
+                                    This ticket is complete.
+                                @else
+                                    No response estimate is available.
+                                @endif
+                            </dd>
+                        </div>
+                    </dl>
+                    <p class="ticket-progress-guidance">
+                        @if (in_array($ticket->status, ['Resolved', 'Closed'], true))
+                            If you still need help, submit a new request.
+                        @else
+                            You can add details or files in the conversation below. We will email you when the support team replies.
+                        @endif
+                    </p>
+                    <div class="ticket-progress-timeline">
+                        <h3>Request timeline</h3>
+                        <ol>
+                            @foreach ($ticketProgress['timeline'] as $timelineItem)
+                                <li>
+                                    <span class="ticket-progress-timeline-marker" aria-hidden="true"></span>
+                                    <div>
+                                        <strong>{{ $timelineItem['title'] }}</strong>
+                                        <p>{{ $timelineItem['description'] }}</p>
+                                        <time datetime="{{ $timelineItem['created_at']->copy()->timezone(config('app.display_timezone'))->toIso8601String() }}">
+                                            {{ $timelineItem['created_at']->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}
+                                        </time>
+                                    </div>
+                                </li>
+                            @endforeach
+                        </ol>
+                    </div>
+                </section>
+
                 <div class="ticket-view-summary">
                     @foreach ($ticketDocument['detail_groups'] as $group)
                         <section class="ticket-summary-group {{ $group['title'] === 'Client information' ? 'ticket-summary-group--client' : '' }}" aria-label="{{ $group['title'] }}">

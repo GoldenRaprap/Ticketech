@@ -9,6 +9,7 @@ use App\Models\ClientModeration;
 use App\Models\PendingTicketSubmission;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
+use App\Models\TicketEvent;
 use App\Models\User;
 use App\Models\WorkspaceNotification;
 use App\Notifications\TicketEmailVerification;
@@ -25,6 +26,7 @@ use App\Services\TicketResolutionSla;
 use App\Services\TicketSubmissionSettings;
 use App\Services\TicketWorkloadAssigner;
 use App\Services\TurnstileVerifier;
+use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -43,6 +45,7 @@ class TicketController extends Controller
     public function create(
         TicketSubmissionSettings $submissionSettings,
         TurnstileVerifier $turnstileVerifier,
+        PublicFeatureAvailability $availability,
     ): View {
         return view('helpdesk.create-ticket', [
             'ticketSubmissionOpen' => $submissionSettings->isOpen(),
@@ -50,6 +53,7 @@ class TicketController extends Controller
             'turnstileEnabled' => $turnstileVerifier->isEnabled(),
             'turnstileConfigured' => $turnstileVerifier->isConfigured(),
             'turnstileSiteKey' => $turnstileVerifier->siteKey(),
+            'knowledgeBaseEnabled' => $availability->knowledgeBaseIsEnabled(),
         ]);
     }
 
@@ -527,6 +531,7 @@ class TicketController extends Controller
         Request $request,
         PublicFeatureAvailability $availability,
         RequesterTicketDocument $ticketDocument,
+        TicketResolutionSla $resolutionSla,
     ): View {
         $lookupPrefill = $request->session()->pull('ticket_lookup_prefill');
         $hasLookupPrefill = is_array($lookupPrefill)
@@ -554,6 +559,7 @@ class TicketController extends Controller
         return view('helpdesk.check-ticket', [
             'ticket' => $ticket,
             'ticketDocument' => $ticket ? $ticketDocument->forRequester($ticket) : null,
+            'ticketProgress' => $ticket ? $this->requesterProgress($ticket, $resolutionSla) : null,
             'lookupAttempted' => ! $hasLookupPrefill && $request->session()->get('ticket_lookup_failed', false),
             'rememberedEmail' => $request->session()->get('ticket_lookup_email', ''),
             'lookupTicketNumber' => $hasLookupPrefill
@@ -584,6 +590,7 @@ class TicketController extends Controller
         LookupTicketRequest $request,
         PublicFeatureAvailability $availability,
         RequesterTicketDocument $ticketDocument,
+        TicketResolutionSla $resolutionSla,
     ): View {
         $validated = $request->validated();
         $lookupEmail = $validated['email'];
@@ -610,6 +617,7 @@ class TicketController extends Controller
         return view('helpdesk.check-ticket', [
             'ticket' => $ticket,
             'ticketDocument' => $ticket ? $ticketDocument->forRequester($ticket) : null,
+            'ticketProgress' => $ticket ? $this->requesterProgress($ticket, $resolutionSla) : null,
             'lookupAttempted' => true,
             'rememberedEmail' => $rememberedEmail,
             'lookupTicketNumber' => $validated['ticket'],
@@ -627,6 +635,119 @@ class TicketController extends Controller
             ->where('status', 'warning')
             ->whereNull('cleared_at')
             ->exists();
+    }
+
+    /**
+     * @return array{
+     *     assigned_to: ?string,
+     *     first_response_received: bool,
+     *     first_response_due_at: ?CarbonInterface,
+     *     timeline: list<array{title: string, description: string, created_at: CarbonInterface}>
+     * }
+     */
+    private function requesterProgress(Ticket $ticket, TicketResolutionSla $resolutionSla): array
+    {
+        $firstResponseReceived = $ticket->comments->contains(
+            fn ($comment): bool => $comment->author_id !== null,
+        );
+        $isClosed = in_array($ticket->status, ['Resolved', 'Closed'], true);
+        $firstResponseDueAt = $firstResponseReceived || $isClosed
+            ? null
+            : $resolutionSla->deadlineAfterBusinessMinutes(
+                $ticket->created_at,
+                $resolutionSla->targetBusinessMinutes($ticket->priority, 'first_response'),
+            );
+
+        return [
+            'assigned_to' => $ticket->assignedTo?->name,
+            'first_response_received' => $firstResponseReceived,
+            'first_response_due_at' => $firstResponseDueAt,
+            'timeline' => $this->requesterTimeline($ticket),
+        ];
+    }
+
+    /**
+     * @return list<array{title: string, description: string, created_at: CarbonInterface}>
+     */
+    private function requesterTimeline(Ticket $ticket): array
+    {
+        $timeline = [[
+            'title' => 'Request submitted',
+            'description' => 'Your support request was received.',
+            'created_at' => $ticket->created_at,
+        ]];
+
+        foreach ($ticket->events as $event) {
+            $item = match ($event->event) {
+                'requester_email_verified' => [
+                    'title' => 'Email verified',
+                    'description' => 'Your email address was verified.',
+                ],
+                'automated_triage' => [
+                    'title' => 'Request routed',
+                    'description' => match ($event->properties['routing_status'] ?? null) {
+                        'assigned' => 'Your request was routed to the support team.',
+                        'needs_staff_assignment' => 'Your request is waiting for a support team member.',
+                        default => 'Your request is being reviewed for routing.',
+                    },
+                ],
+                'status_changed' => [
+                    'title' => 'Status updated',
+                    'description' => $this->requesterStatusDescription($event),
+                ],
+                'assignment_changed' => [
+                    'title' => 'Support assignment updated',
+                    'description' => 'A support team member was assigned to your ticket.',
+                ],
+                default => null,
+            };
+
+            if ($item !== null) {
+                $timeline[] = [
+                    ...$item,
+                    'created_at' => $event->created_at,
+                ];
+            }
+        }
+
+        foreach ($ticket->comments as $comment) {
+            $isRequesterComment = $comment->author_id === null
+                && $comment->author_name === $ticket->requester_name;
+            $timeline[] = [
+                'title' => $isRequesterComment ? 'You replied' : 'Support team replied',
+                'description' => $isRequesterComment
+                    ? 'You added a message to the conversation.'
+                    : 'A support team member replied to your request.',
+                'created_at' => $comment->created_at,
+            ];
+        }
+
+        usort(
+            $timeline,
+            fn (array $first, array $second): int => $first['created_at']->getTimestamp()
+                <=> $second['created_at']->getTimestamp(),
+        );
+
+        return $timeline;
+    }
+
+    private function requesterStatusDescription(TicketEvent $event): string
+    {
+        $newStatus = $event->properties['new_status'] ?? null;
+
+        if (is_string($newStatus) && in_array($newStatus, [
+            'New',
+            'Assigned',
+            'In Progress',
+            'Waiting for User',
+            'On Hold',
+            'Resolved',
+            'Closed',
+        ], true)) {
+            return "Status changed to {$newStatus}.";
+        }
+
+        return 'The support team updated your ticket status.';
     }
 
     public function reply(
@@ -698,6 +819,10 @@ class TicketController extends Controller
                     $lockedTicket->events()->create([
                         'event' => 'status_changed',
                         'description' => "Ticket resumed after a requester reply ({$previousStatus} → In Progress).",
+                        'properties' => [
+                            'previous_status' => $previousStatus,
+                            'new_status' => 'In Progress',
+                        ],
                     ]);
                 }
 
@@ -832,8 +957,19 @@ class TicketController extends Controller
         return Ticket::query()
             ->with([
                 'assignedTo',
-                'comments' => fn ($query) => $query->where('is_internal', false)->with('attachments')->oldest(),
+                'department:id,name',
+                'comments' => fn ($query) => $query->where('is_internal', false)
+                    ->with(['attachments', 'author:id,name,nickname,role'])
+                    ->oldest(),
                 'attachments' => fn ($query) => $query->whereNull('comment_id'),
+                'events' => fn ($query) => $query
+                    ->whereIn('event', [
+                        'requester_email_verified',
+                        'automated_triage',
+                        'status_changed',
+                        'assignment_changed',
+                    ])
+                    ->oldest(),
             ])
             ->where('ticket_number', $ticketNumber)
             ->whereRaw('LOWER(requester_email) = ?', [Str::lower($email)])

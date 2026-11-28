@@ -32,6 +32,9 @@ Route::middleware('redirect.workspace-users')->group(function () {
     Route::get('/Helpdesk', HomeController::class)->name('helpdesk');
     Route::middleware('knowledge-base-enabled')->group(function () {
         Route::get('/knowledge-base', [KnowledgeArticleController::class, 'publicIndex'])->name('knowledge-base');
+        Route::post('/knowledge-base/recommendations', [KnowledgeArticleController::class, 'recommendations'])
+            ->middleware('throttle:60,1')
+            ->name('knowledge-base.recommendations');
         Route::get('/knowledge-base/{article:slug}', [KnowledgeArticleController::class, 'publicShow'])->name('knowledge-base.show');
         Route::post('/knowledge-base/{article:slug}/reviews', [KnowledgeArticleController::class, 'storeReview'])
             ->middleware('throttle:5,1')

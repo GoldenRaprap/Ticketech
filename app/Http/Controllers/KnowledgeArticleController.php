@@ -11,6 +11,7 @@ use App\Services\AuditActivityLogger;
 use App\Services\KnowledgeArticleContentFormatter;
 use App\Services\KnowledgeArticleReviewSettings;
 use App\Services\KnowledgeArticleSuggestionGenerator;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -23,6 +24,12 @@ use Throwable;
 
 class KnowledgeArticleController extends Controller
 {
+    private const RECOMMENDATION_STOP_WORDS = [
+        'and', 'are', 'but', 'can', 'cannot', 'for', 'from', 'have', 'help',
+        'into', 'issue', 'issues', 'need', 'please', 'problem', 'that', 'the',
+        'this', 'with', 'your',
+    ];
+
     public function publicIndex(Request $request, KnowledgeArticleReviewSettings $reviewSettings): View
     {
         $filters = $request->validate([
@@ -50,6 +57,59 @@ class KnowledgeArticleController extends Controller
             'filters' => $filters,
             'reviewThreshold' => $reviewSettings->visibilityThreshold(),
         ]);
+    }
+
+    public function recommendations(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'subject' => ['nullable', 'string', 'max:150'],
+            'message' => ['nullable', 'string', 'max:500'],
+        ]);
+        $terms = array_slice(
+            $this->recommendationTerms(($validated['subject'] ?? '').' '.($validated['message'] ?? '')),
+            0,
+            10,
+        );
+
+        if (count($terms) < 2) {
+            return response()->json(['articles' => []]);
+        }
+
+        $articles = KnowledgeArticle::query()
+            ->where('is_published', true)
+            ->where(function ($query) use ($terms): void {
+                foreach ($terms as $term) {
+                    $query->orWhere('title', 'like', '%'.$term.'%')
+                        ->orWhere('summary', 'like', '%'.$term.'%')
+                        ->orWhere('body', 'like', '%'.$term.'%');
+                }
+            })
+            ->limit(100)
+            ->get(['id', 'title', 'slug', 'category', 'summary', 'body'])
+            ->map(function (KnowledgeArticle $article) use ($terms): array {
+                $articleTerms = $this->recommendationTerms(
+                    $article->title.' '.$article->category.' '.$article->summary.' '.strip_tags($article->body),
+                );
+                $matchedTerms = array_intersect($terms, $articleTerms);
+
+                return [
+                    'article' => $article,
+                    'match_count' => count($matchedTerms),
+                    'match_ratio' => count($matchedTerms) / count($terms),
+                ];
+            })
+            ->filter(fn (array $match): bool => $match['match_count'] >= 2)
+            ->sortByDesc('match_ratio')
+            ->take(3)
+            ->map(fn (array $match): array => [
+                'title' => $match['article']->title,
+                'category' => $match['article']->category,
+                'summary' => $match['article']->summary,
+                'url' => route('knowledge-base.show', $match['article']->slug),
+            ])
+            ->values();
+
+        return response()->json(['articles' => $articles]);
     }
 
     public function publicShow(
@@ -214,6 +274,7 @@ class KnowledgeArticleController extends Controller
                 if ($legacyHeadingPosition !== false) {
                     $proposedBody = substr($proposedBody, $legacyHeadingPosition);
                 }
+
             }
         }
 
@@ -222,6 +283,20 @@ class KnowledgeArticleController extends Controller
         }
 
         return $formattedCurrentBody;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function recommendationTerms(string $content): array
+    {
+        $tokens = preg_split('/[^\pL\pN]+/u', mb_strtolower($content), -1, PREG_SPLIT_NO_EMPTY);
+
+        return array_values(array_unique(array_filter(
+            $tokens ?: [],
+            fn (string $term): bool => mb_strlen($term) > 2
+                && ! in_array($term, self::RECOMMENDATION_STOP_WORDS, true),
+        )));
     }
 
     public function dismissSuggestion(

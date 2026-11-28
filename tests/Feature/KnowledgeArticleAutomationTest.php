@@ -292,4 +292,39 @@ class KnowledgeArticleAutomationTest extends TestCase
 
         $this->assertSame('Resolved', $ticket->fresh()->status);
     }
+
+    public function test_ticket_intake_recommends_relevant_published_articles_only(): void
+    {
+        KnowledgeArticle::create([
+            'title' => 'Reconnect to campus Wi-Fi',
+            'slug' => 'reconnect-campus-wifi',
+            'category' => 'Network',
+            'summary' => 'Reconnect after changing your password.',
+            'body' => '<p>Forget the saved Wi-Fi network and reconnect with your updated password.</p>',
+            'is_published' => true,
+            'published_at' => now(),
+        ]);
+        KnowledgeArticle::create([
+            'title' => 'Campus Wi-Fi password recovery',
+            'slug' => 'draft-campus-wifi-password-recovery',
+            'category' => 'Network',
+            'summary' => 'Recover your password and reconnect to campus Wi-Fi.',
+            'body' => '<p>Use the private draft instructions.</p>',
+            'is_published' => false,
+        ]);
+
+        $response = $this->postJson(route('knowledge-base.recommendations'), [
+            'subject' => 'Campus Wi-Fi does not connect',
+            'message' => 'After changing my password, my laptop cannot connect to the campus network.',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('articles.0.title', 'Reconnect to campus Wi-Fi')
+            ->assertJsonPath('articles.0.url', route('knowledge-base.show', 'reconnect-campus-wifi'));
+        $this->assertSame(
+            ['title', 'category', 'summary', 'url'],
+            array_keys($response->json('articles.0')),
+        );
+        $this->assertDatabaseCount('knowledge_articles', 2);
+    }
 }

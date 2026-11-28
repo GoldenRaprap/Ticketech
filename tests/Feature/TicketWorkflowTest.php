@@ -55,7 +55,8 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('multiple', false)
             ->assertDontSee('name="department_id"', false)
             ->assertDontSee('name="category_id"', false)
-            ->assertSee('category and department are selected automatically');
+            ->assertSee('category and department are selected automatically')
+            ->assertSee('data-article-recommendations', false);
 
         $this->get(route('ticket.check'))
             ->assertOk()
@@ -1048,6 +1049,95 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('images/Philippine_Christian_University_logo.png')
             ->assertDontSee('Alex Individual')
             ->assertDontSee('Internal escalation note.');
+    }
+
+    public function test_requester_tracker_shows_assignee_timeline_and_first_response_estimate(): void
+    {
+        config()->set('app.display_timezone', 'Asia/Manila');
+        $this->travelTo('2026-11-02 01:00:00 UTC');
+        $department = Department::factory()->create(['name' => 'PCU Systems Support']);
+        $staff = User::factory()->create([
+            'name' => 'Alex Support',
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+        $ticket = Ticket::create([
+            'ticket_number' => 'ED-2026-001234',
+            'assigned_to_user_id' => $staff->id,
+            'requester_name' => 'Jamie Student',
+            'student_id' => '2023000001',
+            'requester_email' => 'jamie@example.edu',
+            'department_id' => $department->id,
+            'subject' => 'Cannot access the student portal',
+            'description' => 'The student portal shows an error when I sign in.',
+            'priority' => 'Urgent',
+            'status' => 'Assigned',
+        ]);
+        $ticket->events()->create([
+            'event' => 'automated_triage',
+            'description' => 'Private classifier details must not be shown.',
+            'properties' => ['routing_status' => 'assigned'],
+        ]);
+        $ticket->events()->create([
+            'event' => 'status_changed',
+            'description' => 'Sensitive status detail must not be shown.',
+            'properties' => ['new_status' => 'In Progress'],
+        ]);
+        $ticket->events()->create([
+            'event' => 'staff_sensitive_audit',
+            'description' => 'Sensitive audit detail must not be shown.',
+        ]);
+        $ticket->comments()->create([
+            'author_id' => $staff->id,
+            'author_name' => $staff->name,
+            'body' => 'Internal comment body must not be shown.',
+            'is_internal' => true,
+        ]);
+
+        $this->post(route('ticket.lookup'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ])->assertOk()
+            ->assertSee('What happens next')
+            ->assertSee('PCU Systems Support')
+            ->assertSee('Alex Support')
+            ->assertSee('Expected by November 2, 2026 at 10:00 AM')
+            ->assertSee('Request timeline')
+            ->assertSee('Request routed')
+            ->assertSee('Status changed to In Progress.')
+            ->assertDontSee('Private classifier details')
+            ->assertDontSee('Sensitive status detail')
+            ->assertDontSee('Sensitive audit detail')
+            ->assertDontSee('Internal comment body');
+
+        $ticket->comments()->create([
+            'author_id' => $staff->id,
+            'author_name' => $staff->name,
+            'body' => 'We have replied to your request.',
+            'is_internal' => false,
+        ]);
+
+    }
+
+    public function test_requester_tracker_stops_showing_estimate_after_staff_reply(): void
+    {
+        config()->set('app.display_timezone', 'Asia/Manila');
+        $staff = User::factory()->create(['role' => 'staff']);
+        $ticket = $this->createTicket();
+        $ticket->update(['assigned_to_user_id' => $staff->id]);
+        $ticket->comments()->create([
+            'author_id' => $staff->id,
+            'author_name' => $staff->name,
+            'body' => 'We have replied to your request.',
+            'is_internal' => false,
+        ]);
+
+        $this->post(route('ticket.lookup'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => 'jamie@example.edu',
+        ])->assertOk()
+            ->assertSee('A support team member has replied.')
+            ->assertDontSee('Expected by');
     }
 
     public function test_resolved_and_closed_tickets_tell_clients_to_submit_a_new_ticket(): void

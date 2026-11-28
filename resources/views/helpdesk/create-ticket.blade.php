@@ -17,7 +17,7 @@
             <p class="form-intro">No account is needed. We will verify that you can receive email at the address you provide before creating your ticket. The category and department are selected automatically from your subject and message.</p>
             <p class="required-note">Required fields are marked with <span>*</span></p>
 
-            <form class="lookup-form ticket-form" action="{{ route('ticket.store') }}" method="post" enctype="multipart/form-data">
+            <form class="lookup-form ticket-form" action="{{ route('ticket.store') }}" method="post" enctype="multipart/form-data" @if ($knowledgeBaseEnabled) data-article-recommendations data-recommendations-url="{{ route('knowledge-base.recommendations') }}" @endif>
                 @csrf
                 @if ($errors->any())
                     <ul class="form-validation-errors" role="alert">
@@ -61,6 +61,15 @@
                 <small class="field-hint">Write like an email: explain what happened and what help you need.</small>
                 <small class="message-counter" aria-live="polite"><span data-message-count>0</span> / 500 characters</small>
             </label>
+
+            @if ($knowledgeBaseEnabled)
+                <section class="article-recommendations" data-article-recommendations-results aria-labelledby="article-recommendations-title" hidden>
+                    <h3 id="article-recommendations-title">Possible solutions</h3>
+                    <p class="article-recommendations-message" data-article-recommendations-message aria-live="polite"></p>
+                    <div class="article-recommendations-list" data-article-recommendations-list></div>
+                    <small>Guides open in a new tab, so your request and selected attachments stay here.</small>
+                </section>
+            @endif
 
             <div class="field-label attachment-label">
                 <div class="attachment-heading">

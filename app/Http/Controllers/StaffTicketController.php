@@ -443,6 +443,10 @@ class StaffTicketController extends Controller
                     'actor_id' => $request->user()->id,
                     'event' => 'status_changed',
                     'description' => "Status changed from {$previousStatus} to {$ticket->status}.",
+                    'properties' => [
+                        'previous_status' => $previousStatus,
+                        'new_status' => $ticket->status,
+                    ],
                 ]);
 
                 $notificationRecipients->forTicket($ticket, $request->user()->id)

@@ -1298,6 +1298,144 @@ document.querySelectorAll('.attachment-box input[type="file"]').forEach((input) 
 	});
 });
 
+document.querySelectorAll('form[data-article-recommendations]').forEach((form) => {
+	const subjectInput = form.querySelector('[name="subject"]');
+	const messageInput = form.querySelector('[name="message"]');
+	const csrfInput = form.querySelector('[name="_token"]');
+	const panel = form.querySelector('[data-article-recommendations-results]');
+	const status = form.querySelector('[data-article-recommendations-message]');
+	const list = form.querySelector('[data-article-recommendations-list]');
+	const recommendationsUrl = form.dataset.recommendationsUrl;
+
+	if (
+		!(subjectInput instanceof HTMLInputElement) ||
+		!(messageInput instanceof HTMLTextAreaElement) ||
+		!(csrfInput instanceof HTMLInputElement) ||
+		!(panel instanceof HTMLElement) ||
+		!(status instanceof HTMLElement) ||
+		!(list instanceof HTMLElement) ||
+		!recommendationsUrl
+	) {
+		throw new Error('Article recommendations are missing required form controls.');
+	}
+
+	let requestTimer = null;
+	let activeRequest = null;
+
+	const renderMessage = (message) => {
+		status.textContent = message;
+		list.replaceChildren();
+		panel.hidden = false;
+	};
+
+	const renderArticles = (articles) => {
+		list.replaceChildren();
+
+		articles.forEach((article) => {
+			if (
+				typeof article.title !== 'string' ||
+				typeof article.summary !== 'string' ||
+				typeof article.url !== 'string'
+			) {
+				throw new Error('Article recommendations returned an invalid article.');
+			}
+
+			const articleUrl = new URL(article.url, window.location.origin);
+
+			if (articleUrl.origin !== window.location.origin) {
+				throw new Error('Article recommendations returned an external link.');
+			}
+
+			const card = document.createElement('article');
+			const title = document.createElement('a');
+			const summary = document.createElement('p');
+
+			card.className = 'article-recommendation-card';
+			title.href = articleUrl.href;
+			title.target = '_blank';
+			title.rel = 'noopener';
+			title.textContent = article.title;
+			summary.textContent = article.summary;
+			card.append(title, summary);
+
+			if (typeof article.category === 'string' && article.category !== '') {
+				const category = document.createElement('small');
+				category.textContent = article.category;
+				card.append(category);
+			}
+
+			list.append(card);
+		});
+
+		status.textContent = articles.length
+			? 'These guides may help with your issue.'
+			: 'No close matches yet. You can continue and submit your request.';
+		panel.hidden = false;
+	};
+
+	const requestRecommendations = () => {
+		window.clearTimeout(requestTimer);
+		activeRequest?.abort();
+		activeRequest = null;
+
+		const subject = subjectInput.value.trim();
+		const message = messageInput.value.trim();
+
+		if ((subject + ' ' + message).trim().length < 12) {
+			panel.hidden = true;
+			list.replaceChildren();
+			return;
+		}
+
+		renderMessage('Looking for relevant help articles…');
+		requestTimer = window.setTimeout(async () => {
+			const controller = new AbortController();
+			activeRequest = controller;
+
+			try {
+				const response = await fetch(recommendationsUrl, {
+					method: 'POST',
+					headers: {
+						Accept: 'application/json',
+						'Content-Type': 'application/json',
+						'X-CSRF-TOKEN': csrfInput.value,
+					},
+					credentials: 'same-origin',
+					signal: controller.signal,
+					body: JSON.stringify({ subject, message }),
+				});
+
+				if (!response.ok) {
+					throw new Error(`Article recommendations failed with status ${response.status}.`);
+				}
+
+				const data = await response.json();
+
+				if (controller.signal.aborted || activeRequest !== controller) {
+					return;
+				}
+
+				if (!data || !Array.isArray(data.articles)) {
+					throw new Error('Article recommendations returned an invalid response.');
+				}
+
+				renderArticles(data.articles);
+			} catch (error) {
+				if (controller.signal.aborted) {
+					return;
+				}
+
+				console.error('Unable to load article recommendations.', error);
+				renderMessage('Suggestions are temporarily unavailable. You can still submit your request.');
+			}
+		}, 500);
+	};
+
+	subjectInput.addEventListener('input', requestRecommendations);
+	messageInput.addEventListener('input', requestRecommendations);
+	requestRecommendations();
+});
+
 document.querySelectorAll('[data-ticket-comment-check]').forEach((conversation) => {
 	const notice = document.querySelector('[data-new-reply-notice]');
 	const refreshButton = notice?.querySelector('[data-refresh-ticket]');

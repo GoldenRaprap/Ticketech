@@ -1296,6 +1296,130 @@ img, svg { display: block; max-width: 100%; }
     font-size: 0.74rem;
 }
 
+.ticket-progress-panel {
+    margin: 20px 0 24px;
+    padding: 20px 22px;
+    border: 1px solid #d5e2ef;
+    border-radius: 13px;
+    background: linear-gradient(135deg, #fff 0%, #f2f7fd 100%);
+    box-shadow: 0 8px 20px rgba(20, 53, 94, 0.06);
+}
+
+.ticket-progress-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.ticket-progress-heading h2 {
+    margin: 4px 0 0;
+    color: #173d68;
+    font-size: 1.2rem;
+}
+
+.ticket-progress-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin: 18px 0 0;
+}
+
+.ticket-progress-details > div {
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid #e0e9f2;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.8);
+}
+
+.ticket-progress-details dt {
+    margin-bottom: 4px;
+    color: #687d94;
+    font-size: 0.68rem;
+    font-weight: 650;
+}
+
+.ticket-progress-details dd {
+    margin: 0;
+    color: #173d68;
+    font-size: 0.82rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.ticket-progress-guidance {
+    margin: 13px 0 0;
+    color: #4b6581;
+    font-size: 0.78rem;
+}
+
+.ticket-progress-timeline {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #dce6f1;
+}
+
+.ticket-progress-timeline h3 {
+    margin: 0 0 12px;
+    color: #345779;
+    font-size: 0.88rem;
+    font-weight: 700;
+}
+
+.ticket-progress-timeline ol {
+    display: grid;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.ticket-progress-timeline li {
+    position: relative;
+    display: grid;
+    grid-template-columns: 14px minmax(0, 1fr);
+    gap: 10px;
+    padding-bottom: 15px;
+}
+
+.ticket-progress-timeline li:not(:last-child)::before {
+    position: absolute;
+    top: 11px;
+    bottom: 0;
+    left: 5px;
+    width: 2px;
+    background: #d7e4f2;
+    content: "";
+}
+
+.ticket-progress-timeline-marker {
+    z-index: 1;
+    width: 12px;
+    height: 12px;
+    margin-top: 2px;
+    border: 3px solid #d7e8fb;
+    border-radius: 50%;
+    background: #2764a5;
+}
+
+.ticket-progress-timeline li strong {
+    display: block;
+    color: #244b74;
+    font-size: 0.78rem;
+}
+
+.ticket-progress-timeline li p {
+    margin: 2px 0;
+    color: #60758c;
+    font-size: 0.74rem;
+}
+
+.ticket-progress-timeline li time {
+    color: #7a8da2;
+    font-size: 0.67rem;
+}
+
 .ticket-view-summary {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1462,6 +1586,65 @@ img, svg { display: block; max-width: 100%; }
     display: grid;
     gap: 15px;
     padding-top: 17px;
+}
+
+.article-recommendations {
+    grid-column: 1 / -1;
+    padding: 15px 17px;
+    border: 1px solid #c8dbee;
+    border-radius: 11px;
+    background: #f1f7ff;
+}
+
+.article-recommendations[hidden] {
+    display: none;
+}
+
+.article-recommendations h3 {
+    margin: 0;
+    color: #1c4d7f;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.article-recommendations-message {
+    margin: 5px 0 10px;
+    color: #526d88;
+    font-size: 0.76rem;
+}
+
+.article-recommendations-list {
+    display: grid;
+    gap: 8px;
+}
+
+.article-recommendation-card {
+    padding: 11px 13px;
+    border: 1px solid #d9e6f3;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.article-recommendation-card a {
+    color: #185493;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.article-recommendation-card p {
+    margin: 4px 0 0;
+    color: #586f86;
+    font-size: 0.74rem;
+}
+
+.article-recommendation-card small,
+.article-recommendations > small {
+    display: block;
+    margin-top: 7px;
+    color: #70849a;
+    font-size: 0.68rem;
 }
 
 .ticket-message {

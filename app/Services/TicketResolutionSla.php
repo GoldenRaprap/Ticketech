@@ -7,6 +7,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use InvalidArgumentException;
 use LogicException;
 use UnexpectedValueException;
 
@@ -127,6 +128,18 @@ class TicketResolutionSla
         }
 
         return intdiv($seconds, 60);
+    }
+
+    public function deadlineAfterBusinessMinutes(CarbonInterface $from, int $minutes): CarbonImmutable
+    {
+        if ($minutes < 0) {
+            throw new InvalidArgumentException('Business minutes cannot be negative.');
+        }
+
+        return $this->addBusinessMinutes(
+            CarbonImmutable::instance($from)->setTimezone($this->displayTimezone()),
+            $minutes,
+        )->setTimezone('UTC');
     }
 
     /**
