@@ -116,6 +116,25 @@
         </article>
     </section>
 
+    <section class="workspace-card report-chart-card" aria-label="SLA rescue insights">
+        <div class="workspace-card-heading">
+            <div>
+                <span class="workspace-eyebrow">SLA rescue</span>
+                <h2>Resolution risk and breaches</h2>
+                <p>Breaches and currently at-risk tickets among requests created in this reporting period.</p>
+            </div>
+        </div>
+        <div class="report-performance-stats">
+            <div><span>SLA breaches</span><strong>{{ $slaBreachCount }}</strong></div>
+            <div><span>At-risk tickets</span><strong>{{ $slaAtRiskTicketCount }}</strong></div>
+            @forelse ($slaRiskFactorCounts as $factor => $count)
+                <div><span>{{ $factor }}</span><strong>{{ $count }}</strong></div>
+            @empty
+                <div><span>Risk factors</span><strong>None currently identified</strong></div>
+            @endforelse
+        </div>
+    </section>
+
     <div class="report-insights-grid">
         <section class="workspace-card report-trend-card">
             <div class="workspace-card-heading">

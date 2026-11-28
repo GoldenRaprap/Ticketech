@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\ClientConductWarning;
+use App\Models\Category;
 use App\Models\Department;
 use App\Models\KnowledgeArticle;
 use App\Models\Ticket;
@@ -64,6 +65,17 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertDontSee('ED-2026-000313')
             ->assertSee('>Jo</option>', false)
             ->assertDontSee('>Jordan Lee</option>', false);
+    }
+
+    public function test_regular_staff_cannot_open_the_global_triage_review_filter(): void
+    {
+        $staff = $this->createStaffUser();
+
+        $this->actingAs($staff)
+            ->from(route('staff.tickets'))
+            ->get(route('staff.tickets', ['triage' => 'needs_review']))
+            ->assertRedirect(route('staff.tickets'))
+            ->assertSessionHasErrors('triage');
     }
 
     public function test_department_admin_can_update_ticket_status_priority_and_assignee(): void
@@ -128,6 +140,190 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             'event' => 'priority_changed',
             'description' => 'Priority changed to Urgent.',
         ]);
+    }
+
+    public function test_staff_priority_correction_records_feedback_for_the_automatic_rule(): void
+    {
+        $staff = $this->createStaffUser();
+        $ticket = $this->createTicket('ED-2026-000324', 'Slow campus network', null, 'Medium');
+        $ticket->events()->create([
+            'actor_name' => 'Automated triage',
+            'event' => 'automated_triage',
+            'description' => 'Priority assigned automatically.',
+            'properties' => [
+                'priority' => 'Medium',
+                'priority_keyword' => 'slow loading',
+            ],
+        ]);
+
+        $this->actingAs($staff)
+            ->get(route('staff.ticket-detail', $ticket))
+            ->assertOk()
+            ->assertSee('name="category_id"', false)
+            ->assertSee('value="'.$correctCategory->id.'"', false);
+
+        $this->actingAs($staff)
+            ->put(route('staff.ticket-update', $ticket), [
+                'status' => 'New',
+                'priority' => 'High',
+            ])
+            ->assertRedirect(route('staff.ticket-detail', $ticket));
+
+        $priorityEvent = $ticket->events()->where('event', 'priority_changed')->firstOrFail();
+
+        $this->assertSame([
+            'priority_feedback' => true,
+            'previous_priority' => 'Medium',
+            'new_priority' => 'High',
+            'matched_keyword' => 'slow loading',
+        ], $priorityEvent->properties);
+    }
+
+    public function test_department_staff_category_correction_is_recorded_as_triage_feedback(): void
+    {
+        $department = $this->defaultDepartment();
+        $staff = $this->createStaffUser();
+        $automatedCategory = Category::factory()->create([
+            'name' => 'Account access',
+            'department_id' => $department->id,
+        ]);
+        $correctCategory = Category::factory()->create([
+            'name' => 'Course platform access',
+            'department_id' => $department->id,
+        ]);
+        $ticket = $this->createTicket('ED-2026-000325', 'Cannot open my course site');
+        $ticket->update(['category_id' => $automatedCategory->id]);
+        $ticket->events()->create([
+            'actor_name' => 'Automated triage',
+            'event' => 'automated_triage',
+            'description' => 'Ticket classified automatically.',
+            'properties' => [
+                'routed_category_id' => $automatedCategory->id,
+                'department_id' => $department->id,
+            ],
+        ]);
+
+        $this->actingAs($staff)
+            ->put(route('staff.ticket-update', $ticket), [
+                'status' => 'New',
+                'priority' => 'Low',
+                'category_id' => $correctCategory->id,
+            ])
+            ->assertRedirect(route('staff.ticket-detail', $ticket));
+
+        $this->assertSame($correctCategory->id, $ticket->fresh()->category_id);
+        $this->assertDatabaseHas('ticket_events', [
+            'ticket_id' => $ticket->id,
+            'event' => 'category_changed',
+            'properties->category_feedback' => true,
+            'properties->department_feedback' => false,
+            'properties->previous_category_id' => $automatedCategory->id,
+            'properties->new_category_id' => $correctCategory->id,
+        ]);
+    }
+
+    public function test_staff_cannot_change_category_for_a_ticket_in_another_department(): void
+    {
+        $ticketDepartment = $this->defaultDepartment();
+        $staffDepartment = Department::factory()->create();
+        $staff = $this->createStaffUser(['department_id' => $staffDepartment->id]);
+        $ticketCategory = Category::factory()->create([
+            'department_id' => $ticketDepartment->id,
+        ]);
+        $ticket = $this->createTicket('ED-2026-000326', 'Category access test');
+        $ticket->update(['category_id' => $ticketCategory->id]);
+        $anotherCategory = Category::factory()->create([
+            'department_id' => $staffDepartment->id,
+        ]);
+
+        $this->actingAs($staff)
+            ->put(route('staff.ticket-update', $ticket), [
+                'status' => 'New',
+                'category_id' => $anotherCategory->id,
+            ])
+            ->assertNotFound();
+
+        $this->assertSame($ticketCategory->id, $ticket->fresh()->category_id);
+        $this->assertDatabaseMissing('ticket_events', [
+            'ticket_id' => $ticket->id,
+            'event' => 'category_changed',
+        ]);
+    }
+
+    public function test_department_transfer_can_correct_category_and_department_together(): void
+    {
+        $sourceDepartment = $this->defaultDepartment();
+        $targetDepartment = Department::factory()->create();
+        $staff = $this->createDepartmentAdmin();
+        $previousCategory = Category::factory()->create([
+            'department_id' => $sourceDepartment->id,
+        ]);
+        $targetCategory = Category::factory()->create([
+            'department_id' => $targetDepartment->id,
+        ]);
+        $ticket = $this->createTicket('ED-2026-000327', 'Portal is unavailable');
+        $ticket->update(['category_id' => $previousCategory->id]);
+        $ticket->events()->create([
+            'actor_name' => 'Automated triage',
+            'event' => 'automated_triage',
+            'description' => 'Ticket classified automatically.',
+            'properties' => [
+                'routed_category_id' => $previousCategory->id,
+                'department_id' => $sourceDepartment->id,
+            ],
+        ]);
+
+        $this->actingAs($staff)
+            ->post(route('staff.ticket-transfer', $ticket), [
+                'department_id' => $targetDepartment->id,
+                'category_id' => $targetCategory->id,
+                'handoff_note' => 'Correcting the route based on the issue description.',
+            ])
+            ->assertRedirect(route('staff.ticket-detail', $ticket));
+
+        $ticket->refresh();
+        $this->assertSame($targetDepartment->id, $ticket->department_id);
+        $this->assertSame($targetCategory->id, $ticket->category_id);
+        $this->assertNull($ticket->assigned_to_user_id);
+        $this->assertDatabaseHas('ticket_events', [
+            'ticket_id' => $ticket->id,
+            'event' => 'category_changed',
+            'properties->category_feedback' => true,
+            'properties->department_feedback' => true,
+            'properties->new_category_id' => $targetCategory->id,
+            'properties->new_department_id' => $targetDepartment->id,
+        ]);
+    }
+
+    public function test_department_transfer_rejects_a_category_mapped_to_another_department(): void
+    {
+        $sourceDepartment = $this->defaultDepartment();
+        $targetDepartment = Department::factory()->create();
+        $otherDepartment = Department::factory()->create();
+        $staff = $this->createDepartmentAdmin();
+        $currentCategory = Category::factory()->create([
+            'department_id' => $sourceDepartment->id,
+        ]);
+        $wrongCategory = Category::factory()->create([
+            'department_id' => $otherDepartment->id,
+        ]);
+        $ticket = $this->createTicket('ED-2026-000328', 'Department category validation');
+        $ticket->update(['category_id' => $currentCategory->id]);
+
+        $this->actingAs($staff)
+            ->from(route('staff.ticket-detail', $ticket))
+            ->post(route('staff.ticket-transfer', $ticket), [
+                'department_id' => $targetDepartment->id,
+                'category_id' => $wrongCategory->id,
+                'handoff_note' => 'Correcting the route.',
+            ])
+            ->assertRedirect(route('staff.ticket-detail', $ticket))
+            ->assertSessionHasErrors([
+                'category_id' => 'Select an active category assigned to the receiving department.',
+            ]);
+
+        $this->assertSame($sourceDepartment->id, $ticket->fresh()->department_id);
+        $this->assertSame($currentCategory->id, $ticket->fresh()->category_id);
     }
 
     public function test_staff_cannot_set_an_invalid_priority_for_an_unassigned_ticket(): void

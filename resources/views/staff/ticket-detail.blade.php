@@ -29,6 +29,31 @@
         </div>
     @endif
 
+    @if ($canWorkTicket && $isSlaAtRisk)
+        <div class="workspace-alert workspace-alert--info" role="status">
+            <strong>SLA rescue alert · risk score {{ $ticket->sla_risk_score }}/100</strong>
+            <p>This ticket is at risk of missing its resolution target.</p>
+            <ul>
+                @foreach ($slaRiskReasons as $reason)
+                    <li>{{ $reason }}</li>
+                @endforeach
+            </ul>
+            @if ($suggestedHandoff)
+                <p><strong>Suggested handoff:</strong> {{ $suggestedHandoff->displayName() }} has a lower active workload. This is a recommendation only; the assignment has not changed.</p>
+            @endif
+        </div>
+    @endif
+
+    @if ($canWorkTicket && in_array($automatedTriageStatus, ['needs_department', 'needs_staff_assignment'], true))
+        <div class="workspace-alert workspace-alert--info" role="status">
+            @if ($automatedTriageStatus === 'needs_department')
+                Automated triage could not select an active department. Please route this ticket to the right department.
+            @else
+                Automated triage routed this ticket to {{ $ticket->department?->name }}, but no eligible staff were available. Please assign it to a team member.
+            @endif
+        </div>
+    @endif
+
     @if ($canTransferTicket && $departments->isNotEmpty())
         <details class="workspace-card ticket-collapsible-card ticket-transfer-card" @if ($ticket->department_id === null || $errors->hasAny(['department_id', 'handoff_note'])) open @endif>
             <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">{{ $ticket->department_id === null ? 'Department triage' : 'Department handoff' }}</span><h2>{{ $ticket->department_id === null ? 'Assign department' : 'Transfer ticket' }}</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>
@@ -46,6 +71,19 @@
                                 @endforeach
                             </select>
                             @error('department_id')<span class="form-field-error">{{ $message }}</span>@enderror
+                        </label>
+                        <label class="workspace-field">
+                            <span>Correct category (optional)</span>
+                            <select name="category_id">
+                                <option value="">Leave category for review</option>
+                                @foreach ($routableCategories as $category)
+                                    <option value="{{ $category->id }}" @selected((string) old('category_id') === (string) $category->id)>
+                                        {{ $category->name }} — {{ $category->department->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <small>Choose a category mapped to the receiving department. Staff corrections help improve future triage suggestions.</small>
+                            @error('category_id')<span class="form-field-error">{{ $message }}</span>@enderror
                         </label>
                         @if ($ticket->department_id !== null)
                             <label class="workspace-field">
@@ -200,6 +238,20 @@
                             </select>
                             @error('priority')<span class="form-field-error">{{ $message }}</span>@enderror
                         </label>
+                        @if ($canWorkTicket && $ticket->department_id !== null && ! in_array($ticket->status, ['Resolved', 'Closed'], true))
+                            <label class="workspace-field">
+                                <span>Category</span>
+                                <select name="category_id">
+                                    <option value="">Unclassified</option>
+                                    @foreach ($categories->where('department_id', $ticket->department_id) as $category)
+                                        <option value="{{ $category->id }}" @selected((string) old('category_id', $ticket->category_id) === (string) $category->id)>
+                                            {{ $category->name }}{{ $category->is_active ? '' : ' (inactive)' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('category_id')<span class="form-field-error">{{ $message }}</span>@enderror
+                            </label>
+                        @endif
                         @if ($canChangeAssignment)
                             <label class="workspace-field">
                                 <span>{{ $canManageTickets ? 'Assigned to' : ($ticket->assigned_to_user_id === null ? 'Take ticket' : 'Endorse to') }}</span>
@@ -249,7 +301,7 @@
                         <div class="client-report-history">
                             <strong>{{ str($report->reason)->replace('_', ' ')->title() }}</strong>
                             <span>{{ ucfirst($report->status) }}{{ $report->action ? ' · '.ucfirst($report->action) : '' }}</span>
-                            <small>Reported by {{ $report->reporter->name }} · {{ $report->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</small>
+                            <small>Reported by {{ $report->reporter?->name ?? 'Automated screening' }} · {{ $report->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</small>
                         </div>
                     @empty
                         <p class="client-report-empty">No reports have been submitted for this ticket.</p>
@@ -295,7 +347,7 @@
                 <div class="workspace-card-heading"><div><span class="workspace-eyebrow">History</span><h2>Ticket activity</h2></div></div>
                 <ol class="ticket-timeline">
                     @forelse ($ticket->events as $event)
-                        <li><span class="timeline-marker" aria-hidden="true"></span><div><strong>{{ $event->description }}</strong><small>{{ $event->actor?->name ?? 'Requester' }} · {{ $event->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</small></div></li>
+                        <li><span class="timeline-marker" aria-hidden="true"></span><div><strong>{{ $event->description }}</strong><small>{{ $event->actor?->name ?? $event->actor_name ?? 'Requester' }} · {{ $event->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</small></div></li>
                     @empty
                         <li><span class="timeline-marker" aria-hidden="true"></span><div><strong>Ticket received</strong><small>{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</small></div></li>
                     @endforelse

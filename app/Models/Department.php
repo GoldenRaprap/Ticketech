@@ -26,6 +26,11 @@ class Department extends Model
         return $this->hasMany(Ticket::class);
     }
 
+    public function categories(): HasMany
+    {
+        return $this->hasMany(Category::class);
+    }
+
     public function users(): HasMany
     {
         return $this->hasMany(User::class);

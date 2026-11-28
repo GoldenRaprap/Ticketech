@@ -6,7 +6,10 @@ use App\Models\Category;
 use App\Models\Department;
 use App\Services\AuditActivityLogger;
 use App\Services\SlaSettings;
+use App\Services\TicketCategoryRecommendations;
+use App\Services\TicketNewCategoryRecommendations;
 use App\Services\TicketPriorityClassifier;
+use App\Services\TicketPriorityRecommendations;
 use App\Services\TicketResolutionSla;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,13 +17,27 @@ use Illuminate\View\View;
 
 class AdminSlaSettingsController extends Controller
 {
-    public function index(SlaSettings $slaSettings, TicketPriorityClassifier $priorityClassifier): View
-    {
+    public function index(
+        SlaSettings $slaSettings,
+        TicketPriorityClassifier $priorityClassifier,
+        TicketPriorityRecommendations $priorityRecommendations,
+        TicketCategoryRecommendations $categoryRecommendations,
+        TicketNewCategoryRecommendations $newCategoryRecommendations,
+    ): View {
+        $priorityKeywords = $priorityClassifier->keywords();
+
         return view('staff.sla-settings', [
             'targets' => $slaSettings->targets(),
-            'priorityKeywords' => $priorityClassifier->keywords(),
+            'priorityKeywords' => $priorityKeywords,
+            'priorityRecommendations' => $priorityRecommendations->recommendations($priorityKeywords),
+            'categoryRecommendations' => $categoryRecommendations->recommendations(),
+            'newCategorySuggestions' => $newCategoryRecommendations->suggestions(),
             'departments' => Department::query()->orderByDesc('is_active')->orderBy('name')->get(),
-            'categories' => Category::query()->orderByDesc('is_active')->orderBy('name')->get(),
+            'categories' => Category::query()
+                ->with('department:id,name,is_active')
+                ->orderByDesc('is_active')
+                ->orderBy('name')
+                ->get(),
         ]);
     }
 

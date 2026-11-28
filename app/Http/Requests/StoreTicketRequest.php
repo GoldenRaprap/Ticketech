@@ -4,7 +4,6 @@ namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class StoreTicketRequest extends FormRequest
 {
@@ -28,11 +27,6 @@ class StoreTicketRequest extends FormRequest
             'student_id' => ['required', 'string', 'regex:/^[0-9]{10}$/'],
             'email' => ['required', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'regex:/^09[0-9]{9}$/'],
-            'category_id' => [
-                'nullable',
-                'integer',
-                Rule::exists('categories', 'id')->where(fn ($query) => $query->where('is_active', true)),
-            ],
             'subject' => ['required', 'string', 'max:150'],
             'message' => ['required', 'string', 'max:500'],
             'attachment' => ['nullable', 'array', 'max:5'],

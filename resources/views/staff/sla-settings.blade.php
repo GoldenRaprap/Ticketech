@@ -7,14 +7,14 @@
         <div>
             <span class="admin-page-eyebrow">ADMINISTRATION / SERVICE POLICY &amp; TICKET SETUP</span>
             <h1>Ticket options</h1>
-            <p>Configure service targets, subject-based priority rules, and the departments and categories available on ticket submissions.</p>
+            <p>Configure service targets, automatic ticket classification, and department routing for ticket categories.</p>
         </div>
         <span class="admin-page-context"><span aria-hidden="true">●</span> Admin configuration</span>
     </header>
 
     <section class="admin-policy-note">
         <span class="admin-policy-note-icon" aria-hidden="true">i</span>
-        <div><strong>Resolution targets drive ticket alerts</strong><p>Resolution deadlines use an 8-hour weekday clock from 9 a.m. to 5 p.m. in the app display timezone. A warning is sent at 80% of the target and a separate alert is sent if it becomes overdue. The clock pauses while a ticket is Waiting for User or On Hold. Public holidays are not excluded. First-response targets remain guidance only.</p></div>
+        <div><strong>Resolution targets drive ticket alerts</strong><p>Resolution deadlines use the configured opening-to-closing interval on weekdays in the app display timezone. A warning is sent at 80% of the target and a separate alert is sent if it becomes overdue. The clock pauses while a ticket is Waiting for User or On Hold. Public holidays are not excluded. First-response targets remain guidance only.</p></div>
         <span class="admin-readonly-badge">Editable</span>
     </section>
 
@@ -73,7 +73,7 @@
         </section>
         <section class="admin-console-card" aria-labelledby="service-target-definitions-heading">
             <header class="admin-console-card-heading">
-                <div><span class="admin-page-eyebrow">HOW TO INTERPRET</span><h2 id="service-target-definitions-heading">Service target definitions</h2><p>Resolution values calculate warning and due times. One business day is eight business hours; weekends and time outside the 9 a.m.–5 p.m. schedule do not count.</p></div>
+                <div><span class="admin-page-eyebrow">HOW TO INTERPRET</span><h2 id="service-target-definitions-heading">Service target definitions</h2><p>Resolution values calculate warning and due times. One business day is the configured opening-to-closing interval; weekends and time outside the configured schedule do not count.</p></div>
             </header>
             <div class="admin-definition-grid">
                 <article><span class="admin-definition-number">01</span><div><strong>First response</strong><p>The target time for a staff member to make an initial response. These values are currently guidance only.</p></div></article>
@@ -91,7 +91,7 @@
             <div>
                 <span class="admin-page-eyebrow">TICKET CLASSIFICATION</span>
                 <h2>Departments and categories</h2>
-                <p>Active categories appear on the Submit a ticket form. Helpdesk staff assign each ticket to the appropriate department after submission.</p>
+                <p>Map active categories to departments and add specific matching phrases. Repeated staff corrections produce suggestions for admin approval; unmatched or ambiguous tickets remain in the review queue.</p>
             </div>
         </header>
 
@@ -113,7 +113,7 @@
                     </label>
                     <button class="admin-console-button" type="submit"><span aria-hidden="true">+</span> Add department</button>
                 </form>
-                <div class="admin-ticket-option-list">
+                <div class="admin-ticket-option-list admin-ticket-option-list--departments">
                     @forelse ($departments as $department)
                         <article class="admin-ticket-option-item">
                             <div class="admin-ticket-option-copy"><strong>{{ $department->name }}</strong></div>
@@ -153,9 +153,81 @@
                         <span class="visually-hidden">Category description</span>
                         <input id="category-description" name="description" value="{{ old('description') }}" maxlength="255" placeholder="Description (optional)">
                     </label>
+                    <label class="admin-filter-field" for="category-classification-keywords">
+                        <span class="visually-hidden">Additional category matching phrases</span>
+                        <input id="category-classification-keywords" name="classification_keywords" value="{{ old('classification_keywords') }}" maxlength="2000" placeholder="Matching phrases">
+                    </label>
+                    <label class="admin-filter-field" for="category-department">
+                        <span class="visually-hidden">Route category to department</span>
+                        <select id="category-department" name="department_id">
+                            <option value="">Needs review (no route)</option>
+                            @foreach ($departments->where('is_active', true) as $department)
+                                <option value="{{ $department->id }}" @selected((string) old('department_id', '') === (string) $department->id)>{{ $department->name }}</option>
+                            @endforeach
+                        </select>
+                    </label>
                     <button class="admin-console-button" type="submit"><span aria-hidden="true">+</span> Add category</button>
                 </form>
-                <div class="admin-ticket-option-list">
+                @if ($newCategorySuggestions !== [])
+                    <section class="admin-new-category-suggestions" aria-labelledby="new-category-suggestions-heading">
+                        <header>
+                            <div>
+                                <span class="admin-page-eyebrow">UNMATCHED TICKET PATTERNS</span>
+                                <h4 id="new-category-suggestions-heading">Suggested new categories</h4>
+                                <p>Recurring phrases found in at least 3 unmatched tickets. Review the examples and choose a department before creating a category.</p>
+                            </div>
+                        </header>
+                        <div class="admin-new-category-suggestion-list">
+                            @foreach ($newCategorySuggestions as $suggestion)
+                                <article class="admin-new-category-suggestion">
+                                    <div class="admin-new-category-suggestion-heading">
+                                        <div>
+                                            <span class="admin-page-eyebrow">NEW CATEGORY CANDIDATE</span>
+                                            <h5>{{ $suggestion['category_name'] }}</h5>
+                                        </div>
+                                        <span class="admin-ticket-option-count">{{ $suggestion['ticket_count'] }} unmatched tickets</span>
+                                    </div>
+                                    <p class="admin-new-category-suggestion-phrase">Recurring phrase: <strong>{{ $suggestion['keyword'] }}</strong></p>
+                                    <div class="admin-new-category-suggestion-examples">
+                                        <strong>Example tickets</strong>
+                                        <ul>
+                                            @foreach ($suggestion['examples'] as $subject)
+                                                <li>{{ $subject }}</li>
+                                            @endforeach
+                                        </ul>
+                                    </div>
+                                    @if ($departments->where('is_active', true)->isNotEmpty())
+                                        <form
+                                            class="admin-new-category-suggestion-form"
+                                            action="{{ route('admin.sla-settings.category-suggestions.store') }}"
+                                            method="post"
+                                        >
+                                            @csrf
+                                            <input type="hidden" name="keyword" value="{{ $suggestion['keyword'] }}">
+                                            <label class="admin-new-category-suggestion-field">
+                                                <span>Category name</span>
+                                                <input name="category_name" value="{{ $suggestion['category_name'] }}" maxlength="255" required>
+                                            </label>
+                                            <label class="admin-new-category-suggestion-field">
+                                                <span>Department</span>
+                                                <select name="department_id" required>
+                                                    <option value="" selected disabled>Choose department</option>
+                                                    @foreach ($departments->where('is_active', true) as $department)
+                                                        <option value="{{ $department->id }}">{{ $department->name }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </label>
+                                            <button class="admin-console-button" type="submit">Approve &amp; create</button>
+                                        </form>
+                                    @else
+                                        <p class="admin-new-category-suggestion-empty">Add an active department before approving this category.</p>
+                                    @endif
+                                </article>
+                            @endforeach
+                        </div>
+                    </section>
+                @endif
+                <div class="admin-ticket-option-list admin-ticket-option-list--categories">
                     @forelse ($categories as $category)
                         <article class="admin-ticket-option-item">
                             <div class="admin-ticket-option-copy">
@@ -163,6 +235,42 @@
                                 @if ($category->description)
                                     <small>{{ $category->description }}</small>
                                 @endif
+                                @if ($category->classification_keywords)
+                                    <small>Matching phrases: {{ $category->classification_keywords }}</small>
+                                @endif
+                                <div class="admin-priority-suggestions">
+                                    <strong>Suggested phrases from staff corrections</strong>
+                                    @forelse ($categoryRecommendations[$category->id] ?? [] as $suggestion)
+                                        <div class="admin-priority-suggestion">
+                                            <span>
+                                                <span>{{ $suggestion['keyword'] }}</span>
+                                                <small>{{ $suggestion['corrections'] }} corrected tickets</small>
+                                            </span>
+                                            <form action="{{ route('admin.sla-settings.categories.keywords.approve', $category) }}" method="post">
+                                                @csrf
+                                                @method('patch')
+                                                <input type="hidden" name="keyword" value="{{ $suggestion['keyword'] }}">
+                                                <button class="admin-console-button" type="submit">Approve phrase</button>
+                                            </form>
+                                        </div>
+                                    @empty
+                                        <small>Suggestions appear after at least 3 matching staff corrections on different tickets.</small>
+                                    @endforelse
+                                </div>
+                                <form class="admin-ticket-category-route-form" action="{{ route('admin.sla-settings.categories.department.update', $category) }}" method="post" data-auto-submit-on-change>
+                                    @csrf
+                                    @method('patch')
+                                    <label class="visually-hidden" for="category-route-{{ $category->id }}">Department for {{ $category->name }}</label>
+                                    <select id="category-route-{{ $category->id }}" name="department_id">
+                                        @if ($category->department && ! $category->department->is_active)
+                                            <option value="" selected disabled>Inactive department: {{ $category->department->name }}</option>
+                                        @endif
+                                        <option value="">Needs review (no route)</option>
+                                        @foreach ($departments->where('is_active', true) as $department)
+                                            <option value="{{ $department->id }}" @selected((int) $category->department_id === $department->id)>{{ $department->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </form>
                             </div>
                             <span class="admin-ticket-option-status {{ $category->is_active ? '' : 'admin-ticket-option-status--inactive' }}">
                                 <span aria-hidden="true"></span>{{ $category->is_active ? 'Active' : 'Inactive' }}
@@ -190,8 +298,9 @@
             <header class="admin-console-card-heading">
                 <div>
                     <span class="admin-page-eyebrow">AUTOMATIC PRIORITY</span>
-                    <h2 id="priority-rules-heading">Subject keyword rules</h2>
-                    <p>New tickets are classified from the subject only. Add one word or phrase at a time, then expand a priority to review or remove keywords. The system checks configured rules from Urgent through Low; tickets with no match default to Low.</p>
+                    <h2 id="priority-rules-heading">Ticket text keyword rules</h2>
+                    <p>New tickets are classified using the subject, description, and selected category details. Add one word or phrase at a time, then expand a priority to review or remove keywords. The system checks configured rules from Urgent through Low; tickets with no match default to Low.</p>
+                    <p>Suggestions use repeated staff corrections and ticket subjects. They only stage a rule change; save ticket options to apply it.</p>
                 </div>
             </header>
             <div class="admin-priority-rules-grid">
@@ -209,6 +318,26 @@
                                     <label class="visually-hidden" for="priority-keyword-input-{{ $key }}">Keyword or phrase to add to {{ strtolower($label) }} priority</label>
                                     <input id="priority-keyword-input-{{ $key }}" type="text" maxlength="2000" autocomplete="off" placeholder="Type one keyword or phrase" data-keyword-input>
                                     <button class="admin-console-button" type="button" data-add-keyword>Add keyword</button>
+                                </div>
+                                <div class="admin-priority-suggestions">
+                                    <strong>Suggestions from staff corrections</strong>
+                                    @forelse ($priorityRecommendations[$key] as $suggestion)
+                                        <div class="admin-priority-suggestion">
+                                            <span>
+                                                <span>{{ $suggestion['keyword'] }}</span>
+                                                <small>{{ $suggestion['corrections'] }} corrected tickets</small>
+                                            </span>
+                                            <button
+                                                class="admin-console-button"
+                                                type="button"
+                                                data-keyword-suggestion
+                                                data-suggestion-action="{{ $suggestion['action'] }}"
+                                                data-suggestion-keyword="{{ $suggestion['keyword'] }}"
+                                            >{{ $suggestion['action'] === 'add' ? 'Add' : 'Remove' }}</button>
+                                        </div>
+                                    @empty
+                                        <small>Suggestions appear after at least 3 matching staff corrections on different tickets.</small>
+                                    @endforelse
                                 </div>
                                 <small class="admin-priority-keyword-feedback" data-keyword-feedback aria-live="polite"></small>
                             </div>

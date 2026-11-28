@@ -218,6 +218,49 @@ document.querySelectorAll('[data-priority-keyword-editor]').forEach((editor) => 
 		}
 	});
 
+	editor.querySelectorAll('[data-keyword-suggestion]').forEach((suggestionButton) => {
+		if (!(suggestionButton instanceof HTMLButtonElement)) {
+			throw new Error('Priority keyword suggestion must be a button.');
+		}
+
+		const keyword = suggestionButton.dataset.suggestionKeyword;
+		const action = suggestionButton.dataset.suggestionAction;
+
+		if (!keyword || (action !== 'add' && action !== 'remove')) {
+			throw new Error('Priority keyword suggestion is missing its action or keyword.');
+		}
+
+		suggestionButton.addEventListener('click', () => {
+			const keywordIndex = keywords.findIndex(
+				(existingKeyword) => existingKeyword.toLowerCase() === keyword.toLowerCase(),
+			);
+
+			if (action === 'add') {
+				if (keywordIndex !== -1 || [...keywords, keyword].join(', ').length > 2000) {
+					suggestionButton.disabled = true;
+					suggestionButton.textContent = keywordIndex !== -1 ? 'Already added' : 'List is full';
+					return;
+				}
+
+				keywords.push(keyword);
+				suggestionButton.textContent = 'Added';
+			} else {
+				if (keywordIndex === -1) {
+					suggestionButton.disabled = true;
+					suggestionButton.textContent = 'Already removed';
+					return;
+				}
+
+				keywords.splice(keywordIndex, 1);
+				suggestionButton.textContent = 'Removed';
+			}
+
+			suggestionButton.disabled = true;
+			feedback.textContent = '';
+			updateKeywordValue();
+		});
+	});
+
 	updateKeywordValue();
 });
 

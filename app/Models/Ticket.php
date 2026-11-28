@@ -33,6 +33,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'resolution_due_at',
     'sla_paused_minutes',
     'sla_paused_at',
+    'sla_risk_score',
+    'sla_risk_factors',
 ])]
 class Ticket extends Model
 {
@@ -72,6 +74,8 @@ class Ticket extends Model
             'resolution_due_at' => 'datetime',
             'sla_paused_minutes' => 'integer',
             'sla_paused_at' => 'datetime',
+            'sla_risk_score' => 'integer',
+            'sla_risk_factors' => 'array',
         ];
     }
 

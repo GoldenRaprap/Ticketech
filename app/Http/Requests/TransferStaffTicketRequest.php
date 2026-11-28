@@ -59,6 +59,16 @@ class TransferStaffTicketRequest extends FormRequest
                     }
                 }),
             ],
+            'category_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('categories', 'id')->where(function ($query): void {
+                    $query
+                        ->where('department_id', $this->input('department_id'))
+                        ->where('is_active', true);
+                }),
+            ],
             'handoff_note' => $ticket instanceof Ticket && $ticket->department_id === null
                 ? ['prohibited']
                 : ['required', 'string', 'max:5000'],
@@ -72,6 +82,7 @@ class TransferStaffTicketRequest extends FormRequest
     {
         return [
             'department_id.exists' => "Select an active department other than the ticket's current department.",
+            'category_id.exists' => 'Select an active category assigned to the receiving department.',
         ];
     }
 }

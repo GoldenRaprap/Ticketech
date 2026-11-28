@@ -42,21 +42,45 @@ class TicketPriorityClassifier
         return $keywords;
     }
 
-    public function classify(string $subject): string
-    {
-        $subject = mb_strtolower($subject);
+    public function classify(
+        string $subject,
+        ?string $description = null,
+        ?string $categoryDetails = null,
+    ): string {
+        return $this->classifyWithMatch($subject, $description, $categoryDetails)['priority'];
+    }
+
+    /**
+     * @return array{priority: string, keyword: ?string}
+     */
+    public function classifyWithMatch(
+        string $subject,
+        ?string $description = null,
+        ?string $categoryDetails = null,
+    ): array {
+        $classificationText = mb_strtolower(implode(' ', array_filter([
+            $subject,
+            $description,
+            $categoryDetails,
+        ], fn (?string $value): bool => filled($value))));
 
         foreach ($this->keywords() as $priority => $keywordList) {
             foreach ($this->parseKeywords($keywordList) as $keyword) {
                 $pattern = '/(?<![\pL\pN])'.str_replace(' ', '\s+', preg_quote($keyword, '/')).'(?![\pL\pN])/iu';
 
-                if (preg_match($pattern, $subject) === 1) {
-                    return ucfirst($priority);
+                if (preg_match($pattern, $classificationText) === 1) {
+                    return [
+                        'priority' => ucfirst($priority),
+                        'keyword' => $keyword,
+                    ];
                 }
             }
         }
 
-        return 'Low';
+        return [
+            'priority' => 'Low',
+            'keyword' => null,
+        ];
     }
 
     /**

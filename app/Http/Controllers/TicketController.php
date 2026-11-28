@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Requests\LookupTicketRequest;
 use App\Http\Requests\StoreRequesterTicketReplyRequest;
 use App\Http\Requests\StoreTicketRequest;
-use App\Models\Category;
 use App\Models\ClientModeration;
 use App\Models\PendingTicketSubmission;
 use App\Models\Ticket;
@@ -14,14 +13,17 @@ use App\Models\User;
 use App\Models\WorkspaceNotification;
 use App\Notifications\TicketEmailVerification;
 use App\Notifications\TicketRequesterUpdate;
+use App\Services\ClientConductScreening;
 use App\Services\ImmediateNotificationSender;
 use App\Services\PublicFeatureAvailability;
 use App\Services\RequesterTicketDocument;
+use App\Services\TicketDepartmentClassifier;
 use App\Services\TicketNotificationRecipients;
 use App\Services\TicketPdf;
 use App\Services\TicketPriorityClassifier;
 use App\Services\TicketResolutionSla;
 use App\Services\TicketSubmissionSettings;
+use App\Services\TicketWorkloadAssigner;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +42,6 @@ class TicketController extends Controller
     public function create(TicketSubmissionSettings $submissionSettings): View
     {
         return view('helpdesk.create-ticket', [
-            'categories' => Category::query()->where('is_active', true)->orderBy('name')->get(),
             'ticketSubmissionOpen' => $submissionSettings->isOpen(),
             'ticketSubmissionMessage' => $submissionSettings->closedMessage(),
         ]);
@@ -90,7 +91,7 @@ class TicketController extends Controller
                         'student_id' => $validated['student_id'],
                         'requester_phone' => $validated['phone'] ?? null,
                         'department_id' => null,
-                        'category_id' => $validated['category_id'] ?? null,
+                        'category_id' => null,
                         'subject' => $validated['subject'],
                         'description' => $validated['message'],
                         'moderation_warning' => $moderation?->status === 'warning',
@@ -179,15 +180,29 @@ class TicketController extends Controller
         Request $request,
         PendingTicketSubmission $submission,
         string $token,
+        ClientConductScreening $conductScreening,
         TicketPriorityClassifier $priorityClassifier,
+        TicketDepartmentClassifier $departmentClassifier,
         TicketResolutionSla $resolutionSla,
+        TicketWorkloadAssigner $workloadAssigner,
         TicketPdf $ticketPdf,
         ImmediateNotificationSender $notificationSender,
         TicketNotificationRecipients $notificationRecipients,
     ): View|RedirectResponse {
         $moderationWarning = false;
         $alreadyApproved = false;
-        $ticket = DB::transaction(function () use ($submission, $token, $priorityClassifier, $resolutionSla, $notificationRecipients, &$moderationWarning, &$alreadyApproved): ?Ticket {
+        $ticket = DB::transaction(function () use (
+            $submission,
+            $token,
+            $conductScreening,
+            $priorityClassifier,
+            $departmentClassifier,
+            $resolutionSla,
+            $workloadAssigner,
+            $notificationRecipients,
+            &$moderationWarning,
+            &$alreadyApproved,
+        ): ?Ticket {
             $lockedSubmission = PendingTicketSubmission::query()
                 ->lockForUpdate()
                 ->findOrFail($submission->id);
@@ -224,6 +239,18 @@ class TicketController extends Controller
                 ->whereKey($lockedSubmission->requester_user_id)
                 ->whereRaw('LOWER(email) = ?', [Str::lower($lockedSubmission->requester_email)])
                 ->value('id');
+            $category = $departmentClassifier->resolve(
+                $payload['subject'],
+                $payload['description'],
+            );
+            $department = $category?->department;
+            $departmentId = $department?->is_active ? $department->id : null;
+            $priorityClassification = $priorityClassifier->classifyWithMatch(
+                $payload['subject'],
+                $payload['description'],
+                $category === null ? null : trim($category->name.' '.$category->description),
+            );
+            $priority = $priorityClassification['priority'];
             $ticket = Ticket::create([
                 'requester_user_id' => $requesterUserId,
                 'requester_name' => $lockedSubmission->requester_name,
@@ -231,15 +258,16 @@ class TicketController extends Controller
                 'requester_email' => $lockedSubmission->requester_email,
                 'requester_email_verified_at' => now(),
                 'requester_phone' => $payload['requester_phone'],
-                'department_id' => $payload['department_id'],
-                'category_id' => $payload['category_id'],
+                'department_id' => $departmentId,
+                'category_id' => $category?->id,
                 'subject' => $payload['subject'],
                 'description' => $payload['description'],
-                'priority' => $priorityClassifier->classify($payload['subject']),
+                'priority' => $priority,
                 'status' => 'New',
             ]);
 
             $ticket->ticket_number = sprintf('ED-%s-%06d', now()->format('Y'), $ticket->getKey());
+            $assignee = $workloadAssigner->assign($ticket);
             $resolutionSla->refresh($ticket);
             $ticket->save();
             $ticket->events()->create([
@@ -247,6 +275,36 @@ class TicketController extends Controller
                 'event' => 'ticket_created',
                 'description' => 'Ticket submitted by '.$ticket->requester_name.' after email verification.',
             ]);
+            $routingStatus = match (true) {
+                $departmentId === null => 'needs_department',
+                $assignee === null => 'needs_staff_assignment',
+                default => 'assigned',
+            };
+            $triageDescription = match ($routingStatus) {
+                'needs_department' => 'Automated triage could not match the ticket text to an active category route. Department review is needed.',
+                'needs_staff_assignment' => "Automated triage routed this ticket to {$department->name}, but no eligible staff were available. Staff assignment is needed.",
+                default => "Automated triage matched the ticket text to category {$category->name}, routed it to {$department->name}, and assigned it to {$assignee->displayName()} based on current active workload.",
+            };
+            $ticket->events()->create([
+                'actor_name' => 'Automated triage',
+                'event' => 'automated_triage',
+                'description' => $triageDescription,
+                'properties' => [
+                    'routing_status' => $routingStatus,
+                    'category_id' => $category?->id,
+                    'routed_category_id' => $category?->id,
+                    'routing_method' => 'ticket_text',
+                    'department_id' => $departmentId,
+                    'assigned_to_user_id' => $assignee?->id,
+                    'priority' => $priority,
+                    'priority_keyword' => $priorityClassification['keyword'],
+                ],
+            ]);
+            $conductScreening->reportIfFlagged(
+                $ticket,
+                $ticket->subject."\n".$ticket->description,
+                'initial ticket submission',
+            );
 
             foreach ($lockedSubmission->attachments as $attachment) {
                 $ticket->attachments()->create([
@@ -259,7 +317,7 @@ class TicketController extends Controller
                 ]);
             }
 
-            $notificationRecipients->forTicket($ticket, $requesterUserId)
+            $notificationRecipients->forNewTicket($ticket, $requesterUserId, $assignee?->id)
                 ->each(fn (User $user) => WorkspaceNotification::create([
                     'user_id' => $user->id,
                     'ticket_id' => $ticket->id,
@@ -268,6 +326,16 @@ class TicketController extends Controller
                     'title' => 'New support ticket',
                     'message' => "{$ticket->ticket_number} · {$ticket->subject}",
                 ]));
+
+            if ($assignee !== null) {
+                WorkspaceNotification::create([
+                    'user_id' => $assignee->id,
+                    'ticket_id' => $ticket->id,
+                    'type' => 'assignment',
+                    'title' => 'Ticket assigned to you',
+                    'message' => "{$ticket->ticket_number} · {$ticket->subject} was assigned to you automatically.",
+                ]);
+            }
 
             $lockedSubmission->update([
                 'completed_ticket_number' => $ticket->ticket_number,
@@ -541,6 +609,7 @@ class TicketController extends Controller
 
     public function reply(
         StoreRequesterTicketReplyRequest $request,
+        ClientConductScreening $conductScreening,
         TicketResolutionSla $resolutionSla,
         TicketNotificationRecipients $notificationRecipients,
         ImmediateNotificationSender $notificationSender,
@@ -561,6 +630,7 @@ class TicketController extends Controller
             $ticketWasResumed = DB::transaction(function () use (
                 $ticket,
                 $validated,
+                $conductScreening,
                 $uploads,
                 $resolutionSla,
                 $notificationRecipients,
@@ -631,6 +701,11 @@ class TicketController extends Controller
                     'event' => 'requester_reply',
                     'description' => "{$lockedTicket->requester_name} replied to the ticket.",
                 ]);
+                $conductScreening->reportIfFlagged(
+                    $lockedTicket,
+                    $validated['body'],
+                    'requester reply',
+                );
 
                 $notificationRecipients->forTicket($lockedTicket)
                     ->each(fn (User $user) => WorkspaceNotification::create([

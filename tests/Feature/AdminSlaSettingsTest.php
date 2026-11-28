@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Models\Category;
 use App\Models\Department;
+use App\Models\Ticket;
 use App\Models\User;
 use App\Notifications\TicketEmailVerification;
 use App\Services\SlaSettings;
+use App\Services\TicketDepartmentClassifier;
 use App\Services\TicketPriorityClassifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
@@ -218,6 +221,238 @@ class AdminSlaSettingsTest extends TestCase
             'subject' => 'Campus-wide outage',
             'priority' => 'Urgent',
         ]);
+
+        $ticket = Ticket::query()->where('subject', 'Campus-wide outage')->firstOrFail();
+        $triageEvent = $ticket->events()->where('event', 'automated_triage')->firstOrFail();
+
+        $this->assertSame('campus-wide outage', $triageEvent->properties['priority_keyword']);
+    }
+
+    public function test_admin_sees_keyword_recommendations_from_repeated_priority_corrections(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $department = Department::factory()->create();
+        $keywords = [
+            'urgent' => 'campus-wide outage',
+            'high' => 'high-impact failure',
+            'medium' => 'moderate delay',
+            'low' => '',
+        ];
+        app(TicketPriorityClassifier::class)->update($keywords);
+
+        foreach (range(1, 3) as $index) {
+            $ticket = $this->createPriorityFeedbackTicket(
+                $department,
+                "ED-2026-91000{$index}",
+                'Slow campus network disconnects',
+            );
+            $ticket->events()->create([
+                'event' => 'priority_changed',
+                'description' => 'Priority changed to Medium.',
+                'properties' => [
+                    'priority_feedback' => true,
+                    'previous_priority' => 'Low',
+                    'new_priority' => 'Medium',
+                    'matched_keyword' => null,
+                ],
+            ]);
+        }
+
+        foreach (range(1, 2) as $index) {
+            $ticket = $this->createPriorityFeedbackTicket(
+                $department,
+                "ED-2026-92000{$index}",
+                'Wireless printer request',
+            );
+            $ticket->events()->create([
+                'event' => 'priority_changed',
+                'description' => 'Priority changed to High.',
+                'properties' => [
+                    'priority_feedback' => true,
+                    'previous_priority' => 'Low',
+                    'new_priority' => 'High',
+                    'matched_keyword' => null,
+                ],
+            ]);
+        }
+
+        foreach (range(1, 3) as $index) {
+            $ticket = $this->createPriorityFeedbackTicket(
+                $department,
+                "ED-2026-93000{$index}",
+                'Campus-wide outage affecting the portal',
+                'Urgent',
+            );
+            $ticket->events()->create([
+                'event' => 'priority_changed',
+                'description' => 'Priority changed to High.',
+                'properties' => [
+                    'priority_feedback' => true,
+                    'previous_priority' => 'Urgent',
+                    'new_priority' => 'High',
+                    'matched_keyword' => 'campus-wide outage',
+                ],
+            ]);
+        }
+
+        $this->actingAs($admin)
+            ->get(route('admin.sla-settings'))
+            ->assertOk()
+            ->assertSee('Suggestions from staff corrections')
+            ->assertSee('slow campus network')
+            ->assertSee('3 corrected tickets')
+            ->assertDontSee('wireless printer')
+            ->assertSee('data-suggestion-action="add"', false)
+            ->assertSee('data-suggestion-action="remove"', false);
+    }
+
+    public function test_admin_does_not_see_priority_suggestion_after_later_correction_replaces_it(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $department = Department::factory()->create();
+
+        foreach (range(1, 3) as $index) {
+            $ticket = $this->createPriorityFeedbackTicket(
+                $department,
+                "ED-2026-95000{$index}",
+                'Slow campus network disconnects',
+            );
+            $ticket->events()->create([
+                'event' => 'priority_changed',
+                'description' => 'Priority changed to Medium.',
+                'properties' => [
+                    'priority_feedback' => true,
+                    'previous_priority' => 'Low',
+                    'new_priority' => 'Medium',
+                ],
+            ]);
+
+            if ($index === 1) {
+                $ticket->events()->create([
+                    'event' => 'priority_changed',
+                    'description' => 'Priority restored to the original classification.',
+                    'properties' => [
+                        'priority_feedback' => false,
+                        'previous_priority' => 'Medium',
+                        'new_priority' => 'Low',
+                    ],
+                ]);
+            }
+        }
+
+        $this->actingAs($admin)
+            ->get(route('admin.sla-settings'))
+            ->assertOk()
+            ->assertDontSee('slow campus network');
+    }
+
+    public function test_admin_can_approve_category_phrase_suggestions_from_staff_corrections(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $department = Department::factory()->create();
+        $category = Category::factory()->create([
+            'name' => 'Account access',
+            'description' => 'Login and credential support.',
+            'department_id' => $department->id,
+        ]);
+
+        foreach (range(1, 3) as $index) {
+            $ticket = Ticket::create([
+                'ticket_number' => "ED-2026-94000{$index}",
+                'department_id' => $department->id,
+                'category_id' => $category->id,
+                'requester_name' => 'Jamie Student',
+                'student_id' => "202300000{$index}",
+                'requester_email' => "jamie{$index}@example.edu",
+                'subject' => 'Slow campus network disconnects',
+                'description' => 'A test support request.',
+                'priority' => 'Low',
+                'status' => 'New',
+            ]);
+            $ticket->events()->create([
+                'event' => 'category_changed',
+                'description' => 'Ticket classification corrected by staff.',
+                'properties' => [
+                    'category_feedback' => true,
+                    'new_category_id' => $category->id,
+                ],
+            ]);
+        }
+
+        $this->actingAs($admin)
+            ->get(route('admin.sla-settings'))
+            ->assertOk()
+            ->assertSee('Suggested phrases from staff corrections')
+            ->assertSee('campus network disconnects')
+            ->assertSee('3 corrected tickets');
+
+        $this->patch(route('admin.sla-settings.categories.keywords.approve', $category), [
+            'keyword' => 'campus network disconnects',
+        ])
+            ->assertRedirect(route('admin.sla-settings'))
+            ->assertSessionHas('status', 'Category matching phrase approved.');
+
+        $this->assertSame(
+            'campus network disconnects',
+            $category->fresh()->classification_keywords,
+        );
+        $this->assertSame(
+            $category->id,
+            app(TicketDepartmentClassifier::class)
+                ->resolve('Campus network disconnects', '')
+                ?->id,
+        );
+        $this->assertDatabaseHas('ticket_events', [
+            'event' => 'category_keyword_approved',
+            'subject_type' => 'Category',
+            'subject_id' => (string) $category->id,
+        ]);
+    }
+
+    public function test_admin_does_not_see_category_suggestion_after_later_correction_replaces_it(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $department = Department::factory()->create();
+        $category = Category::factory()->create(['department_id' => $department->id]);
+
+        foreach (range(1, 3) as $index) {
+            $ticket = Ticket::create([
+                'ticket_number' => "ED-2026-96000{$index}",
+                'department_id' => $department->id,
+                'category_id' => $category->id,
+                'requester_name' => 'Jamie Student',
+                'student_id' => "202400000{$index}",
+                'requester_email' => "jamiereview{$index}@example.edu",
+                'subject' => 'Campus wifi dropout',
+                'description' => 'A test support request.',
+                'priority' => 'Low',
+                'status' => 'New',
+            ]);
+            $ticket->events()->create([
+                'event' => 'category_changed',
+                'description' => 'Ticket classification corrected by staff.',
+                'properties' => [
+                    'category_feedback' => true,
+                    'new_category_id' => $category->id,
+                ],
+            ]);
+
+            if ($index === 1) {
+                $ticket->events()->create([
+                    'event' => 'category_changed',
+                    'description' => 'Category restored to the original classification.',
+                    'properties' => [
+                        'category_feedback' => false,
+                        'new_category_id' => $category->id,
+                    ],
+                ]);
+            }
+        }
+
+        $this->actingAs($admin)
+            ->get(route('admin.sla-settings'))
+            ->assertOk()
+            ->assertDontSee('campus wifi');
     }
 
     public function test_staff_cannot_update_sla_targets(): void
@@ -230,10 +465,32 @@ class AdminSlaSettingsTest extends TestCase
             ->assertForbidden();
         $this->put(route('admin.sla-settings.priority-keywords.update'), [])
             ->assertForbidden();
+        $this->patch(route('admin.sla-settings.categories.keywords.approve', Category::factory()->create()), [
+            'keyword' => 'unapproved suggestion',
+        ])->assertForbidden();
 
         $this->assertDatabaseMissing('system_settings', [
             'setting' => 'sla.urgent.first_response.value',
         ]);
         $this->assertSame($priorityKeywords, app(TicketPriorityClassifier::class)->keywords());
+    }
+
+    private function createPriorityFeedbackTicket(
+        Department $department,
+        string $ticketNumber,
+        string $subject,
+        string $priority = 'Low',
+    ): Ticket {
+        return Ticket::create([
+            'ticket_number' => $ticketNumber,
+            'department_id' => $department->id,
+            'requester_name' => 'Jamie Student',
+            'student_id' => $ticketNumber,
+            'requester_email' => $ticketNumber.'@example.edu',
+            'subject' => $subject,
+            'description' => 'A test support request.',
+            'priority' => $priority,
+            'status' => 'New',
+        ]);
     }
 }

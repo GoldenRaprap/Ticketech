@@ -38,12 +38,10 @@
                     </div>
                 @endif
 
-                @if ($errors->any())
+                @if ($errors->hasAny(['from_address', 'from_name', 'smtp_host', 'smtp_port', 'smtp_encryption', 'smtp_username', 'smtp_app_password', 'clear_smtp_app_password']))
                     <div class="workspace-alert workspace-alert--error" role="alert">
                         <strong>Unable to update email settings:</strong>
-                        <ul>
-                            @foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach
-                        </ul>
+                        <ul>@foreach ($errors->only(['from_address', 'from_name', 'smtp_host', 'smtp_port', 'smtp_encryption', 'smtp_username', 'smtp_app_password', 'clear_smtp_app_password']) as $error)<li>{{ $error }}</li>@endforeach</ul>
                     </div>
                 @endif
 
@@ -90,6 +88,31 @@
                         </label>
                     @endif
                     <button class="admin-console-button" type="submit">Save email and SMTP settings</button>
+                </form>
+            </section>
+
+            <section class="admin-console-card">
+                <header class="admin-console-card-heading">
+                    <div><span class="admin-page-eyebrow">SERVICE HOURS</span><h2>Resolution target business hours</h2><p>Set the local opening and closing times used to calculate resolution deadlines. Business days remain Monday to Friday; public holidays are not excluded.</p></div>
+                </header>
+                @if ($errors->hasAny(['opening_time', 'closing_time']))
+                    <div class="workspace-alert workspace-alert--error" role="alert">
+                        <strong>Unable to update business hours:</strong>
+                        <ul>@foreach ($errors->only(['opening_time', 'closing_time']) as $error)<li>{{ $error }}</li>@endforeach</ul>
+                    </div>
+                @endif
+                <form class="admin-staff-create-form" action="{{ route('admin.system-settings.business-hours.update') }}" method="post">
+                    @csrf
+                    @method('put')
+                    <label class="admin-staff-field" for="business-opening-time">
+                        <span>Opening time</span>
+                        <input id="business-opening-time" name="opening_time" type="time" value="{{ old('opening_time', $businessHours['opening_time']) }}" required>
+                    </label>
+                    <label class="admin-staff-field" for="business-closing-time">
+                        <span>Closing time</span>
+                        <input id="business-closing-time" name="closing_time" type="time" value="{{ old('closing_time', $businessHours['closing_time']) }}" required>
+                    </label>
+                    <button class="admin-console-button" type="submit">Save business hours</button>
                 </form>
             </section>
 

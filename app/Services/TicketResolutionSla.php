@@ -14,8 +14,6 @@ class TicketResolutionSla
 {
     private const WARNING_PERCENT = 80;
 
-    private const BUSINESS_DAY_MINUTES = 480;
-
     /**
      * @var array<string, array{
      *     priority: string,
@@ -27,6 +25,11 @@ class TicketResolutionSla
      */
     private ?array $targets = null;
 
+    /**
+     * @var array{opening_time: string, closing_time: string, minutes_per_day: int} | null
+     */
+    private ?array $businessHours = null;
+
     public function __construct(private SlaSettings $slaSettings) {}
 
     public function refresh(Ticket $ticket, ?CarbonInterface $cycleStart = null): void
@@ -37,6 +40,7 @@ class TicketResolutionSla
             throw new LogicException('A persisted ticket is required to calculate its resolution SLA.');
         }
 
+        $businessHours = $this->businessHours();
         $priority = strtolower($ticket->priority);
         $target = $this->targets()[$priority]['resolution'] ?? null;
 
@@ -46,7 +50,7 @@ class TicketResolutionSla
 
         $targetMinutes = match ($target['unit']) {
             'business_hour' => (int) $target['value'] * 60,
-            'business_day' => (int) $target['value'] * self::BUSINESS_DAY_MINUTES,
+            'business_day' => (int) $target['value'] * $businessHours['minutes_per_day'],
             default => throw new UnexpectedValueException("Unsupported resolution target unit [{$target['unit']}]."),
         };
         $pausedMinutes = max(0, (int) $ticket->sla_paused_minutes);
@@ -66,6 +70,8 @@ class TicketResolutionSla
 
     public function refreshOpenTickets(): void
     {
+        $this->businessHours = $this->slaSettings->businessHours();
+
         $this->openTickets()
             ->chunkById(100, function (EloquentCollection $tickets): void {
                 foreach ($tickets as $ticket) {
@@ -106,6 +112,7 @@ class TicketResolutionSla
 
     public function businessMinutesBetween(CarbonInterface $from, CarbonInterface $to): int
     {
+        $businessHours = $this->businessHours();
         $start = CarbonImmutable::instance($from)->setTimezone($this->displayTimezone());
         $end = CarbonImmutable::instance($to)->setTimezone($this->displayTimezone());
 
@@ -118,8 +125,8 @@ class TicketResolutionSla
 
         while ($day->lessThanOrEqualTo($end)) {
             if ($day->isWeekday()) {
-                $businessStart = $day->setTime(9, 0);
-                $businessEnd = $day->setTime(17, 0);
+                $businessStart = $this->atBusinessTime($day, $businessHours['opening_time']);
+                $businessEnd = $this->atBusinessTime($day, $businessHours['closing_time']);
                 $segmentStart = $start->greaterThan($businessStart) ? $start : $businessStart;
                 $segmentEnd = $end->lessThan($businessEnd) ? $end : $businessEnd;
 
@@ -141,12 +148,13 @@ class TicketResolutionSla
 
     private function addBusinessMinutes(CarbonImmutable $date, int $minutes): CarbonImmutable
     {
+        $businessHours = $this->businessHours();
         $remainingMinutes = $minutes;
         $cursor = $date;
 
         while ($remainingMinutes > 0) {
-            $cursor = $this->nextBusinessStart($cursor);
-            $businessEnd = $cursor->setTime(17, 0);
+            $cursor = $this->nextBusinessStart($cursor, $businessHours);
+            $businessEnd = $this->atBusinessTime($cursor, $businessHours['closing_time']);
             $availableMinutes = intdiv($businessEnd->getTimestamp() - $cursor->getTimestamp(), 60);
 
             if ($remainingMinutes <= $availableMinutes) {
@@ -160,23 +168,46 @@ class TicketResolutionSla
         return $cursor;
     }
 
-    private function nextBusinessStart(CarbonImmutable $date): CarbonImmutable
+    /**
+     * @param  array{opening_time: string, closing_time: string, minutes_per_day: int}  $businessHours
+     */
+    private function nextBusinessStart(CarbonImmutable $date, array $businessHours): CarbonImmutable
     {
         $cursor = $date;
 
         while (true) {
-            if ($cursor->isWeekend() || $cursor->hour >= 17) {
+            $businessStart = $this->atBusinessTime($cursor, $businessHours['opening_time']);
+            $businessEnd = $this->atBusinessTime($cursor, $businessHours['closing_time']);
+
+            if ($cursor->isWeekend() || $cursor->greaterThanOrEqualTo($businessEnd)) {
                 $cursor = $cursor->addDay()->startOfDay();
 
                 continue;
             }
 
-            if ($cursor->hour < 9) {
-                return $cursor->setTime(9, 0);
+            if ($cursor->lessThan($businessStart)) {
+                return $businessStart;
             }
 
             return $cursor;
         }
+    }
+
+    private function atBusinessTime(
+        CarbonImmutable $date,
+        string $time,
+    ): CarbonImmutable {
+        [$hours, $minutes] = array_map('intval', explode(':', $time));
+
+        return $date->setTime($hours, $minutes);
+    }
+
+    /**
+     * @return array{opening_time: string, closing_time: string, minutes_per_day: int}
+     */
+    private function businessHours(): array
+    {
+        return $this->businessHours ??= $this->slaSettings->businessHours();
     }
 
     private function displayTimezone(): string

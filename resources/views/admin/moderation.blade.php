@@ -7,7 +7,7 @@
         <div>
             <span class="admin-page-eyebrow">ADMINISTRATION / CLIENT SAFETY</span>
             <h1>Client moderation</h1>
-            <p>Review staff reports and manage warning or email-block decisions.</p>
+            <p>Review staff reports and automatically flagged client messages, then manage warning or email-block decisions.</p>
         </div>
         <span class="admin-page-context"><span aria-hidden="true">●</span> Admin review required</span>
     </header>
@@ -24,7 +24,7 @@
 
     <section class="admin-console-card">
         <div class="admin-console-card-heading">
-            <div><span class="admin-page-eyebrow">STAFF SUBMISSIONS</span><h2>Conduct reports</h2><p>Review the evidence before applying an action. Reports do not automatically restrict a client.</p></div>
+            <div><span class="admin-page-eyebrow">REPORT QUEUE</span><h2>Conduct reports</h2><p>Review the evidence before applying an action. Automated flags do not automatically restrict a client.</p></div>
             <span class="admin-readonly-badge">{{ $reports->total() }} total</span>
         </div>
         @error('action')
@@ -39,10 +39,13 @@
                             <p>{{ $report->ticket->requester_name }} · {{ $report->ticket->requester_email }}</p>
                         </div>
                         <span class="status-pill status-pill--{{ $report->status === 'pending' ? 'on-hold' : 'resolved' }}">{{ ucfirst($report->status) }}</span>
+                        @if ($report->reporter_id === null)
+                            <span class="status-pill status-pill--on-hold">Automated flag</span>
+                        @endif
                     </div>
                     <dl class="moderation-report-meta">
                         <div><dt>Reason</dt><dd>{{ str($report->reason)->replace('_', ' ')->title() }}</dd></div>
-                        <div><dt>Reported by</dt><dd>{{ $report->reporter->name }}</dd></div>
+                        <div><dt>Reported by</dt><dd>{{ $report->reporter?->name ?? 'Automated screening' }}</dd></div>
                         <div><dt>Submitted</dt><dd>{{ $report->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</dd></div>
                         @if ($report->action)
                             <div><dt>Decision</dt><dd>{{ ucfirst($report->action) }}{{ $report->reviewedBy ? ' by '.$report->reviewedBy->name : '' }}</dd></div>

@@ -151,11 +151,19 @@ Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])-
     Route::post('/sla-settings/departments', [AdminDepartmentCategoryController::class, 'storeDepartment'])->name('sla-settings.departments.store');
     Route::patch('/sla-settings/departments/{department}/activation', [AdminDepartmentCategoryController::class, 'toggleDepartment'])->name('sla-settings.departments.toggle');
     Route::post('/sla-settings/categories', [AdminDepartmentCategoryController::class, 'storeCategory'])->name('sla-settings.categories.store');
+    Route::post('/sla-settings/category-suggestions', [AdminDepartmentCategoryController::class, 'createCategoryFromSuggestion'])
+        ->name('sla-settings.category-suggestions.store');
+    Route::patch('/sla-settings/categories/{category}/keywords/approve', [AdminDepartmentCategoryController::class, 'approveCategoryKeyword'])
+        ->name('sla-settings.categories.keywords.approve');
+    Route::patch('/sla-settings/categories/{category}/department', [AdminDepartmentCategoryController::class, 'updateCategoryDepartment'])
+        ->name('sla-settings.categories.department.update');
     Route::patch('/sla-settings/categories/{category}/activation', [AdminDepartmentCategoryController::class, 'toggleCategory'])->name('sla-settings.categories.toggle');
     Route::get('/audit-logs/export', [AdminAuditLogController::class, 'export'])->name('audit-logs.export');
     Route::get('/audit-logs', AdminAuditLogController::class)->name('audit-logs');
     Route::get('/system-settings', [AdminSystemSettingsController::class, 'index'])->name('system-settings');
     Route::put('/system-settings', [AdminSystemSettingsController::class, 'update'])->name('system-settings.update');
+    Route::put('/system-settings/business-hours', [AdminSystemSettingsController::class, 'updateBusinessHours'])
+        ->name('system-settings.business-hours.update');
     Route::put('/system-settings/ticket-submission', [AdminSystemSettingsController::class, 'updateTicketSubmission'])
         ->name('system-settings.ticket-submission.update');
     Route::put('/system-settings/knowledge-base', [AdminSystemSettingsController::class, 'updateKnowledgeBaseAvailability'])

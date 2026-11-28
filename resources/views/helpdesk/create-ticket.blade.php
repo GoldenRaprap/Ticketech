@@ -14,7 +14,7 @@
     <div class="lookup-panel ticket-panel">
         <h2>Submit a support request</h2>
         @if ($ticketSubmissionOpen)
-            <p class="form-intro">No account is needed. We will verify that you can receive email at the address you provide before creating your ticket.</p>
+            <p class="form-intro">No account is needed. We will verify that you can receive email at the address you provide before creating your ticket. The category and department are selected automatically from your subject and message.</p>
             <p class="required-note">Required fields are marked with <span>*</span></p>
 
             <form class="lookup-form ticket-form" action="{{ route('ticket.store') }}" method="post" enctype="multipart/form-data">
@@ -47,16 +47,6 @@
                 <span class="field-text">Phone Number:</span>
                 <input id="ticket-phone" name="phone" type="tel" inputmode="numeric" pattern="09[0-9]{9}" minlength="11" maxlength="11" value="{{ old('phone') }}" placeholder="e.g. 09171234567" autocomplete="tel" aria-describedby="ticket-phone-hint">
                 <small id="ticket-phone-hint" class="field-hint">Optional. Enter 11 digits starting with 09.</small>
-            </label>
-
-            <label class="field-label" for="ticket-category">
-                <span class="field-text">Category:</span>
-                <select id="ticket-category" name="category_id">
-                    <option value="">Select a category (optional)</option>
-                    @foreach ($categories as $category)
-                        <option value="{{ $category->id }}" @selected((string) old('category_id') === (string) $category->id)>{{ $category->name }}</option>
-                    @endforeach
-                </select>
             </label>
 
             <label class="field-label" for="ticket-subject">

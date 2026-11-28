@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Services\AuditActivityLogger;
 use App\Services\PublicFeatureAvailability;
+use App\Services\SlaSettings;
 use App\Services\TicketEmailAvailability;
+use App\Services\TicketResolutionSla;
 use App\Services\TicketSubmissionSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,7 +18,7 @@ use Illuminate\View\View;
 
 class AdminSystemSettingsController extends Controller
 {
-    public function index(): View
+    public function index(SlaSettings $slaSettings): View
     {
         $settings = DB::table('system_settings')
             ->whereIn('setting', [
@@ -84,7 +86,53 @@ class AdminSystemSettingsController extends Controller
                 PublicFeatureAvailability::TICKET_REPLIES_MESSAGE,
                 PublicFeatureAvailability::DEFAULT_TICKET_REPLIES_MESSAGE,
             ),
+            'businessHours' => $slaSettings->businessHours(),
         ]);
+    }
+
+    public function updateBusinessHours(
+        Request $request,
+        SlaSettings $slaSettings,
+        TicketResolutionSla $resolutionSla,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
+        $validator = Validator::make($request->all(), [
+            'opening_time' => ['required', 'date_format:H:i'],
+            'closing_time' => ['required', 'date_format:H:i'],
+        ]);
+        $validator->after(function (\Illuminate\Validation\Validator $validator) use ($request): void {
+            if ($validator->errors()->hasAny(['opening_time', 'closing_time'])) {
+                return;
+            }
+
+            if ($request->input('closing_time') <= $request->input('opening_time')) {
+                $validator->errors()->add('closing_time', 'The closing time must be later than the opening time.');
+            }
+        });
+        $validated = $validator->validate();
+        $previousBusinessHours = $slaSettings->businessHours();
+        $updatedBusinessHours = [
+            'opening_time' => $validated['opening_time'],
+            'closing_time' => $validated['closing_time'],
+        ];
+
+        $slaSettings->updateBusinessHours($updatedBusinessHours);
+        $resolutionSla->refreshOpenTickets();
+
+        $auditLogger->record(
+            $request,
+            'business_hours_updated',
+            'Updated the business hours used for resolution targets.',
+            properties: [
+                'previous_business_hours' => [
+                    'opening_time' => $previousBusinessHours['opening_time'],
+                    'closing_time' => $previousBusinessHours['closing_time'],
+                ],
+                'business_hours' => $updatedBusinessHours,
+            ],
+        );
+
+        return to_route('admin.system-settings')->with('status', 'Business hours updated.');
     }
 
     public function updateKnowledgeBaseAvailability(Request $request, AuditActivityLogger $auditLogger): RedirectResponse

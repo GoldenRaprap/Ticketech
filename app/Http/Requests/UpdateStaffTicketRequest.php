@@ -25,6 +25,10 @@ class UpdateStaffTicketRequest extends FormRequest
             404,
         );
 
+        if ($this->exists('category_id') && in_array($ticket->status, ['Resolved', 'Closed'], true)) {
+            return false;
+        }
+
         return $user->isStaff()
             && (
                 ! $this->exists('assigned_to_user_id')
@@ -55,6 +59,24 @@ class UpdateStaffTicketRequest extends FormRequest
         return [
             'status' => ['required', Rule::in($allowedStatuses)],
             'priority' => ['sometimes', 'required', Rule::in(['Urgent', 'High', 'Medium', 'Low'])],
+            'category_id' => $ticket instanceof Ticket && $ticket->department_id !== null
+                ? [
+                    'sometimes',
+                    'nullable',
+                    'integer',
+                    Rule::exists('categories', 'id')->where(function ($query) use ($ticket): void {
+                        $query
+                            ->where('department_id', $ticket->department_id)
+                            ->where(function ($query) use ($ticket): void {
+                                $query->where('is_active', true);
+
+                                if ($ticket->category_id !== null) {
+                                    $query->orWhere('id', $ticket->category_id);
+                                }
+                            });
+                    }),
+                ]
+                : ['prohibited'],
             'assigned_to_user_id' => [
                 'nullable',
                 Rule::exists('users', 'id')->where(function ($query) use ($ticket, $user): void {
@@ -98,6 +120,8 @@ class UpdateStaffTicketRequest extends FormRequest
             ];
         }
 
-        return [];
+        return [
+            'category_id.exists' => 'Select an active category assigned to this ticket department.',
+        ];
     }
 }

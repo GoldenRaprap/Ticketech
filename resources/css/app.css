@@ -8957,6 +8957,34 @@ img, svg { display: block; max-width: 100%; }
     font-size: 0.65rem;
 }
 
+.admin-priority-suggestions {
+    display: grid;
+    gap: 7px;
+    padding-top: 9px;
+    border-top: 1px solid #edf1f5;
+    color: #60758a;
+    font-size: 0.68rem;
+}
+
+.admin-priority-suggestion {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.admin-priority-suggestion > span {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+    overflow-wrap: anywhere;
+}
+
+.admin-priority-suggestion small {
+    color: #8492a1;
+    font-size: 0.62rem;
+}
+
 .admin-sla-card {
     overflow: hidden;
     padding: 16px;
@@ -9084,7 +9112,7 @@ img, svg { display: block; max-width: 100%; }
 
 .admin-ticket-options-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
     gap: 20px;
 }
@@ -9164,7 +9192,7 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .admin-ticket-option-form--category {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .admin-ticket-option-form .admin-filter-field {
@@ -9195,13 +9223,141 @@ img, svg { display: block; max-width: 100%; }
     grid-column: 1;
 }
 
+.admin-ticket-option-form--category .admin-filter-field:nth-of-type(3) {
+    grid-column: 2;
+}
+
+.admin-ticket-option-form--category .admin-filter-field:nth-of-type(4) {
+    grid-column: 1;
+}
+
 .admin-ticket-option-form--category .admin-console-button {
     grid-column: 2;
+    justify-self: end;
+}
+
+.admin-new-category-suggestions {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid #dce7f0;
+    border-radius: 11px;
+    background: #f3f8fc;
+}
+
+.admin-new-category-suggestions h4 {
+    margin: 4px 0 0;
+    color: #234460;
+    font-size: 0.9rem;
+}
+
+.admin-new-category-suggestions header p {
+    margin: 4px 0 0;
+    color: #78899b;
+    font-size: 0.7rem;
+    line-height: 1.45;
+}
+
+.admin-new-category-suggestion-list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+}
+
+.admin-new-category-suggestion {
+    display: grid;
+    gap: 9px;
+    min-width: 0;
+    padding: 13px;
+    border: 1px solid #e1e9f0;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.admin-new-category-suggestion-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.admin-new-category-suggestion-heading h5 {
+    margin: 3px 0 0;
+    color: #294a67;
+    font-size: 0.82rem;
+}
+
+.admin-new-category-suggestion-phrase,
+.admin-new-category-suggestion-empty {
+    margin: 0;
+    color: #647d92;
+    font-size: 0.72rem;
+}
+
+.admin-new-category-suggestion-examples {
+    display: grid;
+    gap: 4px;
+    color: #294a67;
+    font-size: 0.7rem;
+}
+
+.admin-new-category-suggestion-examples ul {
+    display: grid;
+    gap: 3px;
+    margin: 0;
+    padding-left: 18px;
+    color: #78899b;
+    line-height: 1.4;
+}
+
+.admin-new-category-suggestion-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+    gap: 8px;
+}
+
+.admin-new-category-suggestion-field {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    color: #60758a;
+    font-size: 0.66rem;
+    font-weight: 650;
+}
+
+.admin-new-category-suggestion-field input,
+.admin-new-category-suggestion-field select {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 10px;
+    border: 1px solid #dce5ed;
+    border-radius: 7px;
+    background: #fbfcfe;
+    color: #294a67;
+    font: inherit;
+    font-size: 0.7rem;
+}
+
+.admin-new-category-suggestion-form .admin-console-button {
+    grid-column: 1 / -1;
+    justify-self: end;
+    min-height: 38px;
+    white-space: nowrap;
 }
 
 .admin-ticket-option-list {
     display: grid;
     gap: 8px;
+}
+
+.admin-ticket-option-list--departments {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.admin-ticket-option-list--categories {
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
 }
 
 .admin-ticket-option-item {
@@ -9241,6 +9397,27 @@ img, svg { display: block; max-width: 100%; }
     color: #8391a0;
     font-size: 0.67rem;
     line-height: 1.4;
+}
+
+.admin-ticket-category-route-form {
+    display: grid;
+    grid-template-columns: minmax(0, 360px);
+    align-items: center;
+    gap: 6px;
+    margin-top: 5px;
+}
+
+.admin-ticket-category-route-form select {
+    width: 100%;
+    min-width: 0;
+    min-height: 34px;
+    padding: 0 8px;
+    border: 1px solid #dce5ed;
+    border-radius: 7px;
+    background: #fbfcfe;
+    color: #294a67;
+    font: inherit;
+    font-size: 0.68rem;
 }
 
 .admin-ticket-option-status {
@@ -10016,10 +10193,6 @@ img, svg { display: block; max-width: 100%; }
     .admin-user-management-actions .admin-readonly-badge { text-align: left; }
 }
 
-@media (max-width: 900px) {
-    .admin-ticket-options-grid { grid-template-columns: 1fr; }
-}
-
 @media (max-width: 520px) {
     .admin-sla-grid { grid-template-columns: 1fr; }
     .admin-sla-input-group { grid-template-columns: minmax(0, 1fr); }
@@ -10030,13 +10203,25 @@ img, svg { display: block; max-width: 100%; }
     .admin-ticket-option-form,
     .admin-ticket-option-form--category { grid-template-columns: minmax(0, 1fr); }
     .admin-ticket-option-heading { min-height: 0; }
-    .admin-ticket-option-form--category .admin-filter-field:first-of-type,
-    .admin-ticket-option-form--category .admin-filter-field:nth-of-type(2),
+    .admin-ticket-option-form--category .admin-filter-field,
     .admin-ticket-option-form--category .admin-console-button { grid-column: 1; }
+    .admin-ticket-option-form--category .admin-filter-field:nth-of-type(2),
+    .admin-ticket-option-form--category .admin-filter-field:nth-of-type(3),
+    .admin-ticket-option-form--category .admin-filter-field:nth-of-type(4) { grid-column: 1; }
     .admin-ticket-option-form .admin-console-button { width: 100%; }
-    .admin-ticket-option-item { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+    .admin-ticket-option-item { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .admin-ticket-option-list--departments,
+    .admin-ticket-option-list--categories { grid-template-columns: minmax(0, 1fr); }
     .admin-ticket-option-item > form { grid-column: 1 / -1; }
     .admin-ticket-option-item > form .admin-console-button { width: 100%; }
+    .admin-ticket-category-route-form { grid-template-columns: minmax(0, 1fr); }
+    .admin-new-category-suggestion-list,
+    .admin-new-category-suggestion-form { grid-template-columns: minmax(0, 1fr); }
+    .admin-new-category-suggestion-form .admin-console-button {
+        grid-column: 1;
+        justify-self: stretch;
+        width: 100%;
+    }
     .admin-console-page { gap: 14px; }
     .admin-page-context { align-self: flex-start; }
     .admin-config-list > div { flex-direction: column; gap: 5px; }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Services\SlaRescueAssessor;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -35,11 +36,16 @@ class StaffReportsController extends Controller
         [$periodStart, $periodEnd] = $this->periodRange($filters, $period);
         $baseQuery = $this->ticketsInPeriod($user, $periodStart, $periodEnd, $selectedDepartmentId);
         $summary = $this->summary(clone $baseQuery);
+        $slaBreachCount = $this->slaBreachCount(clone $baseQuery);
+        [$slaAtRiskTicketCount, $slaRiskFactorCounts] = $this->slaRiskInsights(clone $baseQuery);
         $trendBuckets = collect($this->trendBuckets($user, $period, $periodStart, $periodEnd, $selectedDepartmentId));
         $assigneeWorkload = $this->assigneeWorkload(clone $baseQuery);
 
         return view('staff.reports', [
             ...$summary,
+            'slaBreachCount' => $slaBreachCount,
+            'slaAtRiskTicketCount' => $slaAtRiskTicketCount,
+            'slaRiskFactorCounts' => $slaRiskFactorCounts,
             'period' => $period,
             'referenceDate' => $filters['reference_date'] ?? now()->toDateString(),
             'startDate' => $filters['start_date'] ?? '',
@@ -729,6 +735,53 @@ class StaffReportsController extends Controller
             'resolutionRate' => $totalTicketCount === 0 ? 0 : round($resolvedTicketCount / $totalTicketCount * 100, 1),
             'averageResolutionHours' => $averageResolutionHours,
         ];
+    }
+
+    private function slaBreachCount(Builder $tickets): int
+    {
+        return $tickets
+            ->whereNotNull('resolution_due_at')
+            ->where(function (Builder $query): void {
+                $query->where(function (Builder $openTickets): void {
+                    $openTickets
+                        ->whereIn('status', ['New', 'Assigned', 'In Progress'])
+                        ->where('resolution_due_at', '<=', now());
+                })->orWhere(function (Builder $pausedTickets): void {
+                    $pausedTickets
+                        ->whereIn('status', ['Waiting for User', 'On Hold'])
+                        ->whereNotNull('sla_paused_at')
+                        ->whereColumn('resolution_due_at', '<=', 'sla_paused_at');
+                })->orWhere(function (Builder $completedTickets): void {
+                    $completedTickets
+                        ->whereIn('status', ['Resolved', 'Closed'])
+                        ->whereNotNull('resolved_at')
+                        ->whereColumn('resolved_at', '>', 'resolution_due_at');
+                });
+            })
+            ->count();
+    }
+
+    /**
+     * @return array{int, Collection<string, int>}
+     */
+    private function slaRiskInsights(Builder $tickets): array
+    {
+        $atRiskTickets = $tickets
+            ->whereIn('status', ['New', 'Assigned', 'In Progress'])
+            ->where('sla_risk_score', '>=', SlaRescueAssessor::MINIMUM_RISK_SCORE)
+            ->get(['sla_risk_factors']);
+        $factorsByTicket = $atRiskTickets
+            ->map(fn (Ticket $ticket): array => $ticket->sla_risk_factors ?? [])
+            ->values();
+        $factorCounts = collect(SlaRescueAssessor::factorLabels())
+            ->mapWithKeys(fn (string $label, string $factor): array => [
+                $label => $factorsByTicket
+                    ->filter(fn (array $factors): bool => in_array($factor, $factors, true))
+                    ->count(),
+            ])
+            ->filter(fn (int $count): bool => $count > 0);
+
+        return [$atRiskTickets->count(), $factorCounts];
     }
 
     /**

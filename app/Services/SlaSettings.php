@@ -3,9 +3,19 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
+use UnexpectedValueException;
 
 class SlaSettings
 {
+    private const BUSINESS_HOURS_OPENING_SETTING = 'sla.business_hours.opening_time';
+
+    private const BUSINESS_HOURS_CLOSING_SETTING = 'sla.business_hours.closing_time';
+
+    private const DEFAULT_BUSINESS_HOURS = [
+        'opening_time' => '09:00',
+        'closing_time' => '17:00',
+    ];
+
     /**
      * @var array<string, array{
      *     priority: string,
@@ -91,6 +101,64 @@ class SlaSettings
     }
 
     /**
+     * @return array{opening_time: string, closing_time: string, minutes_per_day: int}
+     */
+    public function businessHours(): array
+    {
+        $storedSettings = DB::table('system_settings')
+            ->whereIn('setting', [
+                self::BUSINESS_HOURS_OPENING_SETTING,
+                self::BUSINESS_HOURS_CLOSING_SETTING,
+            ])
+            ->pluck('value', 'setting');
+        $openingTime = $storedSettings->get(
+            self::BUSINESS_HOURS_OPENING_SETTING,
+            self::DEFAULT_BUSINESS_HOURS['opening_time'],
+        );
+        $closingTime = $storedSettings->get(
+            self::BUSINESS_HOURS_CLOSING_SETTING,
+            self::DEFAULT_BUSINESS_HOURS['closing_time'],
+        );
+        $minutesPerDay = $this->minutesAfterMidnight($closingTime)
+            - $this->minutesAfterMidnight($openingTime);
+
+        if ($minutesPerDay <= 0) {
+            throw new UnexpectedValueException('Configured business closing time must be later than its opening time.');
+        }
+
+        return [
+            'opening_time' => $openingTime,
+            'closing_time' => $closingTime,
+            'minutes_per_day' => $minutesPerDay,
+        ];
+    }
+
+    /**
+     * @param  array{opening_time: string, closing_time: string}  $businessHours
+     */
+    public function updateBusinessHours(array $businessHours): void
+    {
+        $minutesPerDay = $this->minutesAfterMidnight($businessHours['closing_time'])
+            - $this->minutesAfterMidnight($businessHours['opening_time']);
+
+        if ($minutesPerDay <= 0) {
+            throw new UnexpectedValueException('Configured business closing time must be later than its opening time.');
+        }
+
+        DB::transaction(function () use ($businessHours): void {
+            foreach ([
+                self::BUSINESS_HOURS_OPENING_SETTING => $businessHours['opening_time'],
+                self::BUSINESS_HOURS_CLOSING_SETTING => $businessHours['closing_time'],
+            ] as $setting => $value) {
+                DB::table('system_settings')->updateOrInsert(
+                    ['setting' => $setting],
+                    ['value' => $value, 'created_at' => now(), 'updated_at' => now()],
+                );
+            }
+        });
+    }
+
+    /**
      * @param  array<string, array{
      *     first_response: array{value: int, unit: string},
      *     resolution: array{value: int, unit: string}
@@ -110,5 +178,16 @@ class SlaSettings
                 }
             }
         });
+    }
+
+    private function minutesAfterMidnight(string $time): int
+    {
+        if (preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/D', $time) !== 1) {
+            throw new UnexpectedValueException('Configured business hours must use a valid 24-hour time.');
+        }
+
+        [$hours, $minutes] = array_map('intval', explode(':', $time));
+
+        return ($hours * 60) + $minutes;
     }
 }

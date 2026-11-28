@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreStaffTicketCommentRequest;
 use App\Http\Requests\TransferStaffTicketRequest;
 use App\Http\Requests\UpdateStaffTicketRequest;
+use App\Models\Category;
 use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
@@ -13,8 +14,10 @@ use App\Models\User;
 use App\Models\WorkspaceNotification;
 use App\Notifications\TicketRequesterUpdate;
 use App\Services\ImmediateNotificationSender;
+use App\Services\SlaRescueAssessor;
 use App\Services\TicketNotificationRecipients;
 use App\Services\TicketResolutionSla;
+use App\Services\TicketWorkloadAssigner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -40,6 +43,9 @@ class StaffTicketController extends Controller
             'search' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', 'in:New,Assigned,In Progress,Waiting for User,On Hold,Resolved,Closed'],
             'priority' => ['nullable', 'in:Urgent,High,Medium,Low'],
+            'triage' => $canViewAllDepartments
+                ? ['nullable', 'in:needs_review']
+                : ['prohibited'],
             'department_id' => $canViewAllDepartments
                 ? ['nullable', 'integer', Rule::exists('departments', 'id')->where('is_active', true)]
                 : ['prohibited'],
@@ -108,10 +114,20 @@ class StaffTicketController extends Controller
                 isset($filters['assignee']) && $filters['assignee'] !== '' && $filters['assignee'] !== 'unassigned',
                 fn ($query) => $query->where('assigned_to_user_id', $filters['assignee']),
             )
+            ->when(
+                ($filters['triage'] ?? null) === 'needs_review',
+                fn ($query) => $query
+                    ->whereNull('assigned_to_user_id')
+                    ->whereNotIn('status', ['Resolved', 'Closed']),
+            )
             ->orderByRaw("CASE WHEN status IN ('New', 'Assigned', 'In Progress') THEN 0 WHEN status IN ('Waiting for User', 'On Hold') THEN 1 WHEN status IN ('Resolved', 'Closed') THEN 2 ELSE 3 END")
             ->orderByRaw(
                 "CASE WHEN status IN ('New', 'Assigned', 'In Progress') THEN CASE WHEN resolution_due_at <= ? THEN 0 WHEN resolution_warning_at <= ? THEN 1 ELSE 2 END ELSE 0 END",
                 [now(), now()],
+            )
+            ->orderByRaw(
+                "CASE WHEN status IN ('New', 'Assigned', 'In Progress') AND sla_risk_score >= ? THEN 0 ELSE 1 END",
+                [SlaRescueAssessor::MINIMUM_RISK_SCORE],
             )
             ->orderByRaw("CASE priority WHEN 'Urgent' THEN 0 WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 WHEN 'Low' THEN 3 ELSE 4 END")
             ->orderBy('created_at')
@@ -121,6 +137,7 @@ class StaffTicketController extends Controller
 
         return view('staff.tickets', [
             'tickets' => $tickets,
+            'slaRiskThreshold' => SlaRescueAssessor::MINIMUM_RISK_SCORE,
             'filters' => $filters,
             'canFilterByDepartment' => $canViewAllDepartments,
             'departments' => $canViewAllDepartments
@@ -148,8 +165,11 @@ class StaffTicketController extends Controller
         ]);
     }
 
-    public function show(Request $request, Ticket $ticket): View
-    {
+    public function show(
+        Request $request,
+        Ticket $ticket,
+        TicketWorkloadAssigner $workloadAssigner,
+    ): View {
         $this->ensureStaffCanViewTicket($request);
         $ticket->load([
             'assignedTo:id,name,email',
@@ -160,6 +180,27 @@ class StaffTicketController extends Controller
             'events' => fn ($query) => $query->with('actor:id,name')->oldest(),
             'misuseReports' => fn ($query) => $query->with('reporter:id,name')->latest(),
         ]);
+        $categories = Category::query()
+            ->where(function ($query) use ($ticket): void {
+                $query->where(function ($query): void {
+                    $query->where('is_active', true)
+                        ->whereNotNull('department_id')
+                        ->whereHas('department', fn ($query) => $query->where('is_active', true));
+                });
+
+                if ($ticket->category_id !== null) {
+                    $query->orWhereKey($ticket->category_id);
+                }
+            })
+            ->with('department:id,name,is_active')
+            ->orderBy('name')
+            ->get(['id', 'name', 'department_id', 'is_active']);
+        $routableCategories = $categories->filter(
+            fn (Category $category): bool => $category->is_active
+                && $category->department_id !== null
+                && $category->department?->is_active,
+        )->values();
+        $automatedTriageEvent = $ticket->events->firstWhere('event', 'automated_triage');
         $user = $request->user();
         $canWorkTicket = $ticket->isVisibleTo($user);
         $canManageTickets = $canWorkTicket && $user->canManageDepartmentTickets();
@@ -168,10 +209,22 @@ class StaffTicketController extends Controller
             && $ticket->department_id === $user->department_id
             && ($ticket->assigned_to_user_id === null || $ticket->assigned_to_user_id === $user->id)
         );
+        $isSlaAtRisk = in_array($ticket->status, ['New', 'Assigned', 'In Progress'], true)
+            && $ticket->sla_risk_score >= SlaRescueAssessor::MINIMUM_RISK_SCORE;
         $lastResolvedAt = $ticket->last_resolved_at ?? $ticket->resolved_at;
 
         return view('staff.ticket-detail', [
             'ticket' => $ticket,
+            'categories' => $categories,
+            'routableCategories' => $routableCategories,
+            'isSlaAtRisk' => $isSlaAtRisk,
+            'slaRiskReasons' => collect($ticket->sla_risk_factors ?? [])
+                ->map(fn (string $factor): string => SlaRescueAssessor::factorLabels()[$factor] ?? $factor)
+                ->values(),
+            'suggestedHandoff' => $isSlaAtRisk && $canWorkTicket
+                ? $workloadAssigner->recommendHandoff($ticket)
+                : null,
+            'automatedTriageStatus' => $automatedTriageEvent?->properties['routing_status'] ?? null,
             'canWorkTicket' => $canWorkTicket,
             'isCrossDepartmentView' => ! $canWorkTicket,
             'canManageTickets' => $canManageTickets,
@@ -252,6 +305,7 @@ class StaffTicketController extends Controller
             $ticket = Ticket::query()->lockForUpdate()->findOrFail($ticket->getKey());
             $previousStatus = $ticket->status;
             $previousPriority = $ticket->priority;
+            $previousCategoryId = $ticket->category_id;
             $originalAssigneeId = $ticket->assigned_to_user_id;
             $wasSlaPaused = in_array($previousStatus, ['Waiting for User', 'On Hold'], true);
 
@@ -269,6 +323,11 @@ class StaffTicketController extends Controller
                 : $originalAssigneeId;
             $ticket->assigned_to_user_id = $assigneeId;
             $ticket->priority = $validated['priority'] ?? $ticket->priority;
+            if (array_key_exists('category_id', $validated)) {
+                $ticket->category_id = $validated['category_id'] !== null
+                    ? (int) $validated['category_id']
+                    : null;
+            }
             $ticket->status = $validated['status'];
             $isSlaPaused = in_array($ticket->status, ['Waiting for User', 'On Hold'], true);
 
@@ -295,6 +354,17 @@ class StaffTicketController extends Controller
 
             $ticket->save();
 
+            if ($previousCategoryId !== $ticket->category_id) {
+                $this->recordClassificationCorrection(
+                    $ticket,
+                    (int) $request->user()->id,
+                    $previousCategoryId,
+                    $ticket->category_id,
+                    $ticket->department_id,
+                    $ticket->department_id,
+                );
+            }
+
             if ($previousStatus !== $ticket->status) {
                 TicketEvent::create([
                     'ticket_id' => $ticket->id,
@@ -315,11 +385,24 @@ class StaffTicketController extends Controller
             }
 
             if ($previousPriority !== $ticket->priority) {
+                $automatedTriage = $ticket->events()
+                    ->where('event', 'automated_triage')
+                    ->latest('id')
+                    ->first(['properties']);
+                $automatedTriageProperties = $automatedTriage?->properties ?? [];
+                $automatedPriority = $automatedTriageProperties['priority'] ?? null;
+
                 TicketEvent::create([
                     'ticket_id' => $ticket->id,
                     'actor_id' => $request->user()->id,
                     'event' => 'priority_changed',
                     'description' => "Priority changed to {$ticket->priority}.",
+                    'properties' => [
+                        'priority_feedback' => $previousPriority === $automatedPriority,
+                        'previous_priority' => $previousPriority,
+                        'new_priority' => $ticket->priority,
+                        'matched_keyword' => $automatedTriageProperties['priority_keyword'] ?? null,
+                    ],
                 ]);
 
                 $notificationRecipients->forTicket($ticket, $request->user()->id)
@@ -405,10 +488,38 @@ class StaffTicketController extends Controller
 
             $previousDepartmentId = $ticket->department_id;
             $previousAssigneeId = $ticket->assigned_to_user_id;
+            $previousCategoryId = $ticket->category_id;
+            $targetCategoryId = null;
+
+            if (isset($validated['category_id'])) {
+                $targetCategoryId = Category::query()
+                    ->where('is_active', true)
+                    ->where('department_id', $targetDepartment->id)
+                    ->lockForUpdate()
+                    ->whereKey($validated['category_id'])
+                    ->value('id');
+
+                if ($targetCategoryId === null) {
+                    throw ValidationException::withMessages([
+                        'category_id' => 'Select an active category assigned to the receiving department.',
+                    ]);
+                }
+            }
+
             $ticket->department_id = $targetDepartment->id;
+            $ticket->category_id = $targetCategoryId !== null ? (int) $targetCategoryId : null;
             $ticket->assigned_to_user_id = null;
             $ticket->assigned_at = null;
             $ticket->save();
+
+            $this->recordClassificationCorrection(
+                $ticket,
+                (int) $actor->id,
+                $previousCategoryId,
+                $ticket->category_id,
+                $previousDepartmentId,
+                $ticket->department_id,
+            );
 
             if ($sourceDepartment !== null) {
                 $ticket->comments()->create([
@@ -432,6 +543,8 @@ class StaffTicketController extends Controller
                     'from_department_id' => $previousDepartmentId,
                     'to_department_id' => $targetDepartment->id,
                     'previous_assignee_id' => $previousAssigneeId,
+                    'previous_category_id' => $previousCategoryId,
+                    'to_category_id' => $ticket->category_id,
                 ],
             ]);
 
@@ -463,6 +576,50 @@ class StaffTicketController extends Controller
 
         return to_route('staff.ticket-detail', $ticket)
             ->with('status', 'Ticket transferred to the receiving department queue.');
+    }
+
+    private function recordClassificationCorrection(
+        Ticket $ticket,
+        int $actorId,
+        ?int $previousCategoryId,
+        ?int $newCategoryId,
+        ?int $previousDepartmentId,
+        ?int $newDepartmentId,
+    ): void {
+        $automatedTriage = $ticket->events()
+            ->where('event', 'automated_triage')
+            ->latest('id')
+            ->first(['properties']);
+        $automatedProperties = $automatedTriage?->properties ?? [];
+        $automatedCategoryId = $automatedProperties['routed_category_id']
+            ?? $automatedProperties['category_id']
+            ?? null;
+        $automatedDepartmentId = $automatedProperties['department_id'] ?? null;
+        $categoryFeedback = $newCategoryId !== null
+            && ($automatedTriage !== null
+                ? (int) ($automatedCategoryId ?? 0) !== $newCategoryId
+                    || (int) ($automatedDepartmentId ?? 0) !== (int) ($newDepartmentId ?? 0)
+                : $previousCategoryId !== $newCategoryId
+                    || $previousDepartmentId !== $newDepartmentId);
+        $departmentFeedback = $automatedTriage !== null
+            ? (int) ($automatedDepartmentId ?? 0) !== (int) ($newDepartmentId ?? 0)
+            : $previousDepartmentId !== $newDepartmentId;
+
+        TicketEvent::create([
+            'ticket_id' => $ticket->id,
+            'actor_id' => $actorId,
+            'event' => 'category_changed',
+            'description' => 'Ticket classification updated by staff.',
+            'properties' => [
+                'category_feedback' => $categoryFeedback,
+                'department_feedback' => $departmentFeedback,
+                'previous_category_id' => $previousCategoryId,
+                'new_category_id' => $newCategoryId,
+                'automated_category_id' => $automatedCategoryId,
+                'previous_department_id' => $previousDepartmentId,
+                'new_department_id' => $newDepartmentId,
+            ],
+        ]);
     }
 
     public function comment(

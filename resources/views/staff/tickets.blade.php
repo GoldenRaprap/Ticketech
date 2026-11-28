@@ -54,6 +54,12 @@
                     <option value="{{ $priority }}" @selected(($filters['priority'] ?? '') === $priority)>{{ $priority }}</option>
                 @endforeach
             </select></label>
+            @if ($canFilterByDepartment)
+                <label><span class="sr-only">Filter by triage status</span><select name="triage" aria-label="Filter by triage status">
+                    <option value="">Routing: All</option>
+                    <option value="needs_review" @selected(($filters['triage'] ?? '') === 'needs_review')>Needs review</option>
+                </select></label>
+            @endif
             <label><span class="sr-only">Filter by assignee</span><select name="assignee" aria-label="Filter by assignee" @disabled($selectedDepartmentId === null && ! $canFilterByDepartment)>
                 <option value="">{{ $selectedDepartmentId === null && ! $canFilterByDepartment ? 'Select department first' : 'Assignee: All' }}</option>
                 <option value="unassigned" @selected(($filters['assignee'] ?? '') === 'unassigned') @disabled($selectedDepartmentId === null && ! $canFilterByDepartment)>Unassigned</option>
@@ -80,12 +86,20 @@
                                     @endif
                                 </a>
                             </td>
-                            <td>{{ $ticket->department?->name ?? 'Unassigned' }}</td>
+                            <td>
+                                {{ $ticket->department?->name ?? 'Unassigned' }}
+                                @if ($ticket->assigned_to_user_id === null && ! in_array($ticket->status, ['Resolved', 'Closed'], true))
+                                    <span class="ticket-cross-department-label">Needs review</span>
+                                @endif
+                            </td>
                             <td><div class="table-requester"><span class="requester-avatar requester-avatar--small" aria-hidden="true">{{ strtoupper(substr($ticket->requester_name, 0, 1)) }}</span><strong>{{ $ticket->requester_name }}</strong></div></td>
                             <td><span class="priority-pill priority-pill--{{ strtolower($ticket->priority) }}">{{ $ticket->priority }}</span></td>
                             <td>{{ $ticket->assignedTo?->name ?? 'Unassigned' }}</td>
                             <td><span class="status-pill status-pill--{{ strtolower(str_replace(' ', '-', $ticket->status)) }}">{{ $ticket->status }}</span></td>
                             <td>
+                                @if (in_array($ticket->status, ['New', 'Assigned', 'In Progress'], true) && $ticket->sla_risk_score >= $slaRiskThreshold)
+                                    <span class="priority-pill priority-pill--high">At risk</span>
+                                @endif
                                 @if (in_array($ticket->status, ['Resolved', 'Closed'], true))
                                     <span>Completed</span>
                                 @elseif (in_array($ticket->status, ['Waiting for User', 'On Hold'], true))

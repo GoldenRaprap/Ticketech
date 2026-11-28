@@ -7,6 +7,7 @@ use App\Models\ClientModeration;
 use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
+use App\Models\TicketEvent;
 use App\Models\User;
 use App\Notifications\TicketEmailVerification;
 use App\Services\TicketPdf;
@@ -24,9 +25,6 @@ class TicketWorkflowTest extends TestCase
 
     public function test_guests_can_open_ticket_submission_and_lookup_without_signing_in(): void
     {
-        $department = Department::factory()->create(['name' => 'Student Services']);
-        $category = Category::factory()->create(['name' => 'Portal access']);
-
         $this->get(route('ticket.create'))
             ->assertOk()
             ->assertSee('No account is needed.')
@@ -46,8 +44,8 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('Attach up to 5')
             ->assertSee('multiple', false)
             ->assertDontSee('name="department_id"', false)
-            ->assertSee('name="category_id"', false)
-            ->assertSee('>Portal access</option>', false);
+            ->assertDontSee('name="category_id"', false)
+            ->assertSee('category and department are selected automatically');
 
         $this->get(route('ticket.check'))
             ->assertOk()
@@ -108,8 +106,8 @@ class TicketWorkflowTest extends TestCase
             'id' => $ticket->id,
             'requester_email' => 'jamie@example.edu',
             'department_id' => null,
-            'category_id' => $category->id,
-            'priority' => 'Low',
+            'category_id' => null,
+            'priority' => 'Urgent',
             'status' => 'New',
         ]);
         $this->assertDatabaseHas('workspace_notifications', [
@@ -189,6 +187,267 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('Jamie Student')
             ->assertSee('window.print()');
         $this->assertFalse($printResponse->headers->has('Content-Disposition'));
+    }
+
+    public function test_confirmed_ticket_is_routed_to_the_least_loaded_staff_member(): void
+    {
+        Notification::fake();
+        $department = Department::factory()->create();
+        $otherDepartment = Department::factory()->create();
+        $category = Category::factory()->create([
+            'name' => 'Account access',
+            'description' => 'Login and credential issues.',
+            'department_id' => $department->id,
+        ]);
+        $categoryFromOtherDepartment = Category::factory()->create([
+            'name' => 'Printer support',
+            'description' => 'Printer and scanner issues.',
+            'department_id' => $otherDepartment->id,
+        ]);
+        $busyStaff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+        $availableStaff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+        User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+            'staff_approval_status' => 'denied',
+        ]);
+        $otherDepartmentAdmin = User::factory()->create([
+            'role' => 'department_admin',
+            'department_id' => $otherDepartment->id,
+        ]);
+
+        foreach ([1, 2] as $ticketNumber) {
+            Ticket::query()->create([
+                'ticket_number' => sprintf('ED-2026-9000%02d', $ticketNumber),
+                'department_id' => $department->id,
+                'assigned_to_user_id' => $busyStaff->id,
+                'requester_name' => 'Existing Requester',
+                'student_id' => '2023000001',
+                'requester_email' => "existing{$ticketNumber}@example.edu",
+                'subject' => 'Existing work',
+                'description' => 'An active ticket.',
+                'priority' => 'Low',
+                'status' => 'In Progress',
+            ]);
+        }
+
+        $this->post(route('ticket.store'), [
+            'name' => 'Jamie Student',
+            'student_id' => '2023000002',
+            'email' => 'jamie@example.edu',
+            'category_id' => $categoryFromOtherDepartment->id,
+            'subject' => 'Account access problem',
+            'message' => 'I cannot log in to my account. A system-wide outage prevents online classes.',
+        ])->assertRedirect(route('ticket.submitted'));
+
+        $this->confirmPendingEmail();
+        $ticket = Ticket::query()->where('requester_email', 'jamie@example.edu')->firstOrFail();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'department_id' => $department->id,
+            'category_id' => $category->id,
+            'assigned_to_user_id' => $availableStaff->id,
+            'status' => 'Assigned',
+            'priority' => 'Urgent',
+        ]);
+        $this->assertNotNull($ticket->assigned_at);
+        $this->assertNotNull($ticket->first_assigned_at);
+
+        $triageEvent = TicketEvent::query()
+            ->where('ticket_id', $ticket->id)
+            ->where('event', 'automated_triage')
+            ->firstOrFail();
+        $this->assertSame('assigned', $triageEvent->properties['routing_status']);
+        $this->assertSame($availableStaff->id, $triageEvent->properties['assigned_to_user_id']);
+        $this->assertSame('ticket_text', $triageEvent->properties['routing_method']);
+        $this->assertSame($category->id, $triageEvent->properties['routed_category_id']);
+
+        $this->assertDatabaseHas('workspace_notifications', [
+            'user_id' => $availableStaff->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'assignment',
+            'title' => 'Ticket assigned to you',
+        ]);
+        $this->assertDatabaseHas('workspace_notifications', [
+            'user_id' => $busyStaff->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'new_ticket',
+        ]);
+        $this->assertDatabaseMissing('workspace_notifications', [
+            'user_id' => $otherDepartmentAdmin->id,
+            'ticket_id' => $ticket->id,
+            'type' => 'new_ticket',
+        ]);
+    }
+
+    public function test_ticket_text_automatically_routes_a_category_when_the_match_is_unambiguous(): void
+    {
+        Notification::fake();
+        $department = Department::factory()->create();
+        $category = Category::factory()->create([
+            'name' => 'Student portal access',
+            'description' => 'Student learning platform login.',
+            'department_id' => $department->id,
+        ]);
+        $staff = User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+        ]);
+
+        $this->post(route('ticket.store'), [
+            'name' => 'Jamie Student',
+            'student_id' => '2023000005',
+            'email' => 'jamie@example.edu',
+            'subject' => 'Student portal access problem',
+            'message' => 'I cannot open the student portal to access my classes.',
+        ])->assertRedirect(route('ticket.submitted'));
+
+        $this->confirmPendingEmail();
+        $ticket = Ticket::query()->where('requester_email', 'jamie@example.edu')->firstOrFail();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'category_id' => $category->id,
+            'department_id' => $department->id,
+            'assigned_to_user_id' => $staff->id,
+            'status' => 'Assigned',
+        ]);
+    }
+
+    public function test_inactive_category_matches_stay_in_the_department_review_queue(): void
+    {
+        Notification::fake();
+        $admin = User::factory()->create(['role' => 'admin']);
+        Category::factory()->create([
+            'name' => 'Student portal access',
+            'is_active' => false,
+        ]);
+
+        $this->post(route('ticket.store'), [
+            'name' => 'Jamie Student',
+            'student_id' => '2023000003',
+            'email' => 'jamie@example.edu',
+            'subject' => 'Student portal access problem',
+            'message' => 'I cannot access the student portal.',
+        ])->assertRedirect(route('ticket.submitted'));
+
+        $this->confirmPendingEmail();
+        $ticket = Ticket::query()->where('requester_email', 'jamie@example.edu')->firstOrFail();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'department_id' => null,
+            'category_id' => null,
+            'assigned_to_user_id' => null,
+            'status' => 'New',
+        ]);
+        $triageEvent = TicketEvent::query()
+            ->where('ticket_id', $ticket->id)
+            ->where('event', 'automated_triage')
+            ->firstOrFail();
+        $this->assertSame('needs_department', $triageEvent->properties['routing_status']);
+
+        $this->actingAs($admin)
+            ->get(route('staff.tickets', ['triage' => 'needs_review']))
+            ->assertOk()
+            ->assertSee($ticket->ticket_number)
+            ->assertSee('Needs review');
+
+        $this->get(route('staff.ticket-detail', $ticket))
+            ->assertOk()
+            ->assertSee('could not match the ticket text to an active category route. Department review is needed.');
+    }
+
+    public function test_ambiguous_ticket_text_stays_in_the_department_review_queue(): void
+    {
+        Notification::fake();
+        $firstDepartment = Department::factory()->create();
+        $secondDepartment = Department::factory()->create();
+        Category::factory()->create([
+            'name' => 'Account access',
+            'department_id' => $firstDepartment->id,
+        ]);
+        Category::factory()->create([
+            'name' => 'Portal access',
+            'department_id' => $secondDepartment->id,
+        ]);
+
+        $this->post(route('ticket.store'), [
+            'name' => 'Jamie Student',
+            'student_id' => '2023000006',
+            'email' => 'jamie@example.edu',
+            'subject' => 'Account, portal, and access issue',
+            'message' => 'Both account and portal need access.',
+        ])->assertRedirect(route('ticket.submitted'));
+
+        $this->confirmPendingEmail();
+        $ticket = Ticket::query()->where('requester_email', 'jamie@example.edu')->firstOrFail();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'department_id' => null,
+            'category_id' => null,
+            'assigned_to_user_id' => null,
+            'status' => 'New',
+        ]);
+        $triageEvent = TicketEvent::query()
+            ->where('ticket_id', $ticket->id)
+            ->where('event', 'automated_triage')
+            ->firstOrFail();
+        $this->assertSame('needs_department', $triageEvent->properties['routing_status']);
+    }
+
+    public function test_ticket_with_no_eligible_department_staff_stays_unassigned_for_review(): void
+    {
+        Notification::fake();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $department = Department::factory()->create();
+        $category = Category::factory()->create([
+            'name' => 'Account access',
+            'description' => 'Login and credential issues.',
+            'department_id' => $department->id,
+        ]);
+        User::factory()->create([
+            'role' => 'staff',
+            'department_id' => $department->id,
+            'staff_approval_status' => 'denied',
+        ]);
+
+        $this->post(route('ticket.store'), [
+            'name' => 'Jamie Student',
+            'student_id' => '2023000004',
+            'email' => 'jamie@example.edu',
+            'subject' => 'Account access problem',
+            'message' => 'I cannot log in to my account.',
+        ])->assertRedirect(route('ticket.submitted'));
+
+        $this->confirmPendingEmail();
+        $ticket = Ticket::query()->where('requester_email', 'jamie@example.edu')->firstOrFail();
+
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket->id,
+            'category_id' => $category->id,
+            'department_id' => $department->id,
+            'assigned_to_user_id' => null,
+            'status' => 'New',
+        ]);
+        $triageEvent = TicketEvent::query()
+            ->where('ticket_id', $ticket->id)
+            ->where('event', 'automated_triage')
+            ->firstOrFail();
+        $this->assertSame('needs_staff_assignment', $triageEvent->properties['routing_status']);
+
+        $this->actingAs($admin)
+            ->get(route('staff.ticket-detail', $ticket))
+            ->assertOk()
+            ->assertSee('no eligible staff were available');
     }
 
     public function test_client_can_download_a_ticket_with_only_their_verified_public_conversation(): void
@@ -371,7 +630,7 @@ class TicketWorkflowTest extends TestCase
         Storage::disk('private')->assertDirectoryEmpty('ticket-attachments');
     }
 
-    public function test_guest_submission_uses_subject_priority_instead_of_requester_input(): void
+    public function test_guest_submission_uses_combined_ticket_text_priority_instead_of_requester_input(): void
     {
         $department = Department::factory()->create();
         Notification::fake();
@@ -380,8 +639,8 @@ class TicketWorkflowTest extends TestCase
             'student_id' => '2023000001',
             'email' => 'jamie@example.edu',
             'department_id' => $department->id,
-            'subject' => 'Campus portal outage',
-            'message' => 'The portal is unavailable for my class.',
+            'subject' => 'Help with my class portal',
+            'message' => 'A system-wide outage prevents online classes.',
             'priority' => 'Low',
         ]);
 
@@ -389,20 +648,20 @@ class TicketWorkflowTest extends TestCase
         $this->confirmPendingEmail();
         $this->assertDatabaseHas('tickets', [
             'requester_email' => 'jamie@example.edu',
-            'subject' => 'Campus portal outage',
+            'subject' => 'Help with my class portal',
             'priority' => 'Urgent',
             'department_id' => null,
             'category_id' => null,
         ]);
     }
 
-    public function test_subject_keyword_rules_assign_high_medium_and_fallback_low_priorities(): void
+    public function test_ticket_text_keyword_rules_assign_high_medium_and_fallback_low_priorities(): void
     {
         $department = Department::factory()->create();
         $cases = [
-            ['subject' => 'Cannot sign in to the class portal', 'priority' => 'High'],
-            ['subject' => 'Slow loading in the course portal', 'priority' => 'Medium'],
-            ['subject' => 'Question about training materials', 'priority' => 'Low'],
+            ['subject' => 'Cannot sign in to the class portal', 'description' => 'Please assist.', 'priority' => 'High'],
+            ['subject' => 'Slow loading in the course portal', 'description' => 'Please assist.', 'priority' => 'Medium'],
+            ['subject' => 'Question about training materials', 'description' => 'Please assist.', 'priority' => 'Low'],
         ];
 
         foreach ($cases as $index => $case) {
@@ -413,7 +672,7 @@ class TicketWorkflowTest extends TestCase
                 'email' => "jamie{$index}@example.edu",
                 'department_id' => $department->id,
                 'subject' => $case['subject'],
-                'message' => 'Please review this request.',
+                'message' => $case['description'],
             ])->assertRedirect(route('ticket.submitted'));
             $this->confirmPendingEmail();
 
@@ -422,6 +681,26 @@ class TicketWorkflowTest extends TestCase
                 'priority' => $case['priority'],
             ]);
         }
+    }
+
+    public function test_priority_classification_uses_description_when_subject_has_no_priority_keywords(): void
+    {
+        Notification::fake();
+        $this->post(route('ticket.store'), [
+            'name' => 'Jamie Student',
+            'student_id' => '2023000001',
+            'email' => 'jamie@example.edu',
+            'subject' => 'My account issue',
+            'message' => 'I cannot log in because authentication failed.',
+        ])->assertRedirect(route('ticket.submitted'));
+
+        $this->confirmPendingEmail();
+
+        $this->assertDatabaseHas('tickets', [
+            'requester_email' => 'jamie@example.edu',
+            'subject' => 'My account issue',
+            'priority' => 'High',
+        ]);
     }
 
     public function test_invalid_ticket_submission_does_not_create_a_ticket(): void
