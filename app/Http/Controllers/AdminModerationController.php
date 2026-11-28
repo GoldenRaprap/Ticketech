@@ -3,15 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ClientConductWarning;
+use App\Models\ClientConductPhrase;
 use App\Models\ClientModeration;
 use App\Models\TicketEvent;
 use App\Models\TicketMisuseReport;
 use App\Services\AuditActivityLogger;
+use App\Services\ClientConductScreening;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -20,6 +23,10 @@ class AdminModerationController extends Controller
     public function index(): View
     {
         return view('admin.moderation', [
+            'conductPhrases' => ClientConductPhrase::query()
+                ->orderBy('reason')
+                ->orderBy('phrase')
+                ->get(),
             'reports' => TicketMisuseReport::query()
                 ->with(['ticket', 'reporter:id,name', 'reviewedBy:id,name'])
                 ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
@@ -33,6 +40,93 @@ class AdminModerationController extends Controller
             'activeWarningCount' => ClientModeration::query()->where('status', 'warning')->whereNull('cleared_at')->count(),
             'activeBlockCount' => ClientModeration::query()->where('status', 'blocked')->whereNull('cleared_at')->count(),
         ]);
+    }
+
+    public function storePhrase(
+        Request $request,
+        ClientConductScreening $conductScreening,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'phrase' => ['required', 'string', 'max:150'],
+            'reason' => ['required', 'in:threatening,abusive'],
+        ]);
+        $request->merge(['phrase' => $conductScreening->normalizeText($validated['phrase'])]);
+        $validated = $request->validate([
+            'phrase' => ['required', 'string', 'max:150', Rule::unique('client_conduct_phrases', 'phrase')],
+            'reason' => ['required', 'in:threatening,abusive'],
+        ]);
+        $phrase = ClientConductPhrase::query()->create([
+            'phrase' => $validated['phrase'],
+            'reason' => $validated['reason'],
+            'is_active' => true,
+        ]);
+
+        $auditLogger->record(
+            $request,
+            'client_conduct_phrase_added',
+            'Added an automatic client conduct screening phrase.',
+            $phrase,
+            ['reason' => $phrase->reason],
+        );
+
+        return to_route('admin.moderation')->with('status', 'Screening phrase added.');
+    }
+
+    public function updatePhrase(
+        Request $request,
+        ClientConductPhrase $phrase,
+        ClientConductScreening $conductScreening,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'phrase' => ['required', 'string', 'max:150'],
+            'reason' => ['required', 'in:threatening,abusive'],
+        ]);
+        $request->merge(['phrase' => $conductScreening->normalizeText($validated['phrase'])]);
+        $validated = $request->validate([
+            'phrase' => [
+                'required',
+                'string',
+                'max:150',
+                Rule::unique('client_conduct_phrases', 'phrase')->ignore($phrase->id),
+            ],
+            'reason' => ['required', 'in:threatening,abusive'],
+        ]);
+        $phrase->update($validated);
+
+        $auditLogger->record(
+            $request,
+            'client_conduct_phrase_updated',
+            'Updated an automatic client conduct screening phrase.',
+            $phrase,
+            ['reason' => $phrase->reason],
+        );
+
+        return to_route('admin.moderation')->with('status', 'Screening phrase updated.');
+    }
+
+    public function togglePhrase(
+        Request $request,
+        ClientConductPhrase $phrase,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
+        $request->validate([
+            'is_active' => ['required', 'boolean'],
+        ]);
+        $phrase->update(['is_active' => $request->boolean('is_active')]);
+
+        $auditLogger->record(
+            $request,
+            'client_conduct_phrase_activation_updated',
+            $phrase->is_active
+                ? 'Enabled an automatic client conduct screening phrase.'
+                : 'Disabled an automatic client conduct screening phrase.',
+            $phrase,
+            ['is_active' => $phrase->is_active],
+        );
+
+        return to_route('admin.moderation')->with('status', 'Screening phrase status updated.');
     }
 
     public function review(

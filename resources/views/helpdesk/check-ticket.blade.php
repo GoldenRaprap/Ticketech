@@ -113,15 +113,17 @@
 
                 <div class="ticket-view-summary">
                     @foreach ($ticketDocument['detail_groups'] as $group)
-                        <section class="ticket-summary-group" aria-label="{{ $group['title'] }}">
+                        <section class="ticket-summary-group {{ $group['title'] === 'Client information' ? 'ticket-summary-group--client' : '' }}" aria-label="{{ $group['title'] }}">
                             <h2>{{ $group['title'] }}</h2>
                             <dl class="ticket-summary-list">
                                 @foreach ($group['details'] as $detail)
-                                    <div>
+                                    <div class="{{ $detail['label'] === 'Email' ? 'ticket-detail--email' : '' }}">
                                         <dt>{{ $detail['label'] }}</dt>
                                         <dd>
                                             @if ($detail['label'] === 'Current status')
                                                 <span class="ticket-view-status-badge ticket-view-status-badge--{{ \Illuminate\Support\Str::slug($detail['value']) }}">{{ $detail['value'] }}</span>
+                                            @elseif ($detail['label'] === 'Email')
+                                                <a href="mailto:{{ $detail['value'] }}">{{ $detail['value'] }}</a>
                                             @else
                                                 {{ $detail['value'] }}
                                             @endif

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ClientConductPhrase;
 use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\TicketMisuseReport;
@@ -56,7 +57,9 @@ class AutomaticClientConductReportingTest extends TestCase
             ->assertOk()
             ->assertSee('Automated screening')
             ->assertSee('Automated flag')
-            ->assertSee('Matched indicators');
+            ->assertSee('Matched indicators')
+            ->assertSee('View ticket')
+            ->assertSee(route('staff.ticket-detail', $ticket), false);
 
         $this->get(route('staff.ticket-detail', $ticket))
             ->assertOk()
@@ -122,6 +125,86 @@ class AutomaticClientConductReportingTest extends TestCase
         $this->assertDatabaseMissing('workspace_notifications', [
             'ticket_id' => $ticket->id,
             'type' => 'client_report',
+        ]);
+    }
+
+    public function test_admin_can_add_update_and_disable_screening_phrases(): void
+    {
+        Notification::fake();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $ticket = $this->createTicket();
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.phrases.store'), [
+                'phrase' => 'Custom--marker phrase',
+                'reason' => 'abusive',
+            ])
+            ->assertRedirect(route('admin.moderation'));
+
+        $phrase = ClientConductPhrase::query()->where('phrase', 'custom marker phrase')->firstOrFail();
+        $this->assertSame('abusive', $phrase->reason);
+        $this->assertTrue($phrase->is_active);
+
+        $this->from(route('admin.moderation'))
+            ->post(route('admin.moderation.phrases.store'), [
+                'phrase' => 'CUSTOM marker--phrase',
+                'reason' => 'abusive',
+            ])
+            ->assertRedirect(route('admin.moderation'))
+            ->assertSessionHasErrors('phrase');
+
+        $this->get(route('admin.moderation'))
+            ->assertOk()
+            ->assertSee('Message screening phrases')
+            ->assertSee('custom marker phrase')
+            ->assertSee('Disable');
+
+        $this->put(route('admin.moderation.phrases.update', $phrase), [
+            'phrase' => 'Another custom marker',
+            'reason' => 'threatening',
+        ])->assertRedirect(route('admin.moderation'));
+
+        $phrase->refresh();
+        $this->assertSame('another custom marker', $phrase->phrase);
+        $this->assertSame('threatening', $phrase->reason);
+
+        $this->post(route('ticket.reply'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => $ticket->requester_email,
+            'body' => 'This has ANOTHER--custom marker in it.',
+        ])->assertRedirect(route('ticket.check'));
+
+        $report = TicketMisuseReport::query()->firstOrFail();
+        $this->assertSame('threatening', $report->reason);
+        $this->assertStringContainsString('another custom marker', $report->details);
+
+        $this->patch(route('admin.moderation.phrases.activation', $phrase), [
+            'is_active' => '0',
+        ])->assertRedirect(route('admin.moderation'));
+
+        $this->assertFalse($phrase->fresh()->is_active);
+        $this->post(route('ticket.reply'), [
+            'ticket' => $ticket->ticket_number,
+            'email' => $ticket->requester_email,
+            'body' => 'Another custom marker',
+        ])->assertRedirect(route('ticket.check'));
+
+        $this->assertDatabaseCount('ticket_misuse_reports', 1);
+    }
+
+    public function test_non_admin_cannot_manage_screening_phrases(): void
+    {
+        $staff = User::factory()->create(['role' => 'staff']);
+
+        $this->actingAs($staff)
+            ->post(route('admin.moderation.phrases.store'), [
+                'phrase' => 'custom marker phrase',
+                'reason' => 'abusive',
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseMissing('client_conduct_phrases', [
+            'phrase' => 'custom marker phrase',
         ]);
     }
 

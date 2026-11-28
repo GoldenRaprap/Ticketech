@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ClientConductPhrase;
 use App\Models\Ticket;
 use App\Models\TicketMisuseReport;
 use App\Models\User;
@@ -10,57 +11,21 @@ use RuntimeException;
 
 class ClientConductScreening
 {
-    /**
-     * @var list<string>
-     */
-    private const THREAT_PHRASES = [
-        'i will hurt you',
-        'i will harm you',
-        'i will kill you',
-        'i ll hurt you',
-        'i ll harm you',
-        'i ll kill you',
-        'i am going to hurt you',
-        'i am going to kill you',
-        'i m going to hurt you',
-        'i m going to kill you',
-        'you will regret this',
-        'you ll regret this',
-        'papatayin kita',
-        'sasaktan kita',
-    ];
-
-    /**
-     * @var list<string>
-     */
-    private const ABUSIVE_PHRASES = [
-        'fuck you',
-        'shut up',
-        'you are an idiot',
-        'you re an idiot',
-        'you are stupid',
-        'you re stupid',
-        'you are useless',
-        'you re useless',
-        'you are an asshole',
-        'you re an asshole',
-        'bobo ka',
-        'tanga ka',
-        'gago ka',
-        'putang ina mo',
-        'walang kwenta ka',
-    ];
-
     public function reportIfFlagged(Ticket $ticket, string $message, string $messageSource): ?TicketMisuseReport
     {
-        $normalizedMessage = preg_replace('/[^\p{L}\p{N}]+/u', ' ', mb_strtolower($message));
-
-        if (! is_string($normalizedMessage)) {
-            throw new RuntimeException('Unable to normalize client message for conduct screening.');
-        }
-
-        $threatSignals = $this->matchedPhrases($normalizedMessage, self::THREAT_PHRASES);
-        $abusiveSignals = $this->matchedPhrases($normalizedMessage, self::ABUSIVE_PHRASES);
+        $normalizedMessage = $this->normalizeText($message);
+        $phrases = ClientConductPhrase::query()
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->get(['phrase', 'reason']);
+        $threatSignals = $this->matchedPhrases(
+            $normalizedMessage,
+            $phrases->where('reason', 'threatening')->pluck('phrase')->all(),
+        );
+        $abusiveSignals = $this->matchedPhrases(
+            $normalizedMessage,
+            $phrases->where('reason', 'abusive')->pluck('phrase')->all(),
+        );
         $reason = $threatSignals !== [] ? 'threatening' : 'abusive';
         $matchedSignals = array_values(array_unique([...$threatSignals, ...$abusiveSignals]));
 
@@ -94,6 +59,17 @@ class ClientConductScreening
             ]));
 
         return $report;
+    }
+
+    public function normalizeText(string $text): string
+    {
+        $normalizedText = preg_replace('/[^\p{L}\p{N}]+/u', ' ', mb_strtolower($text));
+
+        if (! is_string($normalizedText)) {
+            throw new RuntimeException('Unable to normalize client conduct text.');
+        }
+
+        return trim($normalizedText);
     }
 
     /**

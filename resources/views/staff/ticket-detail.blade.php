@@ -296,7 +296,7 @@
             <details class="workspace-card ticket-collapsible-card client-report-card" @if ($errors->has('reason') || $errors->has('details')) open @endif>
                 <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">CLIENT CONDUCT</span><h2>Report client</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>
                 <div class="ticket-collapsible-content">
-                    <p class="client-report-intro">Use this for spam, abusive messages, or repeated misuse. An administrator reviews reports before issuing a warning or blocking the client's email.</p>
+                    <p class="client-report-intro">Client messages are automatically scanned for threats and abusive content. Possible matches create a report for administrator review. Use this form for other conduct concerns; no warning or block is applied automatically.</p>
                     @forelse ($ticket->misuseReports as $report)
                         <div class="client-report-history">
                             <strong>{{ str($report->reason)->replace('_', ' ')->title() }}</strong>

@@ -134,6 +134,9 @@ Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])-
     Route::patch('/users/registration-blocks/{staffRegistrationBlock}/clear', [AdminUserController::class, 'clearRegistrationBlock'])
         ->name('users.registration-blocks.clear');
     Route::get('/moderation', [AdminModerationController::class, 'index'])->name('moderation');
+    Route::post('/moderation/phrases', [AdminModerationController::class, 'storePhrase'])->name('moderation.phrases.store');
+    Route::put('/moderation/phrases/{phrase}', [AdminModerationController::class, 'updatePhrase'])->name('moderation.phrases.update');
+    Route::patch('/moderation/phrases/{phrase}/activation', [AdminModerationController::class, 'togglePhrase'])->name('moderation.phrases.activation');
     Route::patch('/moderation/reports/{report}/review', [AdminModerationController::class, 'review'])->name('moderation.review');
     Route::patch('/moderation/clients/{clientModeration}/clear', [AdminModerationController::class, 'clear'])->name('moderation.clear');
     Route::get('/knowledge-base', [KnowledgeArticleController::class, 'index'])->name('knowledge-base');

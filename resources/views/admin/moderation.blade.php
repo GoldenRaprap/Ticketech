@@ -7,7 +7,7 @@
         <div>
             <span class="admin-page-eyebrow">ADMINISTRATION / CLIENT SAFETY</span>
             <h1>Client moderation</h1>
-            <p>Review staff reports and automatically flagged client messages, then manage warning or email-block decisions.</p>
+            <p>Manage message-screening phrases, review staff reports and automatically flagged client messages, then manage warning or email-block decisions.</p>
         </div>
         <span class="admin-page-context"><span aria-hidden="true">●</span> Admin review required</span>
     </header>
@@ -15,6 +15,86 @@
     @if (session('status'))
         <div class="workspace-alert workspace-alert--success" role="status">{{ session('status') }}</div>
     @endif
+
+    @if ($errors->has('phrase') || $errors->has('reason') || $errors->has('is_active'))
+        <div class="workspace-alert workspace-alert--error" role="alert">{{ $errors->first() }}</div>
+    @endif
+
+    <section class="admin-console-card">
+        <div class="admin-console-card-heading">
+            <div>
+                <span class="admin-page-eyebrow">AUTOMATIC SCREENING</span>
+                <h2>Message screening phrases</h2>
+                <p>Active phrases are checked against new client tickets and requester replies. A match creates a report for admin review; it does not automatically warn or block the client.</p>
+            </div>
+            <span class="admin-readonly-badge">{{ $conductPhrases->where('is_active', true)->count() }} active</span>
+        </div>
+        <form class="moderation-phrase-add" action="{{ route('admin.moderation.phrases.store') }}" method="post">
+            @csrf
+            <label class="workspace-field">
+                <span>New phrase</span>
+                <input type="text" name="phrase" maxlength="150" value="{{ old('phrase') }}" placeholder="Enter a phrase to detect" required>
+            </label>
+            <label class="workspace-field">
+                <span>Report category</span>
+                <select name="reason" required>
+                    <option value="">Select a category</option>
+                    <option value="threatening" @selected(old('reason') === 'threatening')>Threatening</option>
+                    <option value="abusive" @selected(old('reason') === 'abusive')>Abusive</option>
+                </select>
+            </label>
+            <button class="workspace-button workspace-button--primary" type="submit">Add phrase</button>
+        </form>
+        <div class="admin-priority-rules-grid moderation-phrase-groups">
+            @foreach (['threatening' => 'Threatening', 'abusive' => 'Abusive'] as $reason => $label)
+                @php
+                    $phrasesForReason = $conductPhrases->where('reason', $reason);
+                    $activePhraseCount = $phrasesForReason->where('is_active', true)->count();
+                @endphp
+                <div class="admin-priority-rule-field">
+                    <span class="admin-priority-rule-label">{{ $label }} phrases</span>
+                    <details
+                        class="admin-priority-keyword-details"
+                        @if ($errors->has('phrase') || $errors->has('reason'))
+                            @if (old('reason') === $reason) open @endif
+                        @endif
+                    >
+                        <summary>
+                            <span>Manage phrases</span>
+                            <span class="admin-priority-keyword-count">{{ $phrasesForReason->count() }} phrases · {{ $activePhraseCount }} active</span>
+                        </summary>
+                        <div class="admin-priority-keyword-content">
+                            <ul class="moderation-phrase-list" aria-label="{{ $label }} screening phrases">
+                                @foreach ($phrasesForReason as $phrase)
+                                    <li class="moderation-phrase-item {{ $phrase->is_active ? '' : 'moderation-phrase-item--disabled' }}">
+                                        <form class="moderation-phrase-edit" action="{{ route('admin.moderation.phrases.update', $phrase) }}" method="post">
+                                            @csrf
+                                            @method('put')
+                                            <label class="visually-hidden" for="conduct-phrase-{{ $phrase->id }}">Phrase</label>
+                                            <input id="conduct-phrase-{{ $phrase->id }}" type="text" name="phrase" maxlength="150" value="{{ $phrase->phrase }}" required>
+                                            <input type="hidden" name="reason" value="{{ $reason }}">
+                                            <button class="admin-console-button" type="submit">Save</button>
+                                        </form>
+                                        <form class="moderation-phrase-toggle" action="{{ route('admin.moderation.phrases.activation', $phrase) }}" method="post">
+                                            @csrf
+                                            @method('patch')
+                                            <input type="hidden" name="is_active" value="{{ $phrase->is_active ? '0' : '1' }}">
+                                            <button
+                                                class="admin-priority-keyword-remove"
+                                                type="submit"
+                                                aria-label="{{ $phrase->is_active ? 'Disable' : 'Enable' }} screening phrase {{ $phrase->phrase }}"
+                                                title="{{ $phrase->is_active ? 'Disable phrase' : 'Enable phrase' }}"
+                                            >{{ $phrase->is_active ? '×' : '+' }}</button>
+                                        </form>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    </details>
+                </div>
+            @endforeach
+        </div>
+    </section>
 
     <section class="admin-metric-grid" aria-label="Client moderation summary">
         <article class="admin-metric-card"><span class="admin-metric-icon admin-metric-icon--amber" aria-hidden="true">⚑</span><div><span>Pending reports</span><strong>{{ $pendingReportCount }}</strong></div><small>Awaiting administrator review</small></article>
@@ -54,8 +134,9 @@
                     @if ($report->details)
                         <p class="moderation-report-details">{{ $report->details }}</p>
                     @endif
-                    @if ($report->status === 'pending')
-                        <div class="moderation-actions">
+                    <div class="moderation-actions">
+                        <a class="workspace-button workspace-button--secondary" href="{{ route('staff.ticket-detail', $report->ticket) }}">View ticket</a>
+                        @if ($report->status === 'pending')
                             @foreach (['warn' => 'Issue warning email', 'block' => 'Block email', 'dismiss' => 'Dismiss report'] as $action => $label)
                                 <form action="{{ route('admin.moderation.review', $report) }}" method="post">
                                     @csrf
@@ -64,8 +145,8 @@
                                     <button class="workspace-button {{ $action === 'block' ? 'workspace-button--danger' : 'workspace-button--secondary' }}" type="submit">{{ $label }}</button>
                                 </form>
                             @endforeach
-                        </div>
-                    @endif
+                        @endif
+                    </div>
                 </article>
             @empty
                 <div class="workspace-empty-state"><strong>No client reports yet</strong><p>Staff-submitted reports will appear here for admin review.</p></div>

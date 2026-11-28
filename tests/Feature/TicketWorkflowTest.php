@@ -490,6 +490,8 @@ class TicketWorkflowTest extends TestCase
             ->assertDontSee($ticket->priority)
             ->assertSee('Ticket details')
             ->assertSee('Client information')
+            ->assertSee('class="ticket-detail--email"', false)
+            ->assertSee('href="mailto:jamie@example.edu"', false)
             ->assertSee('Visible support update.')
             ->assertDontSee('Internal note must not be downloaded.');
 
@@ -867,6 +869,8 @@ class TicketWorkflowTest extends TestCase
             ->assertSee('Your support request')
             ->assertSee('Ticket details')
             ->assertSee('Client information')
+            ->assertSee('class="ticket-detail--email"', false)
+            ->assertSee('href="mailto:jamie@example.edu"', false)
             ->assertSee('Assigned to')
             ->assertSee('Not assigned')
             ->assertSee('Current status')

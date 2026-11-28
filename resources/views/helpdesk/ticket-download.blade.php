@@ -103,6 +103,19 @@
             min-width: 0;
         }
 
+        .detail-group--client .ticket-details {
+            grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+        }
+
+        .ticket-detail--email dd {
+            overflow-wrap: break-word;
+        }
+
+        .ticket-detail--email a {
+            color: inherit;
+            text-decoration: none;
+        }
+
         dt {
             margin-bottom: 3px;
             color: #6a7e93;
@@ -208,6 +221,7 @@
         @media (max-width: 560px) {
             body { width: calc(100% - 20px); margin: 10px auto; padding: 16px; }
             .document-details { grid-template-columns: 1fr; }
+            .detail-group--client .ticket-details { grid-template-columns: 1fr; }
             .document-header { padding: 18px; }
             .detail-group { padding: 13px; }
         }
@@ -246,15 +260,17 @@
 
     <div class="document-section document-details">
         @foreach ($document['detail_groups'] as $group)
-            <section class="detail-group" aria-label="{{ $group['title'] }}">
+            <section class="detail-group {{ $group['title'] === 'Client information' ? 'detail-group--client' : '' }}" aria-label="{{ $group['title'] }}">
                 <h2>{{ $group['title'] }}</h2>
                 <dl class="ticket-details">
                     @foreach ($group['details'] as $detail)
-                        <div>
+                        <div class="{{ $detail['label'] === 'Email' ? 'ticket-detail--email' : '' }}">
                             <dt>{{ $detail['label'] }}</dt>
                             <dd>
                                 @if ($detail['label'] === 'Current status')
                                     <span class="ticket-status ticket-status--{{ \Illuminate\Support\Str::slug($detail['value']) }}">{{ $detail['value'] }}</span>
+                                @elseif ($detail['label'] === 'Email')
+                                    <a href="mailto:{{ $detail['value'] }}">{{ $detail['value'] }}</a>
                                 @else
                                     {{ $detail['value'] }}
                                 @endif
