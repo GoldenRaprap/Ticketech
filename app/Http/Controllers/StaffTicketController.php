@@ -668,7 +668,7 @@ class StaffTicketController extends Controller
                     $comment->attachments()->create([
                         'ticket_id' => $ticket->id,
                         'uploaded_by' => $request->user()->id,
-                        'original_name' => $upload->getClientOriginalName(),
+                        'original_name' => basename($storedAttachment['path']),
                         'disk' => 'private',
                         'path' => $storedAttachment['path'],
                         'mime_type' => $upload->getMimeType(),

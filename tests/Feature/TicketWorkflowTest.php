@@ -131,8 +131,11 @@ class TicketWorkflowTest extends TestCase
             'type' => 'new_ticket',
         ]);
         $this->assertCount(5, $ticket->attachments);
+        $submittedFileNames = ['proof.pdf', 'screenshot.jpg', 'notes.doc', 'report.docx', 'image.png'];
         foreach ($ticket->attachments as $attachment) {
             Storage::disk('private')->assertExists($attachment->path);
+            $this->assertSame(basename($attachment->path), $attachment->original_name);
+            $this->assertNotContains($attachment->original_name, $submittedFileNames);
         }
 
         $this->get(route('ticket.submitted'))
@@ -1032,9 +1035,14 @@ class TicketWorkflowTest extends TestCase
         foreach ($comment->attachments as $attachment) {
             Storage::disk('private')->assertExists($attachment->path);
             $this->assertSame($comment->id, $attachment->comment_id);
+            $this->assertSame(basename($attachment->path), $attachment->original_name);
         }
 
-        $image = $comment->attachments->firstWhere('original_name', 'error-screen.png');
+        $image = $comment->attachments->firstWhere('mime_type', 'image/png');
+        $this->assertNotNull($image);
+        $this->assertNotSame('error-screen.png', $image->original_name);
+        $document = $comment->attachments->firstWhere('mime_type', 'application/pdf');
+        $this->assertNotNull($document);
         $this->post(route('ticket.view.close'))->assertRedirect(route('ticket.check'));
         $this->get(route('ticket.attachments.preview', $image))->assertNotFound();
 
@@ -1051,16 +1059,20 @@ class TicketWorkflowTest extends TestCase
         $this->get(route('ticket.check'))
             ->assertOk()
             ->assertSee('Here are the screenshots and error details.')
-            ->assertSee('error-screen.png')
-            ->assertSee('diagnostic.pdf')
+            ->assertSee($image->original_name)
+            ->assertSee($document->original_name)
+            ->assertDontSee('error-screen.png')
+            ->assertDontSee('diagnostic.pdf')
             ->assertSee('data-image-preview', false)
             ->assertSee('data-attachment-preview-dialog', false);
 
         $this->actingAs($staff)
             ->get(route('staff.ticket-detail', $ticket))
             ->assertOk()
-            ->assertSee('error-screen.png')
-            ->assertSee('diagnostic.pdf');
+            ->assertSee($image->original_name)
+            ->assertSee($document->original_name)
+            ->assertDontSee('error-screen.png')
+            ->assertDontSee('diagnostic.pdf');
     }
 
     public function test_client_reply_rejects_more_than_five_attachments(): void

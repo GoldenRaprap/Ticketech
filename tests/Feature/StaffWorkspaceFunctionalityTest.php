@@ -716,13 +716,14 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             'ticket_id' => $ticket->id,
             'message' => 'Escalated to the platform team.',
         ]);
+        $attachment = TicketAttachment::query()->firstOrFail();
+        $this->assertSame(basename($attachment->path), $attachment->original_name);
+        $this->assertNotSame('internal-evidence.png', $attachment->original_name);
         $this->assertDatabaseHas('ticket_attachments', [
             'ticket_id' => $ticket->id,
             'comment_id' => $ticket->comments()->firstOrFail()->id,
-            'original_name' => 'internal-evidence.png',
+            'original_name' => $attachment->original_name,
         ]);
-
-        $attachment = TicketAttachment::query()->firstOrFail();
         $this->get(route('staff.ticket-attachments.preview', [$ticket, $attachment]))
             ->assertOk()
             ->assertHeader('Content-Type', 'image/png');

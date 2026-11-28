@@ -98,7 +98,7 @@ class TicketController extends Controller
                     ],
                     'attachments' => array_map(
                         fn (array $attachment): array => [
-                            'original_name' => $attachment['upload']->getClientOriginalName(),
+                            'original_name' => basename($attachment['path']),
                             'path' => $attachment['path'],
                             'mime_type' => $attachment['upload']->getMimeType(),
                             'size_bytes' => $attachment['upload']->getSize(),
@@ -689,7 +689,7 @@ class TicketController extends Controller
                     $upload = $storedAttachment['upload'];
                     $comment->attachments()->create([
                         'ticket_id' => $lockedTicket->id,
-                        'original_name' => $upload->getClientOriginalName(),
+                        'original_name' => basename($storedAttachment['path']),
                         'disk' => 'private',
                         'path' => $storedAttachment['path'],
                         'mime_type' => $upload->getMimeType(),
