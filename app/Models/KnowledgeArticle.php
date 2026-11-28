@@ -16,6 +16,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'body',
     'is_published',
     'published_at',
+    'draft_title',
+    'draft_category',
+    'draft_summary',
+    'draft_body',
+    'draft_generated_at',
 ])]
 class KnowledgeArticle extends Model
 {
@@ -24,6 +29,7 @@ class KnowledgeArticle extends Model
         return [
             'is_published' => 'boolean',
             'published_at' => 'datetime',
+            'draft_generated_at' => 'datetime',
         ];
     }
 

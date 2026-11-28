@@ -5,9 +5,12 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreKnowledgeArticleRequest;
 use App\Http\Requests\UpdateKnowledgeArticleRequest;
 use App\Models\KnowledgeArticle;
+use App\Models\KnowledgeArticleSuggestion;
+use App\Models\Ticket;
 use App\Services\AuditActivityLogger;
 use App\Services\KnowledgeArticleContentFormatter;
 use App\Services\KnowledgeArticleReviewSettings;
+use App\Services\KnowledgeArticleSuggestionGenerator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -98,7 +101,149 @@ class KnowledgeArticleController extends Controller
             'filters' => $filters,
             'categories' => KnowledgeArticle::query()->distinct()->orderBy('category')->pluck('category'),
             'reviewThreshold' => $reviewSettings->visibilityThreshold(),
+            'suggestions' => KnowledgeArticleSuggestion::query()
+                ->with('targetArticle:id,title')
+                ->where('status', 'pending')
+                ->latest()
+                ->get(),
         ]);
+    }
+
+    public function generateSuggestions(
+        KnowledgeArticleSuggestionGenerator $generator,
+    ): RedirectResponse {
+        $created = 0;
+
+        Ticket::query()
+            ->whereIn('status', ['Resolved', 'Closed'])
+            ->latest('id')
+            ->limit(200)
+            ->get()
+            ->each(function (Ticket $ticket) use ($generator, &$created): void {
+                $suggestion = $generator->generateForTicket($ticket);
+
+                if ($suggestion?->wasRecentlyCreated) {
+                    $created++;
+                }
+            });
+
+        return to_route('admin.knowledge-base')
+            ->with('status', $created === 0
+                ? 'No new article suggestions were found.'
+                : "{$created} article suggestion".($created === 1 ? ' was' : 's were').' generated.');
+    }
+
+    public function approveSuggestion(
+        Request $request,
+        KnowledgeArticleSuggestion $suggestion,
+        KnowledgeArticleContentFormatter $contentFormatter,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
+        abort_unless($suggestion->status === 'pending', 404);
+
+        DB::transaction(function () use ($request, $suggestion, $contentFormatter, $auditLogger): void {
+            if ($suggestion->target_article_id !== null) {
+                $article = KnowledgeArticle::query()->lockForUpdate()->findOrFail($suggestion->target_article_id);
+                $article->update([
+                    'draft_title' => $article->draft_title ?? $suggestion->title,
+                    'draft_category' => $article->draft_category ?? $suggestion->category,
+                    'draft_summary' => $article->draft_summary ?? $article->summary,
+                    'draft_body' => $this->appendArticleUpdate(
+                        $article->draft_body ?? $article->body,
+                        $article,
+                        $suggestion,
+                        $contentFormatter,
+                    ),
+                    'draft_generated_at' => now(),
+                ]);
+            } else {
+                KnowledgeArticle::create([
+                    'author_id' => $request->user()->id,
+                    'title' => $suggestion->title,
+                    'slug' => $this->makeSlug($suggestion->title),
+                    'category' => $suggestion->category,
+                    'summary' => $suggestion->summary,
+                    'body' => $contentFormatter->format($suggestion->proposed_body),
+                    'is_published' => false,
+                    'published_at' => null,
+                ]);
+            }
+
+            $suggestion->update([
+                'status' => 'approved',
+                'reviewed_by' => $request->user()->id,
+                'reviewed_at' => now(),
+            ]);
+
+            $auditLogger->record(
+                $request,
+                'knowledge_article_suggestion_approved',
+                "Approved an automated knowledge-base suggestion: {$suggestion->title}.",
+                $suggestion->targetArticle,
+                ['suggestion_id' => $suggestion->id],
+            );
+        });
+
+        return to_route('admin.knowledge-base')->with(
+            'status',
+            $suggestion->target_article_id !== null
+                ? 'The update was added to the existing article as a draft.'
+                : 'The generated article was created as a draft.',
+        );
+    }
+
+    private function appendArticleUpdate(
+        string $currentBody,
+        KnowledgeArticle $article,
+        KnowledgeArticleSuggestion $suggestion,
+        KnowledgeArticleContentFormatter $contentFormatter,
+    ): string {
+        $formattedCurrentBody = $contentFormatter->format($currentBody);
+        $proposedBody = $contentFormatter->format($suggestion->proposed_body);
+        $newUpdateHeading = '<h2>New information from resolved ticket:';
+
+        if (! str_contains($proposedBody, $newUpdateHeading)) {
+            $publishedBody = $contentFormatter->format($article->body);
+
+            if ($publishedBody !== '' && str_starts_with($proposedBody, $publishedBody)) {
+                $proposedBody = $contentFormatter->format(trim(substr($proposedBody, strlen($publishedBody))));
+            } else {
+                $legacyHeading = '<h2>Additional concerns identified from recent tickets</h2>';
+                $legacyHeadingPosition = strpos($proposedBody, $legacyHeading);
+
+                if ($legacyHeadingPosition !== false) {
+                    $proposedBody = substr($proposedBody, $legacyHeadingPosition);
+                }
+            }
+        }
+
+        if ($proposedBody !== '' && ! str_contains($formattedCurrentBody, $proposedBody)) {
+            return trim($formattedCurrentBody."\n".$proposedBody);
+        }
+
+        return $formattedCurrentBody;
+    }
+
+    public function dismissSuggestion(
+        Request $request,
+        KnowledgeArticleSuggestion $suggestion,
+        AuditActivityLogger $auditLogger,
+    ): RedirectResponse {
+        abort_unless($suggestion->status === 'pending', 404);
+
+        $suggestion->update([
+            'status' => 'dismissed',
+            'reviewed_by' => $request->user()->id,
+            'reviewed_at' => now(),
+        ]);
+
+        $auditLogger->record(
+            $request,
+            'knowledge_article_suggestion_dismissed',
+            "Dismissed an automated knowledge-base suggestion: {$suggestion->title}.",
+        );
+
+        return to_route('admin.knowledge-base')->with('status', 'Article suggestion dismissed.');
     }
 
     public function create(Request $request, KnowledgeArticleContentFormatter $contentFormatter): View
@@ -194,7 +339,16 @@ class KnowledgeArticleController extends Controller
         KnowledgeArticle $article,
         KnowledgeArticleContentFormatter $contentFormatter,
     ): View {
-        $oldBody = $request->session()->getOldInput('body', $article->body);
+        $oldBody = $request->session()->getOldInput(
+            'body',
+            $article->draft_body ?? $article->body,
+        );
+
+        if ($article->draft_title !== null) {
+            $article->title = $article->draft_title;
+            $article->category = $article->draft_category ?? $article->category;
+            $article->summary = $article->draft_summary ?? $article->summary;
+        }
 
         return view('admin.knowledge-article-form', [
             'article' => $article,
@@ -240,6 +394,11 @@ class KnowledgeArticleController extends Controller
                     'body' => $contentFormatter->format($data['body']),
                     'is_published' => $isPublished,
                     'published_at' => $isPublished ? ($article->published_at ?? now()) : null,
+                    'draft_title' => null,
+                    'draft_category' => null,
+                    'draft_summary' => null,
+                    'draft_body' => null,
+                    'draft_generated_at' => null,
                 ]);
 
                 if ($article->isDirty('title')) {

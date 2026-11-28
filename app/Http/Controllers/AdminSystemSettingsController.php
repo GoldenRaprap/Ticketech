@@ -8,6 +8,7 @@ use App\Services\SlaSettings;
 use App\Services\TicketEmailAvailability;
 use App\Services\TicketResolutionSla;
 use App\Services\TicketSubmissionSettings;
+use App\Services\TurnstileVerifier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -18,7 +19,7 @@ use Illuminate\View\View;
 
 class AdminSystemSettingsController extends Controller
 {
-    public function index(SlaSettings $slaSettings): View
+    public function index(SlaSettings $slaSettings, TurnstileVerifier $turnstileVerifier): View
     {
         $settings = DB::table('system_settings')
             ->whereIn('setting', [
@@ -30,6 +31,8 @@ class AdminSystemSettingsController extends Controller
                 'mail.smtp.encryption',
                 'mail.smtp.username',
                 'mail.smtp.password',
+                TurnstileVerifier::SITE_KEY_SETTING,
+                TurnstileVerifier::SECRET_KEY_SETTING,
                 'ticket.submission.enabled',
                 'ticket.submission.message',
                 PublicFeatureAvailability::KNOWLEDGE_BASE_ENABLED,
@@ -69,6 +72,14 @@ class AdminSystemSettingsController extends Controller
             'smtpUsername' => $settings->get('mail.smtp.username', config('mail.mailers.smtp.username')),
             'hasSmtpAppPassword' => $settings->has('mail.smtp.password')
                 || filled(config('mail.mailers.smtp.password')),
+            'turnstileSiteKey' => $turnstileVerifier->siteKey(),
+            'turnstileConfigured' => $turnstileVerifier->isConfigured(),
+            'hasTurnstileSiteKey' => $settings->has(TurnstileVerifier::SITE_KEY_SETTING)
+                || filled(config('services.turnstile.site_key')),
+            'hasTurnstileSecret' => $settings->has(TurnstileVerifier::SECRET_KEY_SETTING)
+                || filled(config('services.turnstile.secret_key')),
+            'hasSavedTurnstileSiteKey' => $settings->has(TurnstileVerifier::SITE_KEY_SETTING),
+            'hasSavedTurnstileSecret' => $settings->has(TurnstileVerifier::SECRET_KEY_SETTING),
             'mailTransportStatus' => $mailTransportStatus,
             'mailDeliveryFailureMessage' => $settings->get(TicketEmailAvailability::DELIVERY_MESSAGE_SETTING),
             'ticketSubmissionOpen' => $settings->get('ticket.submission.enabled', '1') === '1',
@@ -327,6 +338,69 @@ class AdminSystemSettingsController extends Controller
         );
 
         return to_route('admin.system-settings')->with('status', 'Email sender and SMTP settings updated.');
+    }
+
+    public function updateTurnstileSettings(Request $request, AuditActivityLogger $auditLogger): RedirectResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'turnstile_site_key' => ['nullable', 'string', 'max:255'],
+            'turnstile_secret_key' => ['nullable', 'string', 'max:512'],
+            'clear_turnstile_site_key' => ['nullable', 'boolean'],
+            'clear_turnstile_secret_key' => ['nullable', 'boolean'],
+        ]);
+
+        if ($validator->fails()) {
+            return back()
+                ->withErrors($validator)
+                ->withInput($request->except('turnstile_secret_key'));
+        }
+
+        $validated = $validator->validated();
+        $settings = [];
+        $settingsToClear = [];
+
+        if ($request->boolean('clear_turnstile_site_key')) {
+            $settingsToClear[] = TurnstileVerifier::SITE_KEY_SETTING;
+        } elseif (filled($validated['turnstile_site_key'] ?? null)) {
+            $settings[TurnstileVerifier::SITE_KEY_SETTING] = $validated['turnstile_site_key'];
+        }
+
+        if ($request->boolean('clear_turnstile_secret_key')) {
+            $settingsToClear[] = TurnstileVerifier::SECRET_KEY_SETTING;
+        } elseif (filled($validated['turnstile_secret_key'] ?? null)) {
+            $settings[TurnstileVerifier::SECRET_KEY_SETTING] = Crypt::encryptString(
+                $validated['turnstile_secret_key'],
+            );
+        }
+
+        if ($settings === [] && $settingsToClear === []) {
+            return to_route('admin.system-settings')->with('status', 'No Turnstile settings were changed.');
+        }
+
+        DB::transaction(function () use ($settings, $settingsToClear): void {
+            foreach ($settingsToClear as $setting) {
+                DB::table('system_settings')->where('setting', $setting)->delete();
+            }
+
+            foreach ($settings as $setting => $value) {
+                DB::table('system_settings')->updateOrInsert(
+                    ['setting' => $setting],
+                    ['value' => $value, 'created_at' => now(), 'updated_at' => now()],
+                );
+            }
+        });
+
+        $auditLogger->record(
+            $request,
+            'turnstile_settings_updated',
+            'Updated Cloudflare Turnstile settings.',
+            properties: [
+                'updated_settings' => array_keys($settings),
+                'cleared_settings' => $settingsToClear,
+            ],
+        );
+
+        return to_route('admin.system-settings')->with('status', 'Turnstile settings updated.');
     }
 
     /**

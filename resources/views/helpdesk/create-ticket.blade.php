@@ -79,7 +79,18 @@
                 <ul id="ticket-attachment-list" class="attachment-list" data-attachment-list aria-live="polite" aria-relevant="additions removals"></ul>
             </div>
 
-            <button type="submit" class="submit-ticket-button">Submit Ticket</button>
+            @if ($turnstileEnabled)
+                @if ($turnstileConfigured)
+                    <div class="field-label turnstile-field">
+                        <div class="cf-turnstile" data-sitekey="{{ $turnstileSiteKey }}"></div>
+                    </div>
+                    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                @else
+                    <p class="form-validation-errors" role="alert">Ticket submission is temporarily unavailable because bot protection is not fully configured.</p>
+                @endif
+            @endif
+
+            <button type="submit" class="submit-ticket-button" @disabled($turnstileEnabled && ! $turnstileConfigured)>Submit Ticket</button>
         </form>
         @else
             <div class="ticket-submission-closed" role="status">

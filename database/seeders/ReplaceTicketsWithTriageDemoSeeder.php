@@ -3,9 +3,9 @@
 namespace Database\Seeders;
 
 use App\Models\Category;
-use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
+use App\Models\User;
 use App\Services\TicketDepartmentClassifier;
 use App\Services\TicketPriorityClassifier;
 use App\Services\TicketResolutionSla;
@@ -17,88 +17,121 @@ use RuntimeException;
 
 class ReplaceTicketsWithTriageDemoSeeder extends Seeder
 {
-    private const TICKET_COUNT = 50;
-
     /**
-     * @var array<string, array<string, array{description: string, keywords: string}>>
+     * @var list<array{
+     *     category: string,
+     *     subject: string,
+     *     description: string,
+     *     status: string,
+     *     resolution_note: ?string
+     * }>
      */
-    private const CATEGORY_DEFINITIONS = [
-        'Multimedia' => [
-            'Classroom AV Equipment' => [
-                'description' => 'Projectors, classroom displays, microphones, and speakers.',
-                'keywords' => 'projector, classroom display, HDMI, microphone, speakers, screen',
-            ],
-            'Media Recording and Editing' => [
-                'description' => 'Camera, audio and video recording, editing, and media export.',
-                'keywords' => 'camera, video recording, audio recording, video editing, audio editing, media export, rendering',
-            ],
-            'Creative Software Licensing' => [
-                'description' => 'Creative Cloud access, design applications, and software licenses.',
-                'keywords' => 'creative cloud, Adobe, Photoshop, Premiere Pro, software license, design software',
-            ],
+    private const TICKET_EXAMPLES = [
+        [
+            'category' => 'Computer and Printer Hardware',
+            'subject' => 'Shared printer remains offline after a network move',
+            'description' => 'Staff workstations show a "printer unavailable" message after the shared printer was moved to another office, and its print-server queue cannot be found.',
+            'status' => 'Resolved',
+            'resolution_note' => 'Reconnected the printer to the approved network port, re-added the print-server queue, and confirmed a test page printed from two staff workstations.',
         ],
-        'ICTC' => [
-            'Network Connectivity' => [
-                'description' => 'Wireless network, internet, VPN, and wired connectivity.',
-                'keywords' => 'wireless network, Wi-Fi, internet connection, VPN, ethernet, router',
-            ],
-            'Account Login and Access' => [
-                'description' => 'User accounts, password resets, sign-in, and authentication.',
-                'keywords' => 'user account, password reset, sign in, authentication, account locked, login access',
-            ],
-            'Computer and Printer Hardware' => [
-                'description' => 'Computer, laptop, printer, keyboard, and workstation hardware.',
-                'keywords' => 'computer, laptop, printer, keyboard, mouse, workstation, hardware repair',
-            ],
+        [
+            'category' => 'Computer and Printer Hardware',
+            'subject' => 'Shared printer unavailable after workstation restart',
+            'description' => 'A printer unavailable message appears on one staff workstation after restart, although other staff can still print.',
+            'status' => 'Resolved',
+            'resolution_note' => 'Removed the stale printer queue, reconnected the workstation to the approved print server, and confirmed the queue remained available after restart.',
         ],
-        'Technical' => [
-            'Learning Platform Issues' => [
-                'description' => 'Learning platform, course pages, assignments, and class materials.',
-                'keywords' => 'learning platform, course page, assignment upload, LMS, class materials',
-            ],
-            'Student Portal and Records' => [
-                'description' => 'Student portal, enrollment, registration, and academic records.',
-                'keywords' => 'student portal, enrollment, registration, transcript, academic records, grade record',
-            ],
-            'Application Installation and Errors' => [
-                'description' => 'Application installation, software updates, and application errors.',
-                'keywords' => 'application installation, software update, application error, program crash, install software',
-            ],
+        [
+            'category' => 'Computer and Printer Hardware',
+            'subject' => 'Lab workstation cannot detect the shared printer',
+            'description' => 'The workstation reports a "printer unavailable" message even though nearby computers can print to the shared printer.',
+            'status' => 'In Progress',
+            'resolution_note' => null,
         ],
-    ];
-
-    /**
-     * @var array<string, string>
-     */
-    private const PRIORITY_CONTEXT = [
-        'Urgent' => 'Priority context: this is an urgent incident requiring immediate attention.',
-        'High' => 'Priority context: this is a high priority issue blocking the requester.',
-        'Medium' => 'Priority context: this is a medium priority issue with a workaround available.',
-        'Low' => 'Priority context: this is a routine request with no interruption to normal work.',
-    ];
-
-    /**
-     * @var list<array{category: string, subject: string, description: string}>
-     */
-    private const TICKET_TEMPLATES = [
-        ['category' => 'Classroom AV Equipment', 'subject' => 'Classroom projector displays a blank image', 'description' => 'The classroom projector powers on, but no image appears on the screen.'],
-        ['category' => 'Classroom AV Equipment', 'subject' => 'HDMI input missing on classroom display', 'description' => 'The classroom display does not detect the connected HDMI source.'],
-        ['category' => 'Media Recording and Editing', 'subject' => 'Camera recording cannot be transferred', 'description' => 'A recorded video cannot be imported from the camera to the editing workstation.'],
-        ['category' => 'Media Recording and Editing', 'subject' => 'Video editing export stops before completion', 'description' => 'The media export stops while rendering a project in the video editor.'],
-        ['category' => 'Creative Software Licensing', 'subject' => 'Adobe Photoshop license is unavailable', 'description' => 'The design software reports that the creative license is not assigned.'],
-        ['category' => 'Creative Software Licensing', 'subject' => 'Premiere Pro asks for a software license', 'description' => 'The video editing application requests a license when it starts.'],
-        ['category' => 'Network Connectivity', 'subject' => 'Wireless network disconnects in the computer lab', 'description' => 'The Wi-Fi connection drops repeatedly while using the lab computers.'],
-        ['category' => 'Network Connectivity', 'subject' => 'VPN cannot connect to the campus network', 'description' => 'The VPN client does not establish an internet connection to campus resources.'],
-        ['category' => 'Account Login and Access', 'subject' => 'User account locked after password reset', 'description' => 'The account remains locked after the requester completed a password reset.'],
-        ['category' => 'Account Login and Access', 'subject' => 'Sign in authentication rejects valid credentials', 'description' => 'The login page rejects the requester during authentication.'],
-        ['category' => 'Computer and Printer Hardware', 'subject' => 'Printer unavailable from the staff workstation', 'description' => 'The workstation cannot find the shared printer in the hardware list.'],
-        ['category' => 'Computer and Printer Hardware', 'subject' => 'Laptop keyboard keys stop responding', 'description' => 'Several keys on the laptop keyboard do not respond during normal use.'],
-        ['category' => 'Learning Platform Issues', 'subject' => 'Learning platform course page is missing', 'description' => 'A course page and its class materials are not visible in the learning platform.'],
-        ['category' => 'Learning Platform Issues', 'subject' => 'Assignment upload fails in the LMS', 'description' => 'The LMS does not complete the assignment upload for the course.'],
-        ['category' => 'Student Portal and Records', 'subject' => 'Student portal enrollment record is incorrect', 'description' => 'The enrollment details shown in the student portal do not match the current schedule.'],
-        ['category' => 'Student Portal and Records', 'subject' => 'Transcript request is missing from academic records', 'description' => 'The requester cannot find the transcript request in the academic records page.'],
-        ['category' => 'Application Installation and Errors', 'subject' => 'Application installation stops on the final step', 'description' => 'The software installation process stops before the application can be opened.'],
-        ['category' => 'Application Installation and Errors', 'subject' => 'Application error appears after software update', 'description' => 'The application displays an error after the latest software update.'],
+        [
+            'category' => 'Cybersecurity and Information Security',
+            'subject' => 'Phishing message impersonates the university service desk',
+            'description' => 'A requester received a suspicious message asking them to follow a link and disclose university credentials. The message appears to impersonate the service desk.',
+            'status' => 'Resolved',
+            'resolution_note' => 'Confirmed the message was phishing, reported the sender for blocking, and advised the requester to delete it without opening the link.',
+        ],
+        [
+            'category' => 'Cybersecurity and Information Security',
+            'subject' => 'Suspicious phishing link reported before credentials were entered',
+            'description' => 'A staff member received a phishing email with a suspicious sign-in link and reported it before entering university credentials.',
+            'status' => 'Resolved',
+            'resolution_note' => 'Confirmed the link led to a credential-harvesting page, submitted the message for blocking, and advised the staff member to delete it without opening the link.',
+        ],
+        [
+            'category' => 'Cybersecurity and Information Security',
+            'subject' => 'Suspicious email link reported by a staff member',
+            'description' => 'A staff member received a phishing email with an unfamiliar sign-in link and reported it before entering any information.',
+            'status' => 'Assigned',
+            'resolution_note' => null,
+        ],
+        [
+            'category' => 'Email and Collaboration Services',
+            'subject' => 'Shared calendar events are missing from staff mailbox',
+            'description' => 'New events added by colleagues do not appear in the shared calendar because it has delayed synchronization, although individual calendars are available.',
+            'status' => 'Resolved',
+            'resolution_note' => 'Verified the shared calendar permission, removed the stale calendar subscription, and re-added it. Confirmed new test events synchronized.',
+        ],
+        [
+            'category' => 'Email and Collaboration Services',
+            'subject' => 'Shared calendar invitation is missing from staff calendar',
+            'description' => 'An invitation added to the shared calendar does not appear on the staff member calendar, while other shared calendar events are visible.',
+            'status' => 'Resolved',
+            'resolution_note' => 'Verified the staff member had permission to the shared calendar, removed the stale subscription, and re-added it. Confirmed the invitation appeared.',
+        ],
+        [
+            'category' => 'Email and Collaboration Services',
+            'subject' => 'Shared calendar events do not appear in staff calendar',
+            'description' => 'Recent events added to the shared calendar are missing from the staff member calendar after synchronization.',
+            'status' => 'Waiting for User',
+            'resolution_note' => null,
+        ],
+        [
+            'category' => 'Network Connectivity',
+            'subject' => 'Campus Wi-Fi disconnects repeatedly in the computer laboratory',
+            'description' => 'Several laboratory devices experience frequent disconnections from the wireless network, while wired computers in the same room stay connected.',
+            'status' => 'Resolved',
+            'resolution_note' => 'Confirmed the affected access point was restarting, moved the lab devices to the adjacent access point, and escalated the failing unit for replacement.',
+        ],
+        [
+            'category' => 'Network Connectivity',
+            'subject' => 'Campus Wi-Fi connection drops in the faculty office',
+            'description' => 'The wireless network disconnects repeatedly in one faculty office, while wired computers on the same floor remain connected.',
+            'status' => 'Resolved',
+            'resolution_note' => 'Confirmed the access point was restarting, moved affected devices to the adjacent access point, and verified the Wi-Fi connection remained stable.',
+        ],
+        [
+            'category' => 'Network Connectivity',
+            'subject' => 'Campus Wi-Fi disconnects during online class in the laboratory',
+            'description' => 'The wireless network experiences frequent disconnections during online classes in the computer laboratory, while wired devices stay connected.',
+            'status' => 'New',
+            'resolution_note' => null,
+        ],
+        [
+            'category' => 'Systems and Application Support',
+            'subject' => 'Faculty scheduling information system is unavailable',
+            'description' => 'A service disruption has made the faculty scheduling information system unavailable to multiple staff members.',
+            'status' => 'Resolved',
+            'resolution_note' => 'Confirmed the application service had stopped, restarted it after checking the service logs, and verified that staff could load the scheduling system.',
+        ],
+        [
+            'category' => 'Systems and Application Support',
+            'subject' => 'Faculty scheduling information system returns intermittent errors',
+            'description' => 'The faculty scheduling information system returns a partial system error when staff load the schedule during peak hours.',
+            'status' => 'Resolved',
+            'resolution_note' => 'Reviewed the scheduling system service logs, corrected the delayed database connection, and verified staff could load the schedule during a test.',
+        ],
+        [
+            'category' => 'Systems and Application Support',
+            'subject' => 'Faculty scheduling information system shows a partial system error',
+            'description' => 'The faculty scheduling information system shows a partial system error when several staff members load the schedule.',
+            'status' => 'In Progress',
+            'resolution_note' => null,
+        ],
     ];
 
     /**
@@ -129,44 +162,46 @@ class ReplaceTicketsWithTriageDemoSeeder extends Seeder
             $resolutionSla,
             $workloadAssigner,
         ): void {
-            $departments = Department::query()
-                ->whereIn('name', array_keys(self::CATEGORY_DEFINITIONS))
+            $categoryNames = array_values(array_unique(array_column(self::TICKET_EXAMPLES, 'category')));
+            $categories = Category::query()
+                ->whereIn('name', $categoryNames)
                 ->where('is_active', true)
+                ->whereNotNull('department_id')
+                ->whereHas('department', fn ($query) => $query->where('is_active', true))
+                ->with('department:id,name,is_active')
                 ->get()
                 ->keyBy('name');
 
-            if ($departments->count() !== count(self::CATEGORY_DEFINITIONS)) {
-                throw new RuntimeException('Activate the Multimedia, ICTC, and Technical departments before generating triage demo tickets.');
+            if ($categories->count() !== count($categoryNames)) {
+                throw new RuntimeException('Activate all categories used by the triage demo before replacing tickets.');
             }
 
-            $categories = [];
+            $requiredDepartmentIds = collect(self::TICKET_EXAMPLES)
+                ->reject(fn (array $example): bool => $example['status'] === 'New')
+                ->map(fn (array $example): int => (int) $categories[$example['category']]->department_id)
+                ->unique()
+                ->values();
+            $staffDepartmentIds = User::query()
+                ->whereIn('role', ['staff', 'department_admin'])
+                ->where('employment_status', 'active')
+                ->where('staff_approval_status', 'approved')
+                ->whereIn('department_id', $requiredDepartmentIds)
+                ->distinct()
+                ->pluck('department_id')
+                ->map(fn (int|string $id): int => (int) $id);
+            $departmentsWithoutStaff = $requiredDepartmentIds->diff($staffDepartmentIds);
 
-            foreach (self::CATEGORY_DEFINITIONS as $departmentName => $departmentCategories) {
-                foreach ($departmentCategories as $name => $details) {
-                    $category = Category::query()->firstOrNew(['name' => $name]);
-
-                    if ($category->exists && (int) $category->department_id !== (int) $departments->get($departmentName)->id) {
-                        throw new RuntimeException("The category [{$name}] is already assigned to another department.");
-                    }
-
-                    $category->fill([
-                        'description' => $details['description'],
-                        'classification_keywords' => $details['keywords'],
-                        'department_id' => $departments->get($departmentName)->id,
-                        'is_active' => true,
-                    ]);
-                    $category->save();
-                    $categories[$name] = $category;
-                }
+            if ($departmentsWithoutStaff->isNotEmpty()) {
+                throw new RuntimeException('Each demo department needs at least one active, approved staff member before replacing tickets.');
             }
 
-            $examples = $this->ticketExamples();
+            $examples = self::TICKET_EXAMPLES;
             $classifiedExamples = [];
 
             foreach ($examples as $example) {
                 $category = $departmentClassifier->resolve($example['subject'], $example['description']);
 
-                if ($category === null || ! isset($categories[$example['expected_category']]) || $category->id !== $categories[$example['expected_category']]->id) {
+                if ($category === null || ! isset($categories[$example['category']]) || $category->id !== $categories[$example['category']]->id) {
                     throw new RuntimeException("The deterministic classifier did not match demo ticket [{$example['subject']}] to its expected category.");
                 }
 
@@ -186,7 +221,13 @@ class ReplaceTicketsWithTriageDemoSeeder extends Seeder
             Ticket::query()->delete();
 
             foreach ($classifiedExamples as $index => $example) {
-                $createdAt = now()->subDays(($index % 30) + 1);
+                $isResolved = in_array($example['status'], ['Resolved', 'Closed'], true);
+                $createdAt = $isResolved
+                    ? now()->subDays(45 + $index)
+                    : now()->subDays(($index % 5) + 1);
+                $resolvedAt = $isResolved
+                    ? $createdAt->copy()->addDays(($index % 3) + 1)
+                    : null;
                 $ticket = Ticket::query()->create([
                     'requester_name' => sprintf('Demo Requester %02d', $index + 1),
                     'student_id' => sprintf('DEMO-2026-%04d', $index + 1),
@@ -203,12 +244,28 @@ class ReplaceTicketsWithTriageDemoSeeder extends Seeder
                 ]);
 
                 $ticket->ticket_number = sprintf('ED-%s-%06d', $createdAt->format('Y'), $ticket->getKey());
-                $assignee = $workloadAssigner->assign($ticket);
+                $assignee = $example['status'] !== 'New'
+                    ? $workloadAssigner->assign($ticket)
+                    : null;
+                $ticket->status = $example['status'];
+
+                if ($assignee !== null) {
+                    $ticket->assigned_at = $createdAt->copy()->addHour();
+                    $ticket->first_assigned_at = $ticket->assigned_at;
+                }
+
+                $ticket->resolved_at = $resolvedAt;
+                $ticket->last_resolved_at = $resolvedAt;
+
+                if (in_array($example['status'], ['Waiting for User', 'On Hold'], true)) {
+                    $ticket->sla_paused_at = now();
+                }
+
                 $resolutionSla->refresh($ticket);
                 $ticket->save();
                 $ticket->events()->create([
                     'event' => 'ticket_created',
-                    'description' => 'Synthetic triage demo ticket generated locally.',
+                    'description' => 'Synthetic ticket generated for local triage and resolution-memory demonstration.',
                 ]);
                 $ticket->events()->create([
                     'actor_name' => 'Automated triage',
@@ -225,6 +282,17 @@ class ReplaceTicketsWithTriageDemoSeeder extends Seeder
                         'priority_keyword' => $example['priority']['keyword'],
                     ],
                 ]);
+
+                if ($example['resolution_note'] !== null && $assignee !== null && $resolvedAt !== null) {
+                    $ticket->comments()->create([
+                        'author_id' => $assignee->id,
+                        'author_name' => $assignee->displayName(),
+                        'body' => $example['resolution_note'],
+                        'is_internal' => false,
+                        'created_at' => $resolvedAt,
+                        'updated_at' => $resolvedAt,
+                    ]);
+                }
             }
         });
 
@@ -251,7 +319,15 @@ class ReplaceTicketsWithTriageDemoSeeder extends Seeder
             ->orderBy('tickets.priority')
             ->get();
 
-        $this->command?->info('Replaced the existing tickets with exactly 50 locally generated triage demo tickets.');
+        $resolvedDemoCount = count(array_filter(
+            self::TICKET_EXAMPLES,
+            fn (array $example): bool => in_array($example['status'], ['Resolved', 'Closed'], true),
+        ));
+        $this->command?->info(sprintf(
+            'Replaced existing tickets with %d curated local demo tickets, including %d resolved cases with staff resolution notes.',
+            count(self::TICKET_EXAMPLES),
+            $resolvedDemoCount,
+        ));
         $this->command?->table(
             ['Department', 'Category', 'Priority', 'Tickets'],
             $distribution->map(fn (object $row): array => [
@@ -261,32 +337,5 @@ class ReplaceTicketsWithTriageDemoSeeder extends Seeder
                 $row->ticket_count,
             ])->all(),
         );
-    }
-
-    /**
-     * @return list<array{
-     *     expected_category: string,
-     *     subject: string,
-     *     description: string
-     * }>
-     */
-    private function ticketExamples(): array
-    {
-        $examples = [];
-        $priorities = array_keys(self::PRIORITY_CONTEXT);
-        $templateCount = count(self::TICKET_TEMPLATES);
-
-        for ($index = 1; $index <= self::TICKET_COUNT; $index++) {
-            $template = self::TICKET_TEMPLATES[($index - 1) % $templateCount];
-            $priority = $priorities[($index - 1) % count($priorities)];
-
-            $examples[] = [
-                'expected_category' => $template['category'],
-                'subject' => sprintf('Demo %02d: %s', $index, $template['subject']),
-                'description' => $template['description']."\n\n".self::PRIORITY_CONTEXT[$priority],
-            ];
-        }
-
-        return $examples;
     }
 }

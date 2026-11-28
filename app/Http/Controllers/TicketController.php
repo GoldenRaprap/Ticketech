@@ -24,6 +24,7 @@ use App\Services\TicketPriorityClassifier;
 use App\Services\TicketResolutionSla;
 use App\Services\TicketSubmissionSettings;
 use App\Services\TicketWorkloadAssigner;
+use App\Services\TurnstileVerifier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -39,17 +40,38 @@ use Throwable;
 
 class TicketController extends Controller
 {
-    public function create(TicketSubmissionSettings $submissionSettings): View
-    {
+    public function create(
+        TicketSubmissionSettings $submissionSettings,
+        TurnstileVerifier $turnstileVerifier,
+    ): View {
         return view('helpdesk.create-ticket', [
             'ticketSubmissionOpen' => $submissionSettings->isOpen(),
             'ticketSubmissionMessage' => $submissionSettings->closedMessage(),
+            'turnstileEnabled' => $turnstileVerifier->isEnabled(),
+            'turnstileConfigured' => $turnstileVerifier->isConfigured(),
+            'turnstileSiteKey' => $turnstileVerifier->siteKey(),
         ]);
     }
 
-    public function store(StoreTicketRequest $request, ImmediateNotificationSender $notificationSender): RedirectResponse
-    {
+    public function store(
+        StoreTicketRequest $request,
+        ImmediateNotificationSender $notificationSender,
+        TurnstileVerifier $turnstileVerifier,
+    ): RedirectResponse {
         $validated = $request->validated();
+
+        if (
+            $turnstileVerifier->isEnabled()
+            && (
+                ! is_string($validated['cf-turnstile-response'] ?? null)
+                || ! $turnstileVerifier->verify($validated['cf-turnstile-response'])
+            )
+        ) {
+            throw ValidationException::withMessages([
+                'cf-turnstile-response' => 'Verification failed or expired. Please try again.',
+            ]);
+        }
+
         $uploads = $request->file('attachment', []) ?? [];
         $storedAttachments = [];
         $moderation = null;

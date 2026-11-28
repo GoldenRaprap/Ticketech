@@ -38,6 +38,57 @@
         </form>
     </section>
 
+    <section class="workspace-card knowledge-suggestions">
+        <div class="workspace-card-heading">
+            <div>
+                <span class="workspace-eyebrow">TICKET-DERIVED AUTOMATION</span>
+                <h2>Article suggestions</h2>
+                <p>Drafts are generated from resolved tickets and require approval before they affect published content.</p>
+            </div>
+            <form action="{{ route('admin.knowledge-base.generate-suggestions') }}" method="post">
+                @csrf
+                <button class="workspace-button workspace-button--primary" type="submit">Generate suggestions</button>
+            </form>
+        </div>
+        <div class="knowledge-suggestion-list">
+            @forelse ($suggestions as $suggestion)
+                <article class="knowledge-suggestion">
+                    <div class="knowledge-suggestion-copy">
+                        <div class="knowledge-suggestion-heading">
+                            <h3>{{ $suggestion->title }}</h3>
+                            <span>{{ $suggestion->target_article_id ? 'Update existing article' : 'New article' }}</span>
+                        </div>
+                        <p>{{ $suggestion->summary }}</p>
+                        @if ($suggestion->targetArticle)
+                            <small>Proposed update for “{{ $suggestion->targetArticle->title }}”</small>
+                        @endif
+                        <div class="knowledge-suggestion-meta">
+                            <span>{{ $suggestion->category }}</span>
+                            <span>{{ $suggestion->similarity_score }}% matched</span>
+                            <span>{{ count($suggestion->source_ticket_ids ?? []) }} source tickets</span>
+                        </div>
+                    </div>
+                    <div class="knowledge-suggestion-actions">
+                        <form action="{{ route('admin.knowledge-base.suggestions.approve', $suggestion) }}" method="post">
+                            @csrf
+                            <button class="workspace-button workspace-button--primary" type="submit">Approve draft</button>
+                        </form>
+                        <form action="{{ route('admin.knowledge-base.suggestions.dismiss', $suggestion) }}" method="post">
+                            @csrf
+                            <button class="workspace-button workspace-button--secondary" type="submit">Dismiss</button>
+                        </form>
+                    </div>
+                </article>
+            @empty
+                <div class="workspace-empty-state">
+                    <span class="workspace-empty-icon" aria-hidden="true">✦</span>
+                    <strong>No pending suggestions</strong>
+                    <p>Generate suggestions from resolved tickets to begin.</p>
+                </div>
+            @endforelse
+        </div>
+    </section>
+
     <section class="workspace-card knowledge-library">
         <div class="workspace-card-heading">
             <div><h2>Articles</h2><p>Draft and published resources.</p></div>

@@ -104,9 +104,9 @@
         </article>
         <article class="report-metric-card">
             <span class="report-metric-icon report-metric-icon--green" aria-hidden="true">✓</span>
-            <span class="report-metric-label">Resolved / closed</span>
-            <strong>{{ $resolvedTicketCount }}</strong>
-            <small>In the selected ticket cohort</small>
+            <span class="report-metric-label">Resolved during period</span>
+            <strong>{{ $resolvedInPeriodCount }}</strong>
+            <small>Based on the recorded resolution date</small>
         </article>
         <article class="report-metric-card">
             <span class="report-metric-icon report-metric-icon--violet" aria-hidden="true">⌁</span>
@@ -114,6 +114,48 @@
             <strong>{{ $averageResolutionHours !== null ? round($averageResolutionHours / 24, 1) : '—' }} <small>{{ $averageResolutionHours !== null ? 'days' : '' }}</small></strong>
             <small>For tickets with a resolution time</small>
         </article>
+    </section>
+
+    <section class="workspace-card report-actionable-insights" aria-labelledby="report-insights-heading">
+        <div class="workspace-card-heading">
+            <div>
+                <span class="workspace-eyebrow">Explainable, rule-based signals</span>
+                <h2 id="report-insights-heading">Actionable insights</h2>
+                <p>Highlights are based on ticket activity, SLA indicators, workload, and published article coverage for this report.</p>
+            </div>
+            <span class="report-insight-count">{{ count($actionableInsights) }} {{ count($actionableInsights) === 1 ? 'insight' : 'insights' }}</span>
+        </div>
+        <div class="report-actionable-insight-list">
+            @forelse ($actionableInsights as $insight)
+                <article class="report-actionable-insight report-actionable-insight--{{ $insight['type'] }}">
+                    <span class="report-actionable-insight-icon" aria-hidden="true">
+                        {{ $insight['type'] === 'warning' ? '!' : ($insight['type'] === 'success' ? '✓' : ($insight['type'] === 'opportunity' ? '✦' : '↗')) }}
+                    </span>
+                    <div class="report-actionable-insight-copy">
+                        <h3>{{ $insight['title'] }}</h3>
+                        <p>{{ $insight['message'] }}</p>
+                        <small><strong>Evidence:</strong> {{ $insight['evidence'] }}</small>
+                        <small><strong>Suggested action:</strong> {{ $insight['action'] }}</small>
+                        @if (! empty($insight['ticket_links']))
+                            <div class="report-actionable-insight-links">
+                                @foreach ($insight['ticket_links'] as $ticketLink)
+                                    <a class="workspace-button workspace-button--secondary" href="{{ route('staff.reports.insight-tickets', array_merge($reportFilters, [
+                                        'insight' => $ticketLink['insight'],
+                                        'category_id' => $ticketLink['category_id'] ?? null,
+                                        'assignee_ids' => $ticketLink['assignee_ids'] ?? null,
+                                    ])) }}">{{ $ticketLink['label'] }} <span aria-hidden="true">→</span></a>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+                </article>
+            @empty
+                <div class="report-actionable-insight-empty">
+                    <strong>No actionable signals for this period</strong>
+                    <p>Insights appear when ticket volume, SLA risk, workload distribution, or repeated categories reach a meaningful threshold.</p>
+                </div>
+            @endforelse
+        </div>
     </section>
 
     <section class="workspace-card report-chart-card" aria-label="SLA rescue insights">
@@ -132,6 +174,14 @@
             @empty
                 <div><span>Risk factors</span><strong>None currently identified</strong></div>
             @endforelse
+        </div>
+        <div class="report-sla-ticket-actions">
+            @if ($slaBreachCount > 0)
+                <a class="workspace-button workspace-button--secondary" href="{{ route('staff.reports.insight-tickets', array_merge($reportFilters, ['insight' => 'sla_breached'])) }}">View {{ $slaBreachCount }} breached {{ $slaBreachCount === 1 ? 'ticket' : 'tickets' }} <span aria-hidden="true">→</span></a>
+            @endif
+            @if ($slaAtRiskTicketCount > 0)
+                <a class="workspace-button workspace-button--secondary" href="{{ route('staff.reports.insight-tickets', array_merge($reportFilters, ['insight' => 'sla_at_risk'])) }}">View {{ $slaAtRiskTicketCount }} at-risk {{ $slaAtRiskTicketCount === 1 ? 'ticket' : 'tickets' }} <span aria-hidden="true">→</span></a>
+            @endif
         </div>
     </section>
 
@@ -178,12 +228,12 @@
                 <div>
                     <span class="workspace-eyebrow">Service performance</span>
                     <h2>Resolution rate</h2>
-                    <p>Share of tickets in this period that are resolved or closed.</p>
+                    <p>Share of tickets created in this period that are currently resolved or closed.</p>
                 </div>
             </div>
             <div class="report-resolution-rate">
                 <strong>{{ number_format($resolutionRate, 1) }}<small>%</small></strong>
-                <span>{{ $resolvedTicketCount }} of {{ $totalTicketCount }} tickets</span>
+                <span>{{ $resolvedTicketCount }} of {{ $totalTicketCount }} tickets created in this period</span>
             </div>
             <div class="report-resolution-track" role="progressbar" aria-label="Resolution rate" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ $resolutionRate }}">
                 <span style="width:{{ $resolutionRate }}%"></span>

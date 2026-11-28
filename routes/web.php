@@ -101,6 +101,7 @@ Route::prefix('staff')->name('staff.')->group(function () {
         Route::get('/tickets/{ticket:ticket_number}/attachments/{attachment}/preview', [TicketAttachmentPreviewController::class, 'staff'])->middleware('throttle:30,1')->name('ticket-attachments.preview');
 
         Route::get('/reports', StaffReportsController::class)->name('reports');
+        Route::get('/reports/insights/{insight}/tickets', [StaffReportsController::class, 'insightTickets'])->name('reports.insight-tickets');
         Route::get('/reports/export', [StaffReportsController::class, 'export'])->name('reports.export');
         Route::get('/notifications/updates', [StaffNotificationController::class, 'updates'])->name('notifications.updates');
         Route::get('/notifications', [StaffNotificationController::class, 'index'])->name('notifications');
@@ -142,6 +143,9 @@ Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])-
     Route::patch('/moderation/clients/{clientModeration}/clear', [AdminModerationController::class, 'clear'])->name('moderation.clear');
     Route::get('/knowledge-base', [KnowledgeArticleController::class, 'index'])->name('knowledge-base');
     Route::put('/knowledge-base/review-settings', [KnowledgeArticleController::class, 'updateReviewSettings'])->name('knowledge-base.review-settings');
+    Route::post('/knowledge-base/generate-suggestions', [KnowledgeArticleController::class, 'generateSuggestions'])->name('knowledge-base.generate-suggestions');
+    Route::post('/knowledge-base/suggestions/{suggestion}/approve', [KnowledgeArticleController::class, 'approveSuggestion'])->name('knowledge-base.suggestions.approve');
+    Route::post('/knowledge-base/suggestions/{suggestion}/dismiss', [KnowledgeArticleController::class, 'dismissSuggestion'])->name('knowledge-base.suggestions.dismiss');
     Route::get('/knowledge-base/create', [KnowledgeArticleController::class, 'create'])->name('knowledge-base.create');
     Route::post('/knowledge-base', [KnowledgeArticleController::class, 'store'])->name('knowledge-base.store');
     Route::get('/knowledge-base/{article}/edit', [KnowledgeArticleController::class, 'edit'])->name('knowledge-base.edit');
@@ -166,6 +170,8 @@ Route::prefix('admin')->name('admin.')->middleware(['audit.activity', 'admin'])-
     Route::get('/audit-logs', AdminAuditLogController::class)->name('audit-logs');
     Route::get('/system-settings', [AdminSystemSettingsController::class, 'index'])->name('system-settings');
     Route::put('/system-settings', [AdminSystemSettingsController::class, 'update'])->name('system-settings.update');
+    Route::put('/system-settings/turnstile', [AdminSystemSettingsController::class, 'updateTurnstileSettings'])
+        ->name('system-settings.turnstile.update');
     Route::put('/system-settings/business-hours', [AdminSystemSettingsController::class, 'updateBusinessHours'])
         ->name('system-settings.business-hours.update');
     Route::put('/system-settings/ticket-submission', [AdminSystemSettingsController::class, 'updateTicketSubmission'])

@@ -7,12 +7,14 @@ use App\Models\StaffRegistrationBlock;
 use App\Models\Ticket;
 use App\Models\TicketEvent;
 use App\Models\User;
+use App\Notifications\StaffPasswordReset;
 use App\Services\AuditActivityLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -74,7 +76,16 @@ class AdminUserController extends Controller
         $failedSetupLinks = 0;
 
         foreach ($users as $user) {
-            if (Password::sendResetLink(['email' => $user->email]) !== Password::RESET_LINK_SENT) {
+            $resetLinkStatus = Password::sendResetLink(
+                ['email' => $user->email],
+                function (User $user, string $token): string {
+                    Notification::send($user, new StaffPasswordReset($token));
+
+                    return Password::RESET_LINK_SENT;
+                },
+            );
+
+            if ($resetLinkStatus !== Password::RESET_LINK_SENT) {
                 $failedSetupLinks++;
             }
         }
@@ -84,10 +95,10 @@ class AdminUserController extends Controller
         if ($failedSetupLinks > 0) {
             return to_route('admin.users')
                 ->with('status', $status)
-                ->with('warning', "{$failedSetupLinks} password setup link(s) could not be sent. Ask those staff members to use Forgot password on the sign-in page.");
+                ->with('warning', "{$failedSetupLinks} password setup link(s) could not be queued. Ask those staff members to use Forgot password on the sign-in page.");
         }
 
-        return to_route('admin.users')->with('status', $status.' Password setup links have been emailed.');
+        return to_route('admin.users')->with('status', $status.' Password setup emails have been queued.');
     }
 
     public function index(Request $request): View

@@ -22,7 +22,7 @@
         <div class="queue-toolbar-heading">
             <div>
                 <h2>{{ $departmentName ? "{$departmentName} tickets" : 'All tickets' }}</h2>
-                <p>Search requests or filter by status, priority, and assignee.</p>
+                <p>Search requests or filter by status, priority, assignee, and SLA state.</p>
                 @if (auth()->user()->isDepartmentAdmin())
                     <p>Review and manage tickets across all departments, including unassigned requests.</p>
                 @elseif (! auth()->user()->isAdmin())
@@ -48,18 +48,16 @@
                     <option value="{{ $status }}" @selected(($filters['status'] ?? '') === $status)>{{ $status }}</option>
                 @endforeach
             </select></label>
+            <label><span class="sr-only">Filter by SLA status</span><select name="sla" aria-label="Filter by SLA status">
+                <option value="">SLA: All</option>
+                <option value="breached" @selected(($filters['sla'] ?? '') === 'breached')>Breached (any status)</option>
+            </select></label>
             <label><span class="sr-only">Filter by priority</span><select name="priority" aria-label="Filter by priority">
                 <option value="">Priority: All</option>
                 @foreach (['Urgent', 'High', 'Medium', 'Low'] as $priority)
                     <option value="{{ $priority }}" @selected(($filters['priority'] ?? '') === $priority)>{{ $priority }}</option>
                 @endforeach
             </select></label>
-            @if ($canFilterByDepartment)
-                <label><span class="sr-only">Filter by triage status</span><select name="triage" aria-label="Filter by triage status">
-                    <option value="">Routing: All</option>
-                    <option value="needs_review" @selected(($filters['triage'] ?? '') === 'needs_review')>Needs review</option>
-                </select></label>
-            @endif
             <label><span class="sr-only">Filter by assignee</span><select name="assignee" aria-label="Filter by assignee" @disabled($selectedDepartmentId === null && ! $canFilterByDepartment)>
                 <option value="">{{ $selectedDepartmentId === null && ! $canFilterByDepartment ? 'Select department first' : 'Assignee: All' }}</option>
                 <option value="unassigned" @selected(($filters['assignee'] ?? '') === 'unassigned') @disabled($selectedDepartmentId === null && ! $canFilterByDepartment)>Unassigned</option>
@@ -101,9 +99,17 @@
                                     <span class="priority-pill priority-pill--high">At risk</span>
                                 @endif
                                 @if (in_array($ticket->status, ['Resolved', 'Closed'], true))
-                                    <span>Completed</span>
+                                    @if ($ticket->resolved_at && $ticket->resolution_due_at && $ticket->resolved_at->greaterThan($ticket->resolution_due_at))
+                                        <span class="priority-pill priority-pill--urgent">Breached</span>
+                                    @else
+                                        <span>Completed</span>
+                                    @endif
                                 @elseif (in_array($ticket->status, ['Waiting for User', 'On Hold'], true))
-                                    <span>Paused</span>
+                                    @if ($ticket->sla_paused_at && $ticket->resolution_due_at && $ticket->resolution_due_at->lessThanOrEqualTo($ticket->sla_paused_at))
+                                        <span class="priority-pill priority-pill--urgent">Breached before pause</span>
+                                    @else
+                                        <span>Paused</span>
+                                    @endif
                                 @elseif ($ticket->resolution_due_at && $ticket->resolution_due_at->lessThanOrEqualTo(now()))
                                     <span class="priority-pill priority-pill--urgent">Overdue</span>
                                 @elseif ($ticket->resolution_warning_at && $ticket->resolution_warning_at->lessThanOrEqualTo(now()))

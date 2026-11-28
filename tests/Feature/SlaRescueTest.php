@@ -285,7 +285,8 @@ class SlaRescueTest extends TestCase
             ->assertSee('SLA breaches')
             ->assertSee('At-risk tickets')
             ->assertSee('No assignee')
-            ->assertSee('No staff activity for 60 business minutes');
+            ->assertSee('No staff activity for 60 business minutes')
+            ->assertSee(route('staff.tickets', ['sla' => 'breached']), false);
     }
 
     private function useUtcBusinessTime(): void

@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreTicketRequest extends FormRequest
 {
@@ -29,6 +30,15 @@ class StoreTicketRequest extends FormRequest
             'phone' => ['nullable', 'string', 'regex:/^09[0-9]{9}$/'],
             'subject' => ['required', 'string', 'max:150'],
             'message' => ['required', 'string', 'max:500'],
+            'cf-turnstile-response' => [
+                Rule::requiredIf(
+                    fn (): bool => filled(config('services.turnstile.site_key'))
+                        || filled(config('services.turnstile.secret_key')),
+                ),
+                'nullable',
+                'string',
+                'max:2048',
+            ],
             'attachment' => ['nullable', 'array', 'max:5'],
             'attachment.*' => ['file', 'mimes:pdf,jpg,jpeg,png,doc,docx', 'max:5120'],
         ];
@@ -44,6 +54,7 @@ class StoreTicketRequest extends FormRequest
         return [
             'student_id.regex' => 'Student or employee ID must contain exactly 10 digits.',
             'phone.regex' => 'Phone number must be 11 digits and start with 09.',
+            'cf-turnstile-response.required' => 'Please complete the bot verification before submitting.',
             'attachment.array' => 'Attachments must be submitted as separate files.',
             'attachment.max' => 'You can attach up to 5 files to a ticket.',
             'attachment.*.file' => 'File :position could not be uploaded. Please choose the file again.',

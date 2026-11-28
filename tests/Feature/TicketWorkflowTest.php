@@ -12,8 +12,10 @@ use App\Models\User;
 use App\Notifications\TicketEmailVerification;
 use App\Services\TicketPdf;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Notifications\AnonymousNotifiable;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -22,6 +24,14 @@ use Tests\TestCase;
 class TicketWorkflowTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('services.turnstile.site_key', '');
+        config()->set('services.turnstile.secret_key', '');
+    }
 
     public function test_guests_can_open_ticket_submission_and_lookup_without_signing_in(): void
     {
@@ -54,6 +64,154 @@ class TicketWorkflowTest extends TestCase
         $this->assertGuest();
         $this->assertSame(true, Schema::hasColumn('tickets', 'department_id'));
         $this->assertSame(true, Schema::hasColumn('tickets', 'category_id'));
+    }
+
+    public function test_ticket_form_renders_turnstile_without_exposing_the_secret_key(): void
+    {
+        config()->set('services.turnstile.site_key', 'test-site-key');
+        config()->set('services.turnstile.secret_key', 'test-secret-key');
+
+        $this->get(route('ticket.create'))
+            ->assertOk()
+            ->assertSee('class="cf-turnstile" data-sitekey="test-site-key"', false)
+            ->assertSee('https://challenges.cloudflare.com/turnstile/v0/api.js', false)
+            ->assertDontSee('test-secret-key', false);
+    }
+
+    public function test_ticket_submission_stays_blocked_when_turnstile_is_partially_configured(): void
+    {
+        config()->set('services.turnstile.site_key', 'test-site-key');
+        config()->set('services.turnstile.secret_key', '');
+        Http::preventStrayRequests();
+        Notification::fake();
+
+        $this->get(route('ticket.create'))
+            ->assertOk()
+            ->assertSee('bot protection is not fully configured')
+            ->assertSee('disabled', false);
+
+        $this->from(route('ticket.create'))
+            ->post(route('ticket.store'), [
+                'name' => 'Jamie Student',
+                'student_id' => '2023000001',
+                'email' => 'jamie@example.edu',
+                'subject' => 'Cannot access Bluebook',
+                'message' => 'The course page returns an error.',
+                'cf-turnstile-response' => 'unverified-token',
+            ])
+            ->assertRedirect(route('ticket.create'))
+            ->assertSessionHasErrors('cf-turnstile-response');
+
+        $this->assertDatabaseCount('pending_ticket_submissions', 0);
+        Http::assertNothingSent();
+        Notification::assertNothingSent();
+    }
+
+    public function test_ticket_submission_requires_a_turnstile_token_when_keys_are_configured(): void
+    {
+        config()->set('services.turnstile.site_key', 'test-site-key');
+        config()->set('services.turnstile.secret_key', 'test-secret-key');
+        Http::preventStrayRequests();
+        Notification::fake();
+
+        $this->from(route('ticket.create'))
+            ->post(route('ticket.store'), [
+                'name' => 'Jamie Student',
+                'student_id' => '2023000001',
+                'email' => 'jamie@example.edu',
+                'subject' => 'Cannot access Bluebook',
+                'message' => 'The course page returns an error.',
+            ])
+            ->assertRedirect(route('ticket.create'))
+            ->assertSessionHasErrors('cf-turnstile-response');
+
+        $this->assertDatabaseCount('pending_ticket_submissions', 0);
+        Http::assertNothingSent();
+        Notification::assertNothingSent();
+    }
+
+    public function test_ticket_submission_creates_a_pending_request_after_turnstile_verification(): void
+    {
+        config()->set('services.turnstile.site_key', 'test-site-key');
+        config()->set('services.turnstile.secret_key', 'test-secret-key');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://challenges.cloudflare.com/turnstile/v0/siteverify' => Http::response([
+                'success' => true,
+            ]),
+        ]);
+        Notification::fake();
+
+        $this->post(route('ticket.store'), [
+            'name' => 'Jamie Student',
+            'student_id' => '2023000001',
+            'email' => 'jamie@example.edu',
+            'subject' => 'Cannot access Bluebook',
+            'message' => 'The course page returns an error.',
+            'cf-turnstile-response' => 'valid-turnstile-token',
+        ])->assertRedirect(route('ticket.submitted'));
+
+        $this->assertDatabaseCount('pending_ticket_submissions', 1);
+        Http::assertSent(fn (ClientRequest $request): bool => $request->url() === 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
+            && $request['secret'] === 'test-secret-key'
+        && $request['response'] === 'valid-turnstile-token');
+        Notification::assertSentOnDemand(TicketEmailVerification::class);
+    }
+
+    public function test_ticket_submission_is_rejected_when_turnstile_verification_fails(): void
+    {
+        config()->set('services.turnstile.site_key', 'test-site-key');
+        config()->set('services.turnstile.secret_key', 'test-secret-key');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://challenges.cloudflare.com/turnstile/v0/siteverify' => Http::response([
+                'success' => false,
+            ]),
+        ]);
+        Notification::fake();
+
+        $this->from(route('ticket.create'))
+            ->post(route('ticket.store'), [
+                'name' => 'Jamie Student',
+                'student_id' => '2023000001',
+                'email' => 'jamie@example.edu',
+                'subject' => 'Cannot access Bluebook',
+                'message' => 'The course page returns an error.',
+                'cf-turnstile-response' => 'invalid-turnstile-token',
+            ])
+            ->assertRedirect(route('ticket.create'))
+            ->assertSessionHasErrors([
+                'cf-turnstile-response' => 'Verification failed or expired. Please try again.',
+            ]);
+
+        $this->assertDatabaseCount('pending_ticket_submissions', 0);
+        Notification::assertNothingSent();
+    }
+
+    public function test_ticket_submission_is_rejected_when_turnstile_is_unavailable(): void
+    {
+        config()->set('services.turnstile.site_key', 'test-site-key');
+        config()->set('services.turnstile.secret_key', 'test-secret-key');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://challenges.cloudflare.com/turnstile/v0/siteverify' => Http::failedConnection(),
+        ]);
+        Notification::fake();
+
+        $this->from(route('ticket.create'))
+            ->post(route('ticket.store'), [
+                'name' => 'Jamie Student',
+                'student_id' => '2023000001',
+                'email' => 'jamie@example.edu',
+                'subject' => 'Cannot access Bluebook',
+                'message' => 'The course page returns an error.',
+                'cf-turnstile-response' => 'valid-turnstile-token',
+            ])
+            ->assertRedirect(route('ticket.create'))
+            ->assertSessionHasErrors('cf-turnstile-response');
+
+        $this->assertDatabaseCount('pending_ticket_submissions', 0);
+        Notification::assertNothingSent();
     }
 
     public function test_guest_submission_creates_a_ticket_with_private_attachments(): void
@@ -358,10 +516,11 @@ class TicketWorkflowTest extends TestCase
         $this->assertSame('needs_department', $triageEvent->properties['routing_status']);
 
         $this->actingAs($admin)
-            ->get(route('staff.tickets', ['triage' => 'needs_review']))
+            ->get(route('staff.tickets'))
             ->assertOk()
             ->assertSee($ticket->ticket_number)
-            ->assertSee('Needs review');
+            ->assertSee('Needs review')
+            ->assertDontSee('Routing: All', false);
 
         $this->get(route('staff.ticket-detail', $ticket))
             ->assertOk()

@@ -167,6 +167,52 @@ class TicketResolutionSlaTest extends TestCase
         );
     }
 
+    public function test_ticket_detail_shows_first_assignment_and_resolution_sla_results(): void
+    {
+        config(['app.display_timezone' => 'Asia/Manila']);
+        $this->setUrgentResolutionTarget(4, 'business_hour');
+        $staff = User::factory()->create(['role' => 'staff']);
+        $this->travelTo('2026-11-02 01:00:00 UTC');
+
+        $metTicket = $this->createTicket($staff->id, 'Urgent', 'Resolved');
+        $this->setTicketCycleStart($metTicket, CarbonImmutable::parse('2026-11-02 01:00:00 UTC'));
+        $metTicket->forceFill([
+            'first_assigned_at' => CarbonImmutable::parse('2026-11-02 02:00:00 UTC'),
+            'resolved_at' => CarbonImmutable::parse('2026-11-02 05:00:00 UTC'),
+            'last_resolved_at' => CarbonImmutable::parse('2026-11-02 05:00:00 UTC'),
+        ])->save();
+
+        $missedTicket = $this->createTicket($staff->id, 'Urgent', 'Resolved');
+        $this->setTicketCycleStart($missedTicket, CarbonImmutable::parse('2026-11-02 01:00:00 UTC'));
+        $missedTicket->forceFill([
+            'first_assigned_at' => CarbonImmutable::parse('2026-11-02 02:01:00 UTC'),
+            'resolved_at' => CarbonImmutable::parse('2026-11-02 05:01:00 UTC'),
+            'last_resolved_at' => CarbonImmutable::parse('2026-11-02 05:01:00 UTC'),
+        ])->save();
+
+        $openTicket = $this->createTicket(null, 'Urgent', 'In Progress');
+        $this->setTicketCycleStart($openTicket, CarbonImmutable::parse('2026-11-02 01:00:00 UTC'));
+
+        $this->actingAs($staff->fresh())
+            ->get(route('staff.ticket-detail', $metTicket))
+            ->assertOk()
+            ->assertSee('First assignment SLA')
+            ->assertSee('Resolution SLA')
+            ->assertSee('Met')
+            ->assertSee('Target: 1h 0m business time')
+            ->assertSee('Target: 4h 0m business time');
+
+        $this->get(route('staff.ticket-detail', $missedTicket))
+            ->assertOk()
+            ->assertSee('Missed')
+            ->assertSee('Breached');
+
+        $this->get(route('staff.ticket-detail', $openTicket))
+            ->assertOk()
+            ->assertSee('Pending')
+            ->assertSee('On track');
+    }
+
     public function test_resolved_and_closed_tickets_cannot_be_reopened_by_staff(): void
     {
         $staff = User::factory()->create(['role' => 'staff']);
@@ -241,6 +287,7 @@ class TicketResolutionSlaTest extends TestCase
         $urgentHealthy = $this->createTicket($staff->id, 'Urgent', 'In Progress');
         $waiting = $this->createTicket($staff->id, 'Urgent', 'On Hold');
         $resolved = $this->createTicket($staff->id, 'Urgent', 'Resolved');
+        $resolvedOnTime = $this->createTicket($staff->id, 'Urgent', 'Closed');
 
         $overdue->forceFill([
             'resolution_warning_at' => now()->subHour(),
@@ -257,10 +304,18 @@ class TicketResolutionSlaTest extends TestCase
         $waiting->forceFill([
             'resolution_warning_at' => now()->subHour(),
             'resolution_due_at' => now()->subMinute(),
+            'sla_paused_at' => now(),
         ])->save();
         $resolved->forceFill([
             'resolution_warning_at' => now()->subHour(),
             'resolution_due_at' => now()->subMinute(),
+            'resolved_at' => now(),
+            'last_resolved_at' => now(),
+        ])->save();
+        $resolvedOnTime->forceFill([
+            'resolution_due_at' => now()->addHour(),
+            'resolved_at' => now(),
+            'last_resolved_at' => now(),
         ])->save();
 
         $this->actingAs($staff->fresh())
@@ -272,11 +327,27 @@ class TicketResolutionSlaTest extends TestCase
                 $urgentHealthy->ticket_number,
                 $waiting->ticket_number,
                 $resolved->ticket_number,
+                $resolvedOnTime->ticket_number,
             ])
             ->assertSee('Resolution target')
             ->assertSee('Due soon')
-            ->assertSee('Paused')
+            ->assertSee('Breached before pause')
             ->assertSee('Overdue');
+
+        $this->get(route('staff.tickets', ['sla' => 'breached']))
+            ->assertOk()
+            ->assertSee($overdue->ticket_number)
+            ->assertSee($waiting->ticket_number)
+            ->assertSee($resolved->ticket_number)
+            ->assertDontSee($approaching->ticket_number)
+            ->assertDontSee($urgentHealthy->ticket_number)
+            ->assertDontSee($resolvedOnTime->ticket_number)
+            ->assertSee('Breached (any status)')
+            ->assertSee('Breached before pause');
+
+        $this->get(route('staff.ticket-detail', $resolved))
+            ->assertOk()
+            ->assertSee('SLA breached');
     }
 
     private function setUrgentResolutionTarget(int $value, string $unit): void

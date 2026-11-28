@@ -240,54 +240,6 @@
         </section>
     @endif
 
-    @if (auth()->user()->isAdmin() && $registrationBlocks !== null)
-        <section class="admin-console-card">
-            <header class="admin-console-card-heading">
-                <div>
-                    <span class="admin-page-eyebrow">REGISTRATION RESTRICTIONS</span>
-                    <h2>Blocked registration emails</h2>
-                    <p>Blocked addresses cannot create staff accounts. Clear a block to allow that email to register again.</p>
-                </div>
-                <span class="admin-readonly-badge">{{ $registrationBlocks->total() }} total</span>
-            </header>
-
-            <div class="admin-staff-list">
-                @forelse ($registrationBlocks as $registrationBlock)
-                    <article class="admin-staff-card">
-                        <header class="admin-staff-card-heading">
-                            <div>
-                                <strong>{{ $registrationBlock->email }}</strong>
-                                <small>{{ $registrationBlock->reason }}</small>
-                            </div>
-                            <span class="admin-staff-status admin-staff-status--{{ $registrationBlock->cleared_at ? 'active' : 'inactive' }}">
-                                {{ $registrationBlock->cleared_at ? 'Cleared' : 'Blocked' }}
-                            </span>
-                        </header>
-                        <small>
-                            {{ $registrationBlock->blockedBy?->name ?? 'Administrator' }}
-                            · {{ $registrationBlock->reason }}
-                            · Updated {{ $registrationBlock->updated_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}
-                        </small>
-                        <div class="admin-staff-card-actions">
-                            @if ($registrationBlock->cleared_at)
-                                <small>Cleared {{ $registrationBlock->cleared_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</small>
-                            @else
-                                <form action="{{ route('admin.users.registration-blocks.clear', $registrationBlock) }}" method="post">
-                                    @csrf
-                                    @method('patch')
-                                    <button class="admin-console-button admin-console-button--secondary" type="submit">Clear block</button>
-                                </form>
-                            @endif
-                        </div>
-                    </article>
-                @empty
-                    <div class="workspace-empty-state"><strong>No blocked registration emails</strong><p>Emails escalated from denied staff applications will appear here.</p></div>
-                @endforelse
-            </div>
-            {{ $registrationBlocks->links() }}
-        </section>
-    @endif
-
     <section class="admin-metric-grid" aria-label="Staff access summary">
         <article class="admin-metric-card">
             <span class="admin-metric-icon admin-metric-icon--blue" aria-hidden="true">◎</span>
@@ -555,6 +507,62 @@
             </summary>
             <p>No pending staff applications. Verified requests will appear here for administrator review.</p>
         </details>
+    @endif
+
+    @if (auth()->user()->isAdmin() && $registrationBlocks !== null)
+        @if ($registrationBlocks->isEmpty())
+            <details class="admin-pending-empty admin-registration-blocks-empty">
+                <summary>
+                    <span>Blocked registration emails</span>
+                    <span class="admin-readonly-badge">0 total</span>
+                </summary>
+                <p>No blocked registration emails. Emails escalated from denied staff applications will appear here.</p>
+            </details>
+        @else
+            <section class="admin-console-card">
+                <header class="admin-console-card-heading">
+                    <div>
+                        <span class="admin-page-eyebrow">REGISTRATION RESTRICTIONS</span>
+                        <h2>Blocked registration emails</h2>
+                        <p>Blocked addresses cannot create staff accounts. Clear a block to allow that email to register again.</p>
+                    </div>
+                    <span class="admin-readonly-badge">{{ $registrationBlocks->total() }} total</span>
+                </header>
+
+                <div class="admin-staff-list">
+                    @foreach ($registrationBlocks as $registrationBlock)
+                        <article class="admin-staff-card">
+                            <header class="admin-staff-card-heading">
+                                <div>
+                                    <strong>{{ $registrationBlock->email }}</strong>
+                                    <small>{{ $registrationBlock->reason }}</small>
+                                </div>
+                                <span class="admin-staff-status admin-staff-status--{{ $registrationBlock->cleared_at ? 'active' : 'inactive' }}">
+                                    {{ $registrationBlock->cleared_at ? 'Cleared' : 'Blocked' }}
+                                </span>
+                            </header>
+                            <small>
+                                {{ $registrationBlock->blockedBy?->name ?? 'Administrator' }}
+                                · {{ $registrationBlock->reason }}
+                                · Updated {{ $registrationBlock->updated_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}
+                            </small>
+                            <div class="admin-staff-card-actions">
+                                @if ($registrationBlock->cleared_at)
+                                    <small>Cleared {{ $registrationBlock->cleared_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</small>
+                                @else
+                                    <form action="{{ route('admin.users.registration-blocks.clear', $registrationBlock) }}" method="post">
+                                        @csrf
+                                        @method('patch')
+                                        <button class="admin-console-button admin-console-button--secondary" type="submit">Clear block</button>
+                                    </form>
+                                @endif
+                            </div>
+                        </article>
+                    @endforeach
+                </div>
+                {{ $registrationBlocks->links() }}
+            </section>
+        @endif
     @endif
 </div>
 @endsection

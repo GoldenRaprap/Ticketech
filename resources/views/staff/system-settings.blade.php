@@ -93,6 +93,49 @@
 
             <section class="admin-console-card">
                 <header class="admin-console-card-heading">
+                    <div><span class="admin-page-eyebrow">BOT PROTECTION</span><h2>Cloudflare Turnstile</h2><p>Manage the CAPTCHA keys used by public ticket submissions.</p></div>
+                </header>
+                <p>The site key is shown on the public form. The secret key is encrypted before saving and is never displayed. Both keys must be configured for ticket submissions to use Turnstile.</p>
+                <p role="status">Status: {{ $turnstileConfigured ? 'Configured' : 'Credentials needed' }}</p>
+
+                @if ($errors->hasAny(['turnstile_site_key', 'turnstile_secret_key', 'clear_turnstile_site_key', 'clear_turnstile_secret_key']))
+                    <div class="workspace-alert workspace-alert--error" role="alert">
+                        <strong>Unable to update Turnstile settings:</strong>
+                        <ul>@foreach ($errors->only(['turnstile_site_key', 'turnstile_secret_key', 'clear_turnstile_site_key', 'clear_turnstile_secret_key']) as $error)<li>{{ $error }}</li>@endforeach</ul>
+                    </div>
+                @endif
+
+                <form class="admin-staff-create-form" action="{{ route('admin.system-settings.turnstile.update') }}" method="post">
+                    @csrf
+                    @method('put')
+                    <label class="admin-staff-field" for="turnstile-site-key">
+                        <span>Turnstile site key</span>
+                        <input id="turnstile-site-key" name="turnstile_site_key" value="{{ old('turnstile_site_key', $turnstileSiteKey) }}" autocomplete="off" maxlength="255">
+                        <small>{{ $hasTurnstileSiteKey ? 'A site key is configured. A saved system setting takes precedence over the environment value.' : 'Enter the site key from your Cloudflare Turnstile widget.' }}</small>
+                    </label>
+                    <label class="admin-staff-field" for="turnstile-secret-key">
+                        <span>Turnstile secret key</span>
+                        <input id="turnstile-secret-key" name="turnstile_secret_key" type="password" autocomplete="new-password" placeholder="{{ $hasTurnstileSecret ? 'Leave blank to keep the current secret' : 'Enter your Turnstile secret key' }}" maxlength="512">
+                        <small>{{ $hasSavedTurnstileSecret ? 'A secret is saved. Enter a new value only to replace it.' : ($hasTurnstileSecret ? 'A secret is configured through the environment. Enter a value only to override it here.' : 'Enter the secret key from your Cloudflare Turnstile widget.') }}</small>
+                    </label>
+                    @if ($hasSavedTurnstileSiteKey)
+                        <label class="admin-setting-row" for="clear-turnstile-site-key">
+                            <input id="clear-turnstile-site-key" name="clear_turnstile_site_key" type="checkbox" value="1">
+                            <span><strong>Remove saved site key</strong><small>Revert to the environment value, if configured.</small></span>
+                        </label>
+                    @endif
+                    @if ($hasSavedTurnstileSecret)
+                        <label class="admin-setting-row" for="clear-turnstile-secret-key">
+                            <input id="clear-turnstile-secret-key" name="clear_turnstile_secret_key" type="checkbox" value="1">
+                            <span><strong>Remove saved secret key</strong><small>Revert to the environment value, if configured.</small></span>
+                        </label>
+                    @endif
+                    <button class="admin-console-button" type="submit">Save Turnstile settings</button>
+                </form>
+            </section>
+
+            <section class="admin-console-card">
+                <header class="admin-console-card-heading">
                     <div><span class="admin-page-eyebrow">SERVICE HOURS</span><h2>Resolution target business hours</h2><p>Set the local opening and closing times used to calculate resolution deadlines. Business days remain Monday to Friday; public holidays are not excluded.</p></div>
                 </header>
                 @if ($errors->hasAny(['opening_time', 'closing_time']))
@@ -360,7 +403,7 @@
                 <h2>Role boundaries</h2>
                 <div class="admin-role-summary"><span class="admin-role-icon admin-role-icon--admin" aria-hidden="true">♙</span><div><strong>Administrator</strong><p>Moderation, audit logs, and console access.</p></div></div>
                 <div class="admin-role-summary"><span class="admin-role-icon" aria-hidden="true">♙</span><div><strong>Helpdesk staff</strong><p>Ticket handling, replies, and client reporting.</p></div></div>
-                <p class="admin-security-footnote">SMTP passwords are stored encrypted. They are write-only in this form and are never included in the settings page.</p>
+                <p class="admin-security-footnote">SMTP passwords and Turnstile secret keys are stored encrypted. Secret values are write-only and never included in settings pages.</p>
             </section>
         </aside>
     </div>

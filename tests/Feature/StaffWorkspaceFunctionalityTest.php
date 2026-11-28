@@ -67,15 +67,15 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertDontSee('>Jordan Lee</option>', false);
     }
 
-    public function test_regular_staff_cannot_open_the_global_triage_review_filter(): void
+    public function test_ticket_queue_does_not_show_the_routing_filter(): void
     {
         $staff = $this->createStaffUser();
 
         $this->actingAs($staff)
-            ->from(route('staff.tickets'))
-            ->get(route('staff.tickets', ['triage' => 'needs_review']))
-            ->assertRedirect(route('staff.tickets'))
-            ->assertSessionHasErrors('triage');
+            ->get(route('staff.tickets'))
+            ->assertOk()
+            ->assertDontSee('Filter by triage status', false)
+            ->assertDontSee('Routing: All', false);
     }
 
     public function test_department_admin_can_update_ticket_status_priority_and_assignee(): void
@@ -1199,6 +1199,203 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertSee('Urgent');
     }
 
+    public function test_report_insight_drilldown_lists_the_matching_sla_tickets_for_the_selected_period(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $staff = $this->createStaffUser();
+        $breachedTicket = $this->createTicket('ED-2026-000396', 'Breached in the selected period');
+        $breachedTicket->forceFill(['resolution_due_at' => now()->subHour()])->save();
+        $healthyTicket = $this->createTicket('ED-2026-000397', 'Not breached');
+        $atRiskTicket = $this->createTicket('ED-2026-000398', 'At risk in the selected period');
+        $atRiskTicket->update(['sla_risk_score' => 100]);
+        $outsidePeriodTicket = $this->createTicket('ED-2026-000399', 'Breached outside the selected period');
+        $outsidePeriodTicket->forceFill([
+            'created_at' => now()->subDay(),
+            'resolution_due_at' => now()->subHour(),
+        ])->save();
+        $reportFilters = [
+            'period' => 'daily',
+            'reference_date' => '2026-03-15',
+        ];
+
+        $this->actingAs($staff)
+            ->get(route('staff.reports', $reportFilters))
+            ->assertOk()
+            ->assertSee('View 1 breached ticket')
+            ->assertSee('View 1 at-risk ticket')
+            ->assertSee('Show matching tickets');
+
+        $this->get(route('staff.reports.insight-tickets', [
+            ...$reportFilters,
+            'insight' => 'sla_breached',
+        ]))
+            ->assertOk()
+            ->assertSee($breachedTicket->ticket_number)
+            ->assertDontSee($healthyTicket->ticket_number)
+            ->assertDontSee($atRiskTicket->ticket_number)
+            ->assertDontSee($outsidePeriodTicket->ticket_number);
+
+        $this->get(route('staff.reports.insight-tickets', [
+            ...$reportFilters,
+            'insight' => 'sla_at_risk',
+        ]))
+            ->assertOk()
+            ->assertSee($atRiskTicket->ticket_number)
+            ->assertDontSee($breachedTicket->ticket_number)
+            ->assertDontSee($outsidePeriodTicket->ticket_number);
+    }
+
+    public function test_report_shows_explainable_signals_for_risk_workload_and_recurring_topics(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $staff = $this->createStaffUser();
+        $firstAssignee = $this->createStaffUser(['name' => 'Avery Chen']);
+        $secondAssignee = $this->createStaffUser(['name' => 'Morgan Patel']);
+        $category = Category::factory()->create([
+            'name' => 'Wi-Fi Access',
+            'department_id' => $this->defaultDepartment()->id,
+        ]);
+        $tickets = [
+            $this->createTicket('ED-2026-000389', 'Wi-Fi will not connect', $firstAssignee->id),
+            $this->createTicket('ED-2026-000390', 'Wireless connection drops', $firstAssignee->id),
+            $this->createTicket('ED-2026-000391', 'Cannot join campus Wi-Fi', $secondAssignee->id),
+        ];
+        $resolvedEarlierTicket = $this->createTicket(
+            'ED-2026-000400',
+            'Older ticket resolved this period',
+            null,
+            'Low',
+            'In Progress',
+        );
+        $resolvedEarlierTicket->forceFill([
+            'created_at' => now()->subDay(),
+            'last_resolved_at' => now()->subHour(),
+        ])->save();
+
+        foreach ($tickets as $ticket) {
+            $ticket->update(['category_id' => $category->id]);
+        }
+        $tickets[0]->update(['sla_risk_score' => 100]);
+
+        $this->actingAs($staff)
+            ->get(route('staff.reports', [
+                'period' => 'daily',
+                'reference_date' => '2026-03-15',
+            ]))
+            ->assertOk()
+            ->assertViewHas('actionableInsights', function (array $insights): bool {
+                $types = collect($insights)->pluck('type');
+
+                return $types->contains('warning')
+                    && $types->contains('info')
+                    && $types->contains('opportunity');
+            })
+            ->assertSee('Tickets may miss their resolution targets')
+            ->assertSee('Open assignments are unevenly distributed')
+            ->assertSee('Recurring issue: Wi-Fi Access')
+            ->assertSee('No published article currently uses this category label')
+            ->assertSee('Show matching tickets')
+            ->assertSee('Show compared tickets')
+            ->assertSee('View received tickets')
+            ->assertSee('View resolved tickets');
+
+        $this->get(route('staff.reports.insight-tickets', [
+            'period' => 'daily',
+            'reference_date' => '2026-03-15',
+            'insight' => 'category',
+            'category_id' => $category->id,
+        ]))
+            ->assertOk()
+            ->assertSee($tickets[0]->ticket_number)
+            ->assertSee($tickets[1]->ticket_number)
+            ->assertSee($tickets[2]->ticket_number)
+            ->assertDontSee($resolvedEarlierTicket->ticket_number);
+
+        $this->get(route('staff.reports.insight-tickets', [
+            'period' => 'daily',
+            'reference_date' => '2026-03-15',
+            'insight' => 'assignment_balance',
+            'assignee_ids' => [$firstAssignee->id, $secondAssignee->id],
+        ]))
+            ->assertOk()
+            ->assertSee($tickets[0]->ticket_number)
+            ->assertSee($tickets[1]->ticket_number)
+            ->assertSee($tickets[2]->ticket_number)
+            ->assertDontSee($resolvedEarlierTicket->ticket_number);
+
+        $this->get(route('staff.reports.insight-tickets', [
+            'period' => 'daily',
+            'reference_date' => '2026-03-15',
+            'insight' => 'resolved',
+        ]))
+            ->assertOk()
+            ->assertSee($resolvedEarlierTicket->ticket_number)
+            ->assertDontSee($tickets[0]->ticket_number);
+    }
+
+    public function test_report_recommends_reviewing_a_published_article_for_a_recurring_topic(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $staff = $this->createStaffUser();
+        $category = Category::factory()->create([
+            'name' => 'Wi-Fi Access',
+            'department_id' => $this->defaultDepartment()->id,
+        ]);
+        $this->createKnowledgeArticle($staff, [
+            'category' => ' wi-fi access ',
+        ]);
+
+        foreach ([
+            ['ED-2026-000392', 'Wireless connection issue one'],
+            ['ED-2026-000393', 'Wireless connection issue two'],
+            ['ED-2026-000394', 'Wireless connection issue three'],
+        ] as [$ticketNumber, $subject]) {
+            $this->createTicket($ticketNumber, $subject)->update(['category_id' => $category->id]);
+        }
+
+        $this->actingAs($staff)
+            ->get(route('staff.reports', [
+                'period' => 'daily',
+                'reference_date' => '2026-03-15',
+            ]))
+            ->assertOk()
+            ->assertSee('Review the Wi-Fi Access article')
+            ->assertSee('A published article is tagged with this category.')
+            ->assertDontSee('No published article currently uses this category label.');
+    }
+
+    public function test_report_prioritizes_sla_breaches_in_actionable_insights(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $staff = $this->createStaffUser();
+        $ticket = $this->createTicket('ED-2026-000395', 'Ticket past its resolution deadline');
+        $ticket->update(['resolution_due_at' => now()->subHour()]);
+
+        $this->actingAs($staff)
+            ->get(route('staff.reports', [
+                'period' => 'daily',
+                'reference_date' => '2026-03-15',
+            ]))
+            ->assertOk()
+            ->assertSee('Resolution targets were missed')
+            ->assertDontSee('Tickets may miss their resolution targets');
+    }
+
+    public function test_report_shows_an_empty_state_when_no_actionable_signals_are_present(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $staff = $this->createStaffUser();
+
+        $this->actingAs($staff)
+            ->get(route('staff.reports', [
+                'period' => 'daily',
+                'reference_date' => '2026-03-15',
+            ]))
+            ->assertOk()
+            ->assertViewHas('actionableInsights', [])
+            ->assertSee('No actionable signals for this period');
+    }
+
     public function test_report_resolution_trend_includes_the_latest_resolution_for_an_active_ticket(): void
     {
         $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
@@ -1219,6 +1416,31 @@ class StaffWorkspaceFunctionalityTest extends TestCase
             ->assertViewHas('openTicketCount', 1)
             ->assertViewHas('resolvedTicketCount', 0)
             ->assertViewHas('trendBuckets', fn (Collection $buckets): bool => $buckets->sum('resolved') === 1);
+    }
+
+    public function test_report_counts_tickets_resolved_in_period_even_if_they_were_created_earlier(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-15 12:00:00'));
+        $staff = $this->createStaffUser();
+        $ticket = $this->createTicket('ED-2026-000374', 'Earlier ticket resolved this week', null, 'Low', 'Resolved');
+        $ticket->forceFill([
+            'created_at' => Carbon::parse('2026-02-20 08:00:00'),
+            'resolved_at' => Carbon::parse('2026-03-10 09:00:00'),
+            'last_resolved_at' => Carbon::parse('2026-03-10 09:00:00'),
+        ])->save();
+
+        $this->actingAs($staff)
+            ->get(route('staff.reports', [
+                'period' => 'weekly',
+                'reference_date' => '2026-03-10',
+            ]))
+            ->assertOk()
+            ->assertViewHas('totalTicketCount', 0)
+            ->assertViewHas('resolvedTicketCount', 0)
+            ->assertViewHas('resolvedInPeriodCount', 1)
+            ->assertViewHas('trendBuckets', fn (Collection $buckets): bool => $buckets->sum('resolved') === 1)
+            ->assertSee('Resolved during period')
+            ->assertSee('Based on the recorded resolution date');
     }
 
     public function test_super_admin_can_filter_report_summary_and_export_by_department(): void

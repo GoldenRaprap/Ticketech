@@ -40,7 +40,12 @@
         </a>
 
         <a class="sidebar-link {{ request()->routeIs('staff.notifications') ? 'active' : '' }}" href="{{ route('staff.notifications') }}" title="Notifications">
-            <span class="sidebar-icon" aria-hidden="true">◌</span>
+            <span class="sidebar-icon" aria-hidden="true">
+                <svg data-sidebar-icon="notifications" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M18 9.75a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M9.75 21h4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                </svg>
+            </span>
             <span class="sidebar-link-label">Notifications</span>
             @if ($sidebarUnreadNotificationCount > 0)
                 <span class="sidebar-notification-badge sidebar-notification-badge--blue" aria-label="{{ $sidebarUnreadNotificationCount }} unread notifications">{{ $sidebarUnreadNotificationCount > 9 ? '9+' : $sidebarUnreadNotificationCount }}</span>

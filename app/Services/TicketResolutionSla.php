@@ -40,19 +40,7 @@ class TicketResolutionSla
             throw new LogicException('A persisted ticket is required to calculate its resolution SLA.');
         }
 
-        $businessHours = $this->businessHours();
-        $priority = strtolower($ticket->priority);
-        $target = $this->targets()[$priority]['resolution'] ?? null;
-
-        if ($target === null) {
-            throw new UnexpectedValueException("No resolution target is configured for priority [{$ticket->priority}].");
-        }
-
-        $targetMinutes = match ($target['unit']) {
-            'business_hour' => (int) $target['value'] * 60,
-            'business_day' => (int) $target['value'] * $businessHours['minutes_per_day'],
-            default => throw new UnexpectedValueException("Unsupported resolution target unit [{$target['unit']}]."),
-        };
+        $targetMinutes = $this->targetBusinessMinutes($ticket->priority, 'resolution');
         $pausedMinutes = max(0, (int) $ticket->sla_paused_minutes);
         $start = CarbonImmutable::instance($cycleStart)
             ->setTimezone($this->displayTimezone())
@@ -141,9 +129,35 @@ class TicketResolutionSla
         return intdiv($seconds, 60);
     }
 
+    /**
+     * @param  'first_response'|'resolution'  $targetName
+     */
+    public function targetBusinessMinutes(string $priority, string $targetName): int
+    {
+        $target = $this->targets()[strtolower($priority)][$targetName] ?? null;
+
+        if ($target === null) {
+            throw new UnexpectedValueException("No {$targetName} target is configured for priority [{$priority}].");
+        }
+
+        return $this->minutesForTarget($target, $targetName);
+    }
+
     private function openTickets(): Builder
     {
         return Ticket::query()->whereNotIn('status', ['Resolved', 'Closed']);
+    }
+
+    /**
+     * @param  array{value: int, unit: string}  $target
+     */
+    private function minutesForTarget(array $target, string $targetName): int
+    {
+        return match ($target['unit']) {
+            'business_hour' => (int) $target['value'] * 60,
+            'business_day' => (int) $target['value'] * $this->businessHours()['minutes_per_day'],
+            default => throw new UnexpectedValueException("Unsupported {$targetName} target unit [{$target['unit']}]."),
+        };
     }
 
     private function addBusinessMinutes(CarbonImmutable $date, int $minutes): CarbonImmutable

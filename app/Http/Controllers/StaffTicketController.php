@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\WorkspaceNotification;
 use App\Notifications\TicketRequesterUpdate;
 use App\Services\ImmediateNotificationSender;
+use App\Services\KnowledgeArticleSuggestionGenerator;
 use App\Services\SlaRescueAssessor;
 use App\Services\TicketNotificationRecipients;
 use App\Services\TicketResolutionSla;
@@ -43,9 +44,7 @@ class StaffTicketController extends Controller
             'search' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', 'in:New,Assigned,In Progress,Waiting for User,On Hold,Resolved,Closed'],
             'priority' => ['nullable', 'in:Urgent,High,Medium,Low'],
-            'triage' => $canViewAllDepartments
-                ? ['nullable', 'in:needs_review']
-                : ['prohibited'],
+            'sla' => ['nullable', 'in:breached'],
             'department_id' => $canViewAllDepartments
                 ? ['nullable', 'integer', Rule::exists('departments', 'id')->where('is_active', true)]
                 : ['prohibited'],
@@ -109,16 +108,32 @@ class StaffTicketController extends Controller
             })
             ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
             ->when($filters['priority'] ?? null, fn ($query, string $priority) => $query->where('priority', $priority))
+            ->when(($filters['sla'] ?? null) === 'breached', function ($query): void {
+                $query->where(function ($query): void {
+                    $query->where(function ($activeTickets): void {
+                        $activeTickets
+                            ->whereIn('status', ['New', 'Assigned', 'In Progress'])
+                            ->whereNotNull('resolution_due_at')
+                            ->where('resolution_due_at', '<=', now());
+                    })->orWhere(function ($pausedTickets): void {
+                        $pausedTickets
+                            ->whereIn('status', ['Waiting for User', 'On Hold'])
+                            ->whereNotNull('sla_paused_at')
+                            ->whereNotNull('resolution_due_at')
+                            ->whereColumn('resolution_due_at', '<=', 'sla_paused_at');
+                    })->orWhere(function ($completedTickets): void {
+                        $completedTickets
+                            ->whereIn('status', ['Resolved', 'Closed'])
+                            ->whereNotNull('resolved_at')
+                            ->whereNotNull('resolution_due_at')
+                            ->whereColumn('resolved_at', '>', 'resolution_due_at');
+                    });
+                });
+            })
             ->when(($filters['assignee'] ?? null) === 'unassigned', fn ($query) => $query->whereNull('assigned_to_user_id'))
             ->when(
                 isset($filters['assignee']) && $filters['assignee'] !== '' && $filters['assignee'] !== 'unassigned',
                 fn ($query) => $query->where('assigned_to_user_id', $filters['assignee']),
-            )
-            ->when(
-                ($filters['triage'] ?? null) === 'needs_review',
-                fn ($query) => $query
-                    ->whereNull('assigned_to_user_id')
-                    ->whereNotIn('status', ['Resolved', 'Closed']),
             )
             ->orderByRaw("CASE WHEN status IN ('New', 'Assigned', 'In Progress') THEN 0 WHEN status IN ('Waiting for User', 'On Hold') THEN 1 WHEN status IN ('Resolved', 'Closed') THEN 2 ELSE 3 END")
             ->orderByRaw(
@@ -169,6 +184,7 @@ class StaffTicketController extends Controller
         Request $request,
         Ticket $ticket,
         TicketWorkloadAssigner $workloadAssigner,
+        TicketResolutionSla $resolutionSla,
     ): View {
         $this->ensureStaffCanViewTicket($request);
         $ticket->load([
@@ -212,12 +228,45 @@ class StaffTicketController extends Controller
         $isSlaAtRisk = in_array($ticket->status, ['New', 'Assigned', 'In Progress'], true)
             && $ticket->sla_risk_score >= SlaRescueAssessor::MINIMUM_RISK_SCORE;
         $lastResolvedAt = $ticket->last_resolved_at ?? $ticket->resolved_at;
+        $isSlaBreached = match (true) {
+            $ticket->resolution_due_at === null => false,
+            in_array($ticket->status, ['New', 'Assigned', 'In Progress'], true) => $ticket->resolution_due_at->lessThanOrEqualTo(now()),
+            in_array($ticket->status, ['Waiting for User', 'On Hold'], true) => $ticket->sla_paused_at !== null
+                && $ticket->resolution_due_at->lessThanOrEqualTo($ticket->sla_paused_at),
+            in_array($ticket->status, ['Resolved', 'Closed'], true) => $ticket->resolved_at !== null
+                && $ticket->resolved_at->greaterThan($ticket->resolution_due_at),
+            default => false,
+        };
+        $firstAssignmentTargetMinutes = $resolutionSla->targetBusinessMinutes($ticket->priority, 'first_response');
+        $firstAssignmentElapsedMinutes = $ticket->first_assigned_at
+            ? $resolutionSla->businessMinutesBetween($ticket->created_at, $ticket->first_assigned_at)
+            : null;
+        $firstAssignmentSlaStatus = match (true) {
+            $firstAssignmentElapsedMinutes !== null => $firstAssignmentElapsedMinutes <= $firstAssignmentTargetMinutes
+                ? 'Met'
+                : 'Missed',
+            in_array($ticket->status, ['Resolved', 'Closed'], true) => 'Not assigned',
+            default => 'Pending',
+        };
+        $resolutionSlaStatus = match (true) {
+            $ticket->resolution_due_at === null => 'Unavailable',
+            in_array($ticket->status, ['Resolved', 'Closed'], true) && $ticket->resolved_at === null => 'Unavailable',
+            in_array($ticket->status, ['Resolved', 'Closed'], true) => $isSlaBreached ? 'Breached' : 'Met',
+            in_array($ticket->status, ['Waiting for User', 'On Hold'], true) => $isSlaBreached
+                ? 'Breached before pause'
+                : 'Paused',
+            in_array($ticket->status, ['New', 'Assigned', 'In Progress'], true) => $isSlaBreached
+                ? 'Breached'
+                : 'On track',
+            default => 'Unavailable',
+        };
 
         return view('staff.ticket-detail', [
             'ticket' => $ticket,
             'categories' => $categories,
             'routableCategories' => $routableCategories,
             'isSlaAtRisk' => $isSlaAtRisk,
+            'isSlaBreached' => $isSlaBreached,
             'slaRiskReasons' => collect($ticket->sla_risk_factors ?? [])
                 ->map(fn (string $factor): string => SlaRescueAssessor::factorLabels()[$factor] ?? $factor)
                 ->values(),
@@ -273,6 +322,28 @@ class StaffTicketController extends Controller
                 'resolution' => $lastResolvedAt
                     ? $this->formatDuration($ticket->created_at->diffInSeconds($lastResolvedAt))
                     : null,
+                'first_assignment_sla' => [
+                    'status' => $firstAssignmentSlaStatus,
+                    'class' => match ($firstAssignmentSlaStatus) {
+                        'Met' => 'status-pill--resolved',
+                        'Missed', 'Not assigned' => 'priority-pill--urgent',
+                        default => 'status-pill--in-progress',
+                    },
+                    'target' => $this->formatDuration($firstAssignmentTargetMinutes * 60).' business time',
+                ],
+                'resolution_sla' => [
+                    'status' => $resolutionSlaStatus,
+                    'class' => match ($resolutionSlaStatus) {
+                        'Met' => 'status-pill--resolved',
+                        'Breached', 'Breached before pause' => 'priority-pill--urgent',
+                        'Paused' => 'status-pill--on-hold',
+                        'On track' => 'status-pill--in-progress',
+                        default => 'status-pill--new',
+                    },
+                    'target' => $this->formatDuration(
+                        $resolutionSla->targetBusinessMinutes($ticket->priority, 'resolution') * 60,
+                    ).' business time',
+                ],
             ],
         ]);
     }
@@ -292,6 +363,7 @@ class StaffTicketController extends Controller
         TicketResolutionSla $resolutionSla,
         TicketNotificationRecipients $notificationRecipients,
         ImmediateNotificationSender $notificationSender,
+        KnowledgeArticleSuggestionGenerator $knowledgeArticleSuggestionGenerator,
     ): RedirectResponse {
         $validated = $request->validated();
 
@@ -452,6 +524,13 @@ class StaffTicketController extends Controller
             return $previousStatus;
         });
         $ticket->refresh();
+
+        if (
+            ! in_array($previousStatus, ['Resolved', 'Closed'], true)
+            && in_array($ticket->status, ['Resolved', 'Closed'], true)
+        ) {
+            $knowledgeArticleSuggestionGenerator->generateForTicket($ticket);
+        }
 
         if ($previousStatus !== $ticket->status && $ticket->canEmailRequester()) {
             $notificationSender->sendToEmailAfterResponse($ticket->requester_email, new TicketRequesterUpdate(

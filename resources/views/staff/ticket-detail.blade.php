@@ -16,6 +16,9 @@
                 <span class="ticket-number-tag"><span>Ticket number</span><strong>{{ $ticket->ticket_number }}</strong></span>
                 <span class="status-pill status-pill--{{ strtolower(str_replace(' ', '-', $ticket->status)) }}">{{ $ticket->status }}</span>
                 <span class="priority-pill priority-pill--{{ strtolower($ticket->priority) }}">{{ $ticket->priority }} priority</span>
+                @if ($isSlaBreached)
+                    <span class="priority-pill priority-pill--urgent">SLA breached</span>
+                @endif
             </div>
             <h1>{{ $ticket->subject }}</h1>
             <p><span class="requester-avatar requester-avatar--small" aria-hidden="true">{{ strtoupper(substr($ticket->requester_name, 0, 1)) }}</span> Submitted by <strong>{{ $ticket->requester_name }}</strong><span class="detail-separator">·</span><time datetime="{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->toIso8601String() }}">{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('F j, Y \a\t g:i A') }}</time></p>
@@ -212,6 +215,17 @@
                 @endif
             </section>
             @include('partials.image-preview-dialog')
+
+            <section class="workspace-card ticket-timeline-card ticket-timeline-card--main">
+                <div class="workspace-card-heading"><div><span class="workspace-eyebrow">History</span><h2>Ticket activity</h2></div></div>
+                <ol class="ticket-timeline">
+                    @forelse ($ticket->events as $event)
+                        <li><span class="timeline-marker" aria-hidden="true"></span><div><strong>{{ $event->description }}</strong><small>{{ $event->actor?->name ?? $event->actor_name ?? 'Requester' }} · {{ $event->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</small></div></li>
+                    @empty
+                        <li><span class="timeline-marker" aria-hidden="true"></span><div><strong>Ticket received</strong><small>{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</small></div></li>
+                    @endforelse
+                </ol>
+            </section>
         </div>
 
         <aside class="ticket-detail-sidebar">
@@ -293,20 +307,45 @@
                 @endif
             </section>
 
-            <details class="workspace-card ticket-collapsible-card client-report-card" @if ($errors->has('reason') || $errors->has('details')) open @endif>
-                <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">CLIENT CONDUCT</span><h2>Report client</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>
+            <details class="workspace-card ticket-collapsible-card ticket-timing-card">
+                <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">SERVICE TIMING</span><h2>Time tracking</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>
                 <div class="ticket-collapsible-content">
-                    <p class="client-report-intro">Client messages are automatically scanned for threats and abusive content. Possible matches create a report for administrator review. Use this form for other conduct concerns; no warning or block is applied automatically.</p>
-                    @forelse ($ticket->misuseReports as $report)
-                        <div class="client-report-history">
-                            <strong>{{ str($report->reason)->replace('_', ' ')->title() }}</strong>
-                            <span>{{ ucfirst($report->status) }}{{ $report->action ? ' · '.ucfirst($report->action) : '' }}</span>
-                            <small>Reported by {{ $report->reporter?->name ?? 'Automated screening' }} · {{ $report->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</small>
+                    <dl class="ticket-timing-list">
+                        <div><dt>Time to first assignment</dt><dd>{{ $ticketTiming['first_assignment'] ?? 'Not assigned yet' }}</dd></div>
+                        <div><dt>Time to resolution</dt><dd>{{ $ticketTiming['resolution'] ?? 'Not resolved yet' }}</dd></div>
+                        <div>
+                            <dt>First assignment SLA</dt>
+                            <dd>
+                                <span class="status-pill {{ $ticketTiming['first_assignment_sla']['class'] }}">{{ $ticketTiming['first_assignment_sla']['status'] }}</span>
+                                <small>Target: {{ $ticketTiming['first_assignment_sla']['target'] }}</small>
+                            </dd>
                         </div>
-                    @empty
-                        <p class="client-report-empty">No reports have been submitted for this ticket.</p>
-                    @endforelse
-                    @if ($canWorkTicket)
+                        <div>
+                            <dt>Resolution SLA</dt>
+                            <dd>
+                                <span class="status-pill {{ $ticketTiming['resolution_sla']['class'] }}">{{ $ticketTiming['resolution_sla']['status'] }}</span>
+                                <small>Target: {{ $ticketTiming['resolution_sla']['target'] }}</small>
+                            </dd>
+                        </div>
+                    </dl>
+                    <p class="ticket-timing-note">Durations show calendar time. SLA checks use configured business hours and the current priority; first assignment is a proxy for first response because no separate response time is recorded.</p>
+                </div>
+            </details>
+
+            @if ($canWorkTicket)
+                <details class="workspace-card ticket-collapsible-card client-report-card" @if ($errors->has('reason') || $errors->has('details')) open @endif>
+                    <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">CLIENT CONDUCT</span><h2>Report client</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>
+                    <div class="ticket-collapsible-content">
+                        <p class="client-report-intro">Client messages are automatically scanned for threats and abusive content. Possible matches create a report for administrator review. Use this form for other conduct concerns; no warning or block is applied automatically.</p>
+                        @forelse ($ticket->misuseReports as $report)
+                            <div class="client-report-history">
+                                <strong>{{ str($report->reason)->replace('_', ' ')->title() }}</strong>
+                                <span>{{ ucfirst($report->status) }}{{ $report->action ? ' · '.ucfirst($report->action) : '' }}</span>
+                                <small>Reported by {{ $report->reporter?->name ?? 'Automated screening' }} · {{ $report->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y') }}</small>
+                            </div>
+                        @empty
+                            <p class="client-report-empty">No reports have been submitted for this ticket.</p>
+                        @endforelse
                         <form class="client-report-form" action="{{ route('staff.ticket-misuse-reports.store', $ticket) }}" method="post">
                         @csrf
                         <label class="workspace-field">
@@ -328,31 +367,10 @@
                         </label>
                         <button class="workspace-button workspace-button--secondary" type="submit">Submit report for review</button>
                         </form>
-                    @endif
-                </div>
-            </details>
+                    </div>
+                </details>
+            @endif
 
-            <details class="workspace-card ticket-collapsible-card ticket-timing-card">
-                <summary class="workspace-card-heading ticket-collapsible-heading"><div><span class="workspace-eyebrow">SERVICE TIMING</span><h2>Time tracking</h2></div><span class="ticket-collapsible-indicator" aria-hidden="true"></span></summary>
-                <div class="ticket-collapsible-content">
-                    <dl class="ticket-timing-list">
-                        <div><dt>Time to first assignment</dt><dd>{{ $ticketTiming['first_assignment'] ?? 'Not assigned yet' }}</dd></div>
-                        <div><dt>Time to resolution</dt><dd>{{ $ticketTiming['resolution'] ?? 'Not resolved yet' }}</dd></div>
-                    </dl>
-                    <p class="ticket-timing-note">Duration uses calendar time from submission to the latest resolution, not active work time.</p>
-                </div>
-            </details>
-
-            <section class="workspace-card ticket-timeline-card">
-                <div class="workspace-card-heading"><div><span class="workspace-eyebrow">History</span><h2>Ticket activity</h2></div></div>
-                <ol class="ticket-timeline">
-                    @forelse ($ticket->events as $event)
-                        <li><span class="timeline-marker" aria-hidden="true"></span><div><strong>{{ $event->description }}</strong><small>{{ $event->actor?->name ?? $event->actor_name ?? 'Requester' }} · {{ $event->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</small></div></li>
-                    @empty
-                        <li><span class="timeline-marker" aria-hidden="true"></span><div><strong>Ticket received</strong><small>{{ $ticket->created_at->copy()->timezone(config('app.display_timezone'))->format('M j, Y g:i A') }}</small></div></li>
-                    @endforelse
-                </ol>
-            </section>
         </aside>
     </div>
 </div>

@@ -7,37 +7,52 @@ use App\Models\Ticket;
 use App\Models\User;
 use App\Notifications\StaffPasswordReset;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Notifications\SendQueuedNotifications;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class AdminStaffManagementTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_can_create_multiple_active_staff_accounts_and_email_password_setup_links(): void
+    public function test_admin_can_create_multiple_active_staff_accounts_and_queue_password_setup_emails(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        Notification::fake();
+        Queue::fake([SendQueuedNotifications::class]);
+        Mail::fake();
+        $staffToCreate = [
+            ['name' => 'First Hire', 'email' => 'first.hire@pcu.edu.ph'],
+            ['name' => 'Second Hire', 'email' => 'second.hire@pcu.edu.ph'],
+        ];
+
+        foreach (range(3, 8) as $number) {
+            $staffToCreate[] = [
+                'name' => "Staff Member {$number}",
+                'email' => "staff{$number}@pcu.edu.ph",
+            ];
+        }
 
         $this->actingAs($admin)->post(route('admin.users.store'), [
-            'staff' => [
-                ['name' => 'First Hire', 'email' => 'first.hire@pcu.edu.ph'],
-                ['name' => 'Second Hire', 'email' => 'second.hire@pcu.edu.ph'],
-            ],
+            'staff' => $staffToCreate,
         ])->assertRedirect(route('admin.users'))
-            ->assertSessionHas('status', '2 staff accounts created and approved. Password setup links have been emailed.');
+            ->assertSessionHas('status', '8 staff accounts created and approved. Password setup emails have been queued.');
 
         $firstHire = User::query()->where('email', 'first.hire@pcu.edu.ph')->firstOrFail();
         $secondHire = User::query()->where('email', 'second.hire@pcu.edu.ph')->firstOrFail();
+        $createdStaff = User::query()->whereIn('email', array_column($staffToCreate, 'email'))->get();
 
-        foreach ([$firstHire, $secondHire] as $staff) {
+        $this->assertCount(8, $createdStaff);
+
+        foreach ($createdStaff as $staff) {
             $this->assertSame('staff', $staff->role);
             $this->assertSame('active', $staff->employment_status);
             $this->assertSame('approved', $staff->staff_approval_status);
             $this->assertNull($staff->email_verified_at);
             $this->assertFalse(Hash::check('password12345', $staff->password));
-            Notification::assertSentTo($staff, StaffPasswordReset::class);
+            $this->assertDatabaseHas('password_reset_tokens', ['email' => $staff->email]);
             $this->assertDatabaseHas('ticket_events', [
                 'actor_id' => $admin->id,
                 'event' => 'staff_account_created',
@@ -46,16 +61,16 @@ class AdminStaffManagementTest extends TestCase
             ]);
         }
 
-        $setupToken = null;
-        Notification::assertSentTo(
-            $firstHire,
-            StaffPasswordReset::class,
-            function (StaffPasswordReset $notification) use (&$setupToken): bool {
-                $setupToken = $notification->token;
+        Queue::assertPushed(SendQueuedNotifications::class, 8);
+        Mail::assertNothingSent();
 
-                return true;
-            },
-        );
+        $setupJob = Queue::pushed(SendQueuedNotifications::class)
+            ->first(fn (SendQueuedNotifications $job): bool => $job->notifiables->contains(
+                fn (User $notifiable): bool => $notifiable->is($firstHire),
+            ));
+        $this->assertInstanceOf(SendQueuedNotifications::class, $setupJob);
+        $this->assertInstanceOf(StaffPasswordReset::class, $setupJob->notification);
+        $setupToken = $setupJob->notification->token;
 
         $this->post(route('password.update'), [
             'token' => $setupToken,
@@ -156,7 +171,7 @@ class AdminStaffManagementTest extends TestCase
         $this->assertSame('active', $anotherStaff->refresh()->employment_status);
     }
 
-    public function test_empty_pending_approvals_are_collapsed_after_the_staff_directory(): void
+    public function test_empty_pending_approvals_and_registration_blocks_are_collapsed_after_the_staff_directory(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
 
@@ -164,7 +179,20 @@ class AdminStaffManagementTest extends TestCase
             ->assertOk()
             ->assertSee('<details class="admin-pending-empty">', false)
             ->assertDontSee('<details class="admin-pending-empty" open>', false)
-            ->assertSeeInOrder(['Manage Super Admins, department admins and staff', 'Pending staff approvals', 'No pending staff applications']);
+            ->assertSee('<details class="admin-pending-empty admin-registration-blocks-empty">', false)
+            ->assertDontSee('<details class="admin-pending-empty admin-registration-blocks-empty" open>', false)
+            ->assertSeeInOrder([
+                'Manage Super Admins, department admins and staff',
+                'Pending staff approvals',
+                'No pending staff applications',
+                'Blocked registration emails',
+                'No blocked registration emails',
+            ])
+            ->assertSeeInOrder([
+                'class="admin-table-wrap admin-staff-directory-wrap"',
+                '<details class="admin-pending-empty">',
+                '<details class="admin-pending-empty admin-registration-blocks-empty">',
+            ], false);
     }
 
     public function test_admin_user_directory_lists_accounts_and_filters_by_access_status(): void

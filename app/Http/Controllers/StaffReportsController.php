@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Department;
+use App\Models\KnowledgeArticle;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Services\SlaRescueAssessor;
@@ -39,10 +40,22 @@ class StaffReportsController extends Controller
         $slaBreachCount = $this->slaBreachCount(clone $baseQuery);
         [$slaAtRiskTicketCount, $slaRiskFactorCounts] = $this->slaRiskInsights(clone $baseQuery);
         $trendBuckets = collect($this->trendBuckets($user, $period, $periodStart, $periodEnd, $selectedDepartmentId));
+        $resolvedInPeriodCount = $trendBuckets->sum('resolved');
         $assigneeWorkload = $this->assigneeWorkload(clone $baseQuery);
+        $actionableInsights = $this->actionableInsights(
+            clone $baseQuery,
+            $summary['totalTicketCount'],
+            $resolvedInPeriodCount,
+            $slaBreachCount,
+            $slaAtRiskTicketCount,
+            $assigneeWorkload,
+        );
+        $reportFilters = $this->reportFilterParameters($filters, $period, $user, $selectedDepartmentId);
 
         return view('staff.reports', [
             ...$summary,
+            'resolvedInPeriodCount' => $resolvedInPeriodCount,
+            'actionableInsights' => $actionableInsights,
             'slaBreachCount' => $slaBreachCount,
             'slaAtRiskTicketCount' => $slaAtRiskTicketCount,
             'slaRiskFactorCounts' => $slaRiskFactorCounts,
@@ -60,6 +73,7 @@ class StaffReportsController extends Controller
                 : collect(),
             'selectedDepartmentId' => $selectedDepartmentId,
             'selectedDepartmentName' => $this->departmentLabel($user, $selectedDepartmentId),
+            'reportFilters' => $reportFilters,
             'trendBuckets' => $trendBuckets,
             'assigneeWorkload' => $assigneeWorkload,
             'assignees' => $user->isAdmin()
@@ -91,6 +105,76 @@ class StaffReportsController extends Controller
         ]);
     }
 
+    public function insightTickets(Request $request, string $insight): View
+    {
+        if (! in_array($insight, [
+            'sla_breached',
+            'sla_at_risk',
+            'received',
+            'resolved',
+            'assignment_balance',
+            'category',
+        ], true)) {
+            abort(404);
+        }
+
+        $filters = $this->validatedFilters($request);
+        $insightFilters = $request->validate([
+            'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')],
+            'assignee_ids' => ['nullable', 'array', 'min:2', 'max:2'],
+            'assignee_ids.*' => ['required', 'integer', 'distinct', Rule::exists('users', 'id')],
+        ]);
+
+        if ($insight === 'category' && ! isset($insightFilters['category_id'])) {
+            abort(404);
+        }
+
+        if ($insight === 'assignment_balance' && count($insightFilters['assignee_ids'] ?? []) !== 2) {
+            abort(404);
+        }
+
+        $period = $filters['period'] ?? 'weekly';
+        $user = $request->user();
+        $selectedDepartmentId = $this->selectedDepartmentId($user, $filters);
+        [$periodStart, $periodEnd] = $this->periodRange($filters, $period);
+        $periodTickets = $this->ticketsInPeriod($user, $periodStart, $periodEnd, $selectedDepartmentId);
+        $query = match ($insight) {
+            'sla_breached' => $this->slaBreachedTickets($periodTickets),
+            'sla_at_risk' => $this->slaAtRiskTickets($periodTickets),
+            'received' => $periodTickets,
+            'resolved' => $this->ticketsForDepartment($user, $selectedDepartmentId)
+                ->whereRaw(
+                    'COALESCE(tickets.last_resolved_at, tickets.resolved_at) BETWEEN ? AND ?',
+                    [$periodStart->utc(), $periodEnd->utc()],
+                ),
+            'assignment_balance' => $periodTickets
+                ->whereNotIn('tickets.status', ['Resolved', 'Closed'])
+                ->whereIn('tickets.assigned_to_user_id', $insightFilters['assignee_ids']),
+            'category' => $periodTickets->where('tickets.category_id', $insightFilters['category_id']),
+        };
+        $insightTitle = match ($insight) {
+            'sla_breached' => 'Tickets that breached their resolution target',
+            'sla_at_risk' => 'Tickets currently at risk',
+            'received' => 'Tickets received in this period',
+            'resolved' => 'Tickets resolved in this period',
+            'assignment_balance' => 'Open tickets in the workload comparison',
+            'category' => 'Tickets in the recurring category',
+        };
+        $reportFilters = $this->reportFilterParameters($filters, $period, $user, $selectedDepartmentId);
+
+        return view('staff.report-tickets', [
+            'tickets' => $query
+                ->with(['department:id,name', 'assignedTo:id,name'])
+                ->orderByDesc('tickets.created_at')
+                ->paginate(25)
+                ->withQueryString(),
+            'insightTitle' => $insightTitle,
+            'periodRangeLabel' => $this->formatPeriodRange($periodStart, $periodEnd),
+            'selectedDepartmentName' => $this->departmentLabel($user, $selectedDepartmentId),
+            'reportFilters' => $reportFilters,
+        ]);
+    }
+
     public function export(Request $request): StreamedResponse
     {
         $filters = $this->validatedFilters($request);
@@ -101,6 +185,12 @@ class StaffReportsController extends Controller
         [$periodStart, $periodEnd] = $this->periodRange($filters, $period);
         $periodTickets = $this->ticketsInPeriod($user, $periodStart, $periodEnd, $selectedDepartmentId);
         $summary = $this->summary(clone $periodTickets);
+        $resolvedInPeriodCount = $this->resolvedInPeriodCount(
+            $user,
+            $periodStart,
+            $periodEnd,
+            $selectedDepartmentId,
+        );
         $priorityCounts = (clone $periodTickets)
             ->selectRaw('priority, COUNT(*) as total')
             ->groupBy('priority')
@@ -126,6 +216,7 @@ class StaffReportsController extends Controller
             $periodStart,
             $periodEnd,
             $summary,
+            $resolvedInPeriodCount,
             $priorityCounts,
             $statusCounts,
             $tickets,
@@ -213,11 +304,11 @@ class StaffReportsController extends Controller
                         [Color::toARGB('078A8A'), $paleTeal],
                         [$purple, $palePurple],
                     ];
-                    $cardLabels = ['TOTAL TICKETS', 'OPEN TICKETS', 'RESOLVED / CLOSED', 'RESOLUTION RATE'];
+                    $cardLabels = ['TOTAL TICKETS', 'OPEN TICKETS', 'RESOLVED DURING PERIOD', 'RESOLUTION RATE'];
                     $cardValues = [
                         $summary['totalTicketCount'],
                         $summary['openTicketCount'],
-                        $summary['resolvedTicketCount'],
+                        $resolvedInPeriodCount,
                         $summary['resolutionRate'].'%',
                     ];
                     $cardLabelStyles = [];
@@ -631,6 +722,36 @@ class StaffReportsController extends Controller
 
     /**
      * @param  array<string, mixed>  $filters
+     * @return array<string, int|string>
+     */
+    private function reportFilterParameters(
+        array $filters,
+        string $period,
+        User $user,
+        ?int $departmentId,
+    ): array {
+        $parameters = ['period' => $period];
+
+        if ($period === 'custom') {
+            $parameters['start_date'] = $filters['start_date'];
+            $parameters['end_date'] = $filters['end_date'];
+        } else {
+            $parameters['reference_date'] = $filters['reference_date']
+                ?? now(config('app.display_timezone'))->toDateString();
+        }
+
+        if (
+            $departmentId !== null
+            && ($user->isAdmin() || $user->isDepartmentAdmin())
+        ) {
+            $parameters['department_id'] = $departmentId;
+        }
+
+        return $parameters;
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
      */
     private function selectedDepartmentId(User $user, array $filters): ?int
     {
@@ -662,6 +783,20 @@ class StaffReportsController extends Controller
         }
 
         return $tickets->visibleTo($user);
+    }
+
+    private function resolvedInPeriodCount(
+        User $user,
+        CarbonImmutable $periodStart,
+        CarbonImmutable $periodEnd,
+        ?int $departmentId,
+    ): int {
+        return $this->ticketsForDepartment($user, $departmentId)
+            ->whereRaw(
+                'COALESCE(tickets.last_resolved_at, tickets.resolved_at) BETWEEN ? AND ?',
+                [$periodStart->utc(), $periodEnd->utc()],
+            )
+            ->count();
     }
 
     /**
@@ -739,6 +874,11 @@ class StaffReportsController extends Controller
 
     private function slaBreachCount(Builder $tickets): int
     {
+        return $this->slaBreachedTickets($tickets)->count();
+    }
+
+    private function slaBreachedTickets(Builder $tickets): Builder
+    {
         return $tickets
             ->whereNotNull('resolution_due_at')
             ->where(function (Builder $query): void {
@@ -757,8 +897,14 @@ class StaffReportsController extends Controller
                         ->whereNotNull('resolved_at')
                         ->whereColumn('resolved_at', '>', 'resolution_due_at');
                 });
-            })
-            ->count();
+            });
+    }
+
+    private function slaAtRiskTickets(Builder $tickets): Builder
+    {
+        return $tickets
+            ->whereIn('status', ['New', 'Assigned', 'In Progress'])
+            ->where('sla_risk_score', '>=', SlaRescueAssessor::MINIMUM_RISK_SCORE);
     }
 
     /**
@@ -766,9 +912,7 @@ class StaffReportsController extends Controller
      */
     private function slaRiskInsights(Builder $tickets): array
     {
-        $atRiskTickets = $tickets
-            ->whereIn('status', ['New', 'Assigned', 'In Progress'])
-            ->where('sla_risk_score', '>=', SlaRescueAssessor::MINIMUM_RISK_SCORE)
+        $atRiskTickets = $this->slaAtRiskTickets($tickets)
             ->get(['sla_risk_factors']);
         $factorsByTicket = $atRiskTickets
             ->map(fn (Ticket $ticket): array => $ticket->sla_risk_factors ?? [])
@@ -782,6 +926,166 @@ class StaffReportsController extends Controller
             ->filter(fn (int $count): bool => $count > 0);
 
         return [$atRiskTickets->count(), $factorCounts];
+    }
+
+    /**
+     * @param  Collection<int, object>  $assigneeWorkload
+     * @return list<array{
+     *     type: string,
+     *     title: string,
+     *     message: string,
+     *     evidence: string,
+     *     action: string,
+     *     ticket_links: list<array{insight: string, label: string, category_id?: int, assignee_ids?: list<int>}>
+     * }>
+     */
+    private function actionableInsights(
+        Builder $periodTickets,
+        int $incomingCount,
+        int $resolvedInPeriodCount,
+        int $slaBreachCount,
+        int $slaAtRiskTicketCount,
+        Collection $assigneeWorkload,
+    ): array {
+        $insights = [];
+
+        if ($slaBreachCount > 0) {
+            $insights[] = [
+                'type' => 'warning',
+                'title' => 'Resolution targets were missed',
+                'message' => "{$slaBreachCount} tickets from the selected creation period have exceeded their resolution target.",
+                'evidence' => 'Based on recorded resolution deadlines and current ticket status.',
+                'action' => 'Review overdue tickets and identify any blocked handoffs.',
+                'ticket_links' => [
+                    ['insight' => 'sla_breached', 'label' => 'Show matching tickets'],
+                ],
+            ];
+        } elseif ($slaAtRiskTicketCount > 0) {
+            $insights[] = [
+                'type' => 'warning',
+                'title' => 'Tickets may miss their resolution targets',
+                'message' => "{$slaAtRiskTicketCount} tickets from the selected creation period are currently marked at risk.",
+                'evidence' => 'Risk scores are based on the ticket queue and SLA indicators.',
+                'action' => 'Prioritize at-risk work and review whether assignments need support.',
+                'ticket_links' => [
+                    ['insight' => 'sla_at_risk', 'label' => 'Show matching tickets'],
+                ],
+            ];
+        }
+
+        if ($incomingCount > 0 || $resolvedInPeriodCount > 0) {
+            $isIntakeHigher = $incomingCount > $resolvedInPeriodCount;
+            $difference = abs($incomingCount - $resolvedInPeriodCount);
+            $activityTicketLinks = [];
+
+            if ($incomingCount > 0) {
+                $activityTicketLinks[] = ['insight' => 'received', 'label' => 'View received tickets'];
+            }
+
+            if ($resolvedInPeriodCount > 0) {
+                $activityTicketLinks[] = ['insight' => 'resolved', 'label' => 'View resolved tickets'];
+            }
+
+            $insights[] = [
+                'type' => $isIntakeHigher ? 'info' : 'success',
+                'title' => $isIntakeHigher
+                    ? 'New intake exceeded resolutions'
+                    : ($difference === 0 ? 'Intake and resolutions were even' : 'Resolution activity exceeded new intake'),
+                'message' => $isIntakeHigher
+                    ? "The team received {$incomingCount} tickets and recorded {$resolvedInPeriodCount} resolutions in this period."
+                    : "The team recorded {$resolvedInPeriodCount} resolutions against {$incomingCount} tickets received in this period.",
+                'evidence' => $difference === 0
+                    ? 'Incoming and resolved counts are even for this period.'
+                    : 'These are period activity counts; a resolution may belong to a ticket created earlier.',
+                'action' => $isIntakeHigher
+                    ? 'Check the open-ticket count and redistribute work if the backlog is growing.'
+                    : 'Continue monitoring incoming volume and SLA risk.',
+                'ticket_links' => $activityTicketLinks,
+            ];
+        }
+
+        $openAssignments = $assigneeWorkload
+            ->filter(fn (object $assignee): bool => $assignee->assignee_role !== null)
+            ->map(fn (object $assignee): array => [
+                'id' => (int) $assignee->assignee_id,
+                'name' => (string) $assignee->assignee_name,
+                'count' => (int) $assignee->open_tickets,
+            ])
+            ->filter(fn (array $assignee): bool => $assignee['count'] > 0)
+            ->sortBy('count')
+            ->values();
+
+        if ($openAssignments->count() >= 2) {
+            $leastLoaded = $openAssignments->first();
+            $mostLoaded = $openAssignments->last();
+
+            if ($mostLoaded['count'] >= 2 * $leastLoaded['count']) {
+                $insights[] = [
+                    'type' => 'info',
+                    'title' => 'Open assignments are unevenly distributed',
+                    'message' => "{$mostLoaded['name']} has {$mostLoaded['count']} open tickets in this report cohort, compared with {$leastLoaded['name']}’s {$leastLoaded['count']}.",
+                    'evidence' => 'Compares open assigned tickets created during the selected period.',
+                    'action' => 'Review assignments and consider rebalancing work where skills and availability allow.',
+                    'ticket_links' => [
+                        [
+                            'insight' => 'assignment_balance',
+                            'label' => 'Show compared tickets',
+                            'assignee_ids' => [$leastLoaded['id'], $mostLoaded['id']],
+                        ],
+                    ],
+                ];
+            }
+        }
+
+        $recurringCategories = (clone $periodTickets)
+            ->join('categories', 'categories.id', '=', 'tickets.category_id')
+            ->selectRaw('categories.id as category_id')
+            ->selectRaw('categories.name as category_name, COUNT(tickets.id) as ticket_count')
+            ->groupBy('categories.id', 'categories.name')
+            ->havingRaw('COUNT(tickets.id) >= ?', [3])
+            ->orderByDesc('ticket_count')
+            ->limit(3)
+            ->get();
+
+        if ($recurringCategories->isNotEmpty()) {
+            $publishedArticleCategories = KnowledgeArticle::query()
+                ->where('is_published', true)
+                ->pluck('category')
+                ->map(fn (string $category): string => mb_strtolower(trim($category)))
+                ->all();
+
+            foreach ($recurringCategories as $recurringCategory) {
+                $categoryName = (string) $recurringCategory->category_name;
+                $hasPublishedArticle = in_array(
+                    mb_strtolower(trim($categoryName)),
+                    $publishedArticleCategories,
+                    true,
+                );
+                $ticketCount = (int) $recurringCategory->ticket_count;
+                $insights[] = [
+                    'type' => $hasPublishedArticle ? 'info' : 'opportunity',
+                    'title' => $hasPublishedArticle
+                        ? "Review the {$categoryName} article"
+                        : "Recurring issue: {$categoryName}",
+                    'message' => "{$ticketCount} tickets in this period share the {$categoryName} category.",
+                    'evidence' => $hasPublishedArticle
+                        ? 'A published article is tagged with this category.'
+                        : 'No published article currently uses this category label.',
+                    'action' => $hasPublishedArticle
+                        ? 'Check whether the article addresses the concerns raised in these tickets.'
+                        : 'Consider creating a staff-reviewed article for this recurring issue.',
+                    'ticket_links' => [
+                        [
+                            'insight' => 'category',
+                            'label' => 'Show matching tickets',
+                            'category_id' => (int) $recurringCategory->category_id,
+                        ],
+                    ],
+                ];
+            }
+        }
+
+        return $insights;
     }
 
     /**
@@ -933,6 +1237,7 @@ class StaffReportsController extends Controller
     {
         $rows = $tickets
             ->leftJoin('users as assigned_staff', 'tickets.assigned_to_user_id', '=', 'assigned_staff.id')
+            ->selectRaw('tickets.assigned_to_user_id as assignee_id')
             ->selectRaw("COALESCE(assigned_staff.nickname, assigned_staff.name, 'Unassigned') as assignee_name")
             ->selectRaw('assigned_staff.role as assignee_role')
             ->selectRaw('COUNT(*) as total_tickets')
